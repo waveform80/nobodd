@@ -1,6 +1,8 @@
 import struct
 from collections import namedtuple
 
+from .tools import labels, formats
+
 
 # Structures sourced from the Wikipedia page on the Master Boot Record [1],
 # specifically the "structure of a classic generic MBR". We don't bother with
@@ -18,21 +20,9 @@ MBR_HEADER = """
 H     boot_sig
 """
 
-class MBRHeader(namedtuple('MBRHeader', tuple(
-    label
-    for line in MBR_HEADER.splitlines()
-    if line
-    for fmt, label in (line.split(None, 1),)
-    if not fmt.endswith('x')
-))):
+class MBRHeader(namedtuple('MBRHeader', labels(MBR_HEADER))):
     __slots__ = ()
-
-    _FORMAT = struct.Struct('<' + ''.join(
-        fmt
-        for line in MBR_HEADER.splitlines()
-        if line
-        for fmt, label in (line.split(None, 1),)
-    ))
+    _FORMAT = struct.Struct(formats(MBR_HEADER))
 
     @classmethod
     def from_string(cls, s):
@@ -41,6 +31,15 @@ class MBRHeader(namedtuple('MBRHeader', tuple(
     @classmethod
     def from_buffer(cls, buf, offset=0):
         return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+    @property
+    def partitions(self):
+        return (
+            self.partition_1,
+            self.partition_2,
+            self.partition_3,
+            self.partition_4,
+        )
 
 
 MBR_PARTITION = """
@@ -52,21 +51,9 @@ L     first_lba
 L     part_size
 """
 
-class MBRPartition(namedtuple('MBRPartition', tuple(
-    label
-    for line in MBR_PARTITION.splitlines()
-    if line
-    for fmt, label in (line.split(None, 1),)
-    if not fmt.endswith('x')
-))):
+class MBRPartition(namedtuple('MBRPartition', labels(MBR_PARTITION))):
     __slots__ = ()
-
-    _FORMAT = struct.Struct('<' + ''.join(
-        fmt
-        for line in MBR_PARTITION.splitlines()
-        if line
-        for fmt, label in (line.split(None, 1),)
-    ))
+    _FORMAT = struct.Struct(formats(MBR_PARTITION))
 
     @classmethod
     def from_string(cls, s):

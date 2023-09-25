@@ -1,6 +1,8 @@
 import struct
 from collections import namedtuple
 
+from .tools import labels, formats
+
 
 # Structures sourced from the Wikipedia page on the GUID Partition Table [1].
 #
@@ -10,7 +12,7 @@ GPT_HEADER = """
 8s   signature
 4s   revision
 L    header_size
-L    header_check
+L    header_crc32
 4x   reserved
 Q    current_lba
 Q    backup_lba
@@ -20,32 +22,21 @@ Q    last_usable_lba
 Q    part_table_lba
 L    part_table_size
 L    part_entry_size
-L    part_table_check
+L    part_table_crc32
 """
 
-class GPTHeader(namedtuple('GPTHeader', tuple(
-    label
-    for line in GPT_HEADER.splitlines()
-    if line
-    for fmt, label in (line.split(None, 1),)
-    if not fmt.endswith('x')
-))):
+class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
     __slots__ = ()
-
-    _FORMAT = struct.Struct('<' + ''.join(
-        fmt
-        for line in GPT_HEADER.splitlines()
-        if line
-        for fmt, label in (line.split(None, 1),)
-    ))
+    _FORMAT = struct.Struct(formats(GPT_HEADER))
 
     @classmethod
     def from_string(cls, s):
-        return cls(*cls._FORMAT.unpack(s))
+        return cls(*cls._FORMAT.unpack(s), s)
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
-        return cls(*cls._FORMAT.unpack_from(buf, offset))
+        return cls(*cls._FORMAT.unpack_from(buf, offset),
+                   buf[offset:offset + cls._FORMAT.size])
 
 
 GPT_PARTITION = """
@@ -57,21 +48,9 @@ Q    flags
 72s  part_label
 """
 
-class GPTPartition(namedtuple('GPTPartition', tuple(
-    label
-    for line in GPT_PARTITION.splitlines()
-    if line
-    for fmt, label in (line.split(None, 1),)
-    if not fmt.endswith('x')
-))):
+class GPTPartition(namedtuple('GPTPartition', labels(GPT_PARTITION))):
     __slots__ = ()
-
-    _FORMAT = struct.Struct('<' + ''.join(
-        fmt
-        for line in GPT_PARTITION.splitlines()
-        if line
-        for fmt, label in (line.split(None, 1),)
-    ))
+    _FORMAT = struct.Struct(formats(GPT_PARTITION))
 
     @classmethod
     def from_string(cls, s):
