@@ -18,10 +18,10 @@ H     bytes_per_sector
 B     sectors_per_cluster
 H     reserved_sectors
 B     fat_count
-H     fat16_max_root_entries
+H     max_root_entries
 H     fat16_total_sectors
 B     media_descriptor
-H     fat16_sectors_per_fat
+H     sectors_per_fat
 H     sectors_per_track
 H     heads_per_disk
 L     hidden_sectors
@@ -45,7 +45,7 @@ class BootParameterBlock(
 EXTENDED_BOOT_PARAMETER_BLOCK = """
 B     drive_number
 1x    reserved
-B     extended_boot_signature
+B     extended_boot_sig
 4s    volume_id
 11s   volume_label
 8s    file_system
@@ -119,6 +119,10 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
     def from_buffer(cls, buf, offset=0):
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
+    @classmethod
+    def iter_over(cls, buf):
+        return cls._FORMAT.iter_unpack(buf)
+
 
 LONG_FILENAME_ENTRY = """
 B     sequence
@@ -143,3 +147,7 @@ class LongFilenameEntry(
     @classmethod
     def from_buffer(cls, buf, offset=0):
         return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+    @classmethod
+    def iter_over(cls, buf):
+        return cls._FORMAT.iter_unpack(buf)

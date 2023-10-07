@@ -1,205 +1,313 @@
-import mmap
-import uuid
-from binascii import crc32
+import io
+import struct
+from collections.abc import Sequence
 
-from .mbr import MBRHeader, MBRPartition
-from .gpt import GPTHeader, GPTPartition
+from .fat import (
+    BootParameterBlock,
+    ExtendedBootParameterBlock,
+    FAT32BootParameterBlock,
+    DirectoryEntry,
+    LongFilenameEntry,
+)
+from .path import FatPath
 
 
-class DiskImage:
-    def __init__(self, filename_or_obj, sector_size=512):
-        self._ss = sector_size
-        self._opened = isinstance(filename_or_obj, str)
-        if self._opened:
-            self._file = open(filename_or_obj, 'rb')
+# The following references were invaluable in constructing this implementation;
+# the wikipedia page on the Design of the FAT File system [1], and Jonathan
+# de Boyne Pollard's notes on determination of FAT widths [2].
+#
+# [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
+# [2]: http://homepage.ntlworld.com/jonathan.deboynepollard/FGA/determining-fat-widths.html
+#
+# (please note [2] is a dead link at the time of writing; use archive.org to
+# retrieve)
+
+class FatFileSystem:
+    def __init__(self, mem, sector_size=512):
+        self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
+        if bpb.bytes_per_sector != sector_size:
+            warnings.warn(
+                UserWarning(
+                    f'Unexpected sector-size in FAT, {bpb.bytes_per_sector}, '
+                    f'differs from {sector_size}'))
+        self._label = ebpb.volume_label.decode('ascii', 'replace').rstrip(' ')
+        self._cs = bpb.bytes_per_sector * bpb.sectors_per_cluster
+
+        fat_size = (
+            ebpb_fat32.sectors_per_fact if ebpb_fat32 is not None else
+            bpb.sectors_per_fat) * bpb.bytes_per_sector
+        root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
+        # Root size must be rounded up to a whole number of sectors
+        root_size = (
+            (root_size + (bpb.bytes_per_sector - 1)) //
+            bpb.bytes_per_sector) * bpb.bytes_per_sector
+        fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
+        root_offset = fat_offset + (fat_size * bpb.fat_count)
+        data_offset = root_offset + root_size
+        self._fat = mem[fat_offset:fat_offset + fat_size]
+        self._data = mem[data_offset:]
+        if self._fat_type == 'fat32':
+            if ebpb_fat32 is None:
+                raise ValueError(
+                    'File-system claims to be FAT32 but has no FAT32 EBPB')
+            self._root = FatPath._from_index(
+                self, Fat32Root(self, ebpb_fat32.root_dir_cluster))
         else:
-            self._file = filename_or_obj
-        self._map = mmap.mmap(self._file.fileno(), 0, access=mmap.ACCESS_READ)
-        self._mem = memoryview(self._map)
+            self._root = FatPath._from_index(
+                self, Fat16Root(mem[root_offset:root_offset + root_size]))
 
-    def close(self):
-        if self._map is not None:
-            self._map.close()
-            if self._opened:
-                self._file.close()
-        self._mem = None
-        self._map = None
-        self._file = None
-
-    @property
-    def partitions(self):
-        # This is a bit hacky, but reliable enough for our purposes. We check
-        # for the "EFI PART" signature at the start of LBA1 and, if we find it,
-        # we assume we're dealing with GPT. We don't check for a protective or
-        # hybrid MBR because we wouldn't use it in any case. Otherwise we,
-        # check for a valid MBR boot-signature at the appropriate offset.
-        # Failing both of these, we raise an error.
-        #
-        # Note that, *theoretically*, "EFI PART" could appear in the bootstrap
-        # code at the start of the MBR. However, I'm treating that as
-        # sufficiently weird that it's not worth guarding against.
-        head = GPTHeader.from_buffer(self._mem, 0)
-        if head.signature == b'EFI PART':
-            return DiskPartitionsGPT(self._mem, head, self._ss)
-        head = GPTHeader.from_buffer(self._mem, self._ss)
-        if head.signature == b'EFI PART':
-            return DiskPartitionsGPT(self._mem, head, self._ss)
-        head = MBRHeader.from_buffer(self._mem, 0)
-        if head.boot_sig == 0xAA55:
-            return DiskPartitionsMBR(self._mem, head, self._ss)
-        raise ValueError(
-            f'Unable to determine partitioning scheme in use by {self._file}')
-
-
-class DiskPartition:
-    def __init__(self, mem, label, type):
-        self._mem = mem
-        self._label = label
-        self._type = type
+        # Check the root directory is structured as expected. Apparently some
+        # "non-mainstream" operating systems can use a variable-sized root
+        # directory on FAT12/16, but we're not expecting to deal with any of
+        # those
+        if self._fat_type == 'fat32' and bpb.max_root_entries != 0:
+            raise ValueError(
+                f'Max. root entries must be 0 for {self._fat_type.upper()}')
+        elif self._fat_type != 'fat32' and bpb.max_root_entries == 0:
+            raise ValueError(
+                f'Max. root entries must be non-zero for {self._fat_type.upper()}')
+        if fat_size == 0:
+            raise ValueError(f'{self._fat_type.upper()} sectors per FAT is 0')
+        if root_size % bpb.bytes_per_sector:
+            raise ValueError(
+                f'Max. root entries, {bpb.max_root_entries} creates a root '
+                f'directory region that is not a multiple of sector size, '
+                f'{bpb.bytes_per_sector}')
 
     def __repr__(self):
         return (
-            f'<DiskPartition size={len(self._mem)} label={self._label!r} '
-            f'type={self._type!r}>')
+            f'<{self.__class__.__name__} label={self.label!r} '
+            f'fat_type={self.fat_type!r}>')
+
+    def open_dir(self, cluster):
+        return FatSubDirectory(self, cluster)
+
+    def open_file(self, cluster, size):
+        return FatFile(self, cluster, size)
 
     @property
-    def type(self):
-        return self._type
+    def fat_type(self):
+        return self._fat_type
 
     @property
     def label(self):
         return self._label
 
     @property
-    def data(self):
-        return self._mem
+    def root(self):
+        return self._root
 
 
-class DiskPartitionsGPT:
-    style = 'gpt'
+def fat_type(mem):
+    fat_types = {
+        b'FAT     ': None,
+        b'FAT12   ': 'fat12',
+        b'FAT16   ': 'fat16',
+        b'FAT32   ': 'fat32',
+    }
+    bpb = BootParameterBlock.from_buffer(mem)
+    ebpb = ExtendedBootParameterBlock.from_buffer(
+        mem, BootParameterBlock._FORMAT.size)
+    try:
+        fat_type = fat_types[ebpb.file_system]
+        if fat_type is not None:
+            return fat_type, bpb, ebpb, None
+    except KeyError:
+        pass
+    if ebpb.extended_boot_sig in (0x28, 0x29):
+        return fat_type_from_count(bpb, ebpb), bpb, ebpb, None
+    ebpb_fat32 = FAT32BootParameterBlock.from_buffer(
+        mem, BootParameterBlock._FORMAT.size)
+    ebpb = ExtendedBootParameterBlock.from_buffer(
+        mem, BootParameterBlock._FORMAT.size +
+        FAT32BootParameterBlock._FORMAT.size)
+    try:
+        fat_type = fat_types[ebpb.file_system]
+        if fat_type is not None:
+            return fat_type, bpb, ebpb, ebpb_fat32
+    except KeyError:
+        pass
+    if ebpb.extended_boot_sig in (0x28, 0x29):
+        return fat_type_from_count(bpb, ebpb), bpb, ebpb, ebpb_fat32
+    raise ValueError(
+        'Could not find file-system type or extended boot signature')
 
-    def __init__(self, mem, header, sector_size=512):
-        if not isinstance(header, GPTHeader):
-            raise ValueError('header must be a GPTHeader instance')
-        if header.signature != b'EFI PART':
-            raise ValueError('Bad GPT signature')
-        if header.revision != b'\x00\x00\x01\x00':
-            raise ValueError('Unrecognized GPT version')
-        if header.header_size != GPTHeader._FORMAT.size:
-            raise ValueError('Bad GPT header size')
-        data = bytearray(header.raw)
-        data[0x10:0x14] = b'\x00\x00\x00\x00'
-        if crc32(data) != header.header_crc32:
-            raise ValueError('Bad GPT header CRC32')
-        self._mem = mem
-        self._header = header
-        self._ss = sector_size
 
-    def _get_table(self):
-        start = self._header.part_table_lba
-        table_sectors = ((
-            (self._header.part_table_size * self._header.part_entry_size) +
-            self._ss - 1) // self._ss)
-        return self._mem[self._ss * start:self._ss * (start + table_sectors)]
+def fat_type_from_count(bpb, ebpb):
+    total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
+    fat_sectors = (
+        bpb.fat_count *
+        (ebpb_fat32.sectors_per_fat or bpb.fat16_sectors_per_fat))
+    root_sectors = (
+        (bpb.max_root_entries * DirectoryEntry._FORMAT.size) +
+        (bpb.bytes_per_sector - 1)) // bpb.bytes_per_sector
+    data_offset = bpb.reserved_sectors + fat_sectors + root_sectors
+    data_clusters = (total_sectors - data_offset) // bpb.sectors_per_cluster
+    return (
+        'fat12' if data_clusters < 4085 else
+        'fat16' if data_clusters < 65525 else
+        'fat32')
+
+
+class FatDirectory(Sequence):
+    __slots__ = ()
+
+    def _iter_entries(self):
+        raise NotImplementedError
 
     def __len__(self):
-        table = self._get_table()
-        count = 0
-        for offset in range(0, len(table), self._header.part_entry_size):
-            entry = GPTPartition.from_buffer(table, offset)
-            if entry.type_guid != b'\x00' * 16:
-                count += 1
-        return count
-
-    def __getitem__(self, index):
-        if not 1 <= index <= self._header.part_table_size:
-            raise KeyError(index)
-        table = self._get_table()
-        entry = GPTPartition.from_buffer(
-            table, self._header.part_entry_size * (index - 1))
-        if entry.part_guid == b'\x00' * 16:
-            raise KeyError(index)
-        return DiskPartition(
-            mem=self._mem[
-                self._ss * entry.first_lba:self._ss * (entry.last_lba + 1)],
-            type=uuid.UUID(bytes_le=entry.type_guid),
-            label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
+        return sum(1 for entry in self)
 
     def __iter__(self):
-        table = self._get_table()
-        for index in range(self._header.part_table_size):
-            entry = GPTPartition.from_buffer(
-                table, self._header.part_entry_size * index)
-            if entry.part_guid == b'\x00' * 16:
-                continue
-            yield DiskPartition(
-                mem=self._mem[
-                    self._ss * entry.first_lba:self._ss * (entry.last_lba + 1)],
-                type=uuid.UUID(bytes_le=entry.type_guid),
-                label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
+        entries = []
+        for entry in self._iter_entries():
+            entries.append(entry)
+            if isinstance(entry, DirectoryEntry):
+                if entry.filename[0] == 0:
+                    break
+                else:
+                    yield entries
+                    entries = []
+
+    def __getitem__(self, index):
+        for i, entries in enumerate(self):
+            if index == i:
+                return entries
+        raise IndexError(index)
+
+    cluster = property(lambda self: self._get_cluster())
 
 
-class DiskPartitionsMBR:
-    style = 'mbr'
+class Fat16Root(FatDirectory):
+    __slots__ = ('_mem',)
 
-    def __init__(self, mem, header, sector_size=512):
-        if not isinstance(header, MBRHeader):
-            raise ValueError('header must be a MBRHeader instance')
-        if header.boot_sig != 0xAA55:
-            raise ValueError('Bad MBR signature')
+    def __init__(self, mem):
         self._mem = mem
-        self._header = header
-        self._ss = sector_size
 
-    def _get_logical(self, ext_offset):
-        logical_offset = ext_offset
-        while True:
-            ebr = MBRHeader.from_buffer(self._mem, logical_offset * self._ss)
-            if ebr.boot_sig != 0xAA55:
-                raise ValueError('Bad EBR signature')
-            # Yield the logical partition
-            part = MBRPartition.from_string(ebr.partition_1)
-            part = part._replace(first_lba=part.first_lba + logical_offset)
-            yield part
-            part = MBRPartition.from_string(ebr.partition_2)
-            if part.part_type == 0x00 and part.first_lba == 0:
+    def _get_cluster(self):
+        return 0
+
+    def _iter_entries(self):
+        for offset in range(0, len(self._mem), DirectoryEntry._FORMAT.size):
+            entry = DirectoryEntry.from_buffer(self._mem, offset)
+            if entry.attr == 0x0F:
+                entry = LongFilenameEntry.from_buffer(self._mem, offset)
+            elif entry.filename[0] == 0:
                 break
-            elif part.part_type not in (0x05, 0x0F):
-                raise ValueError(
-                    'Second partition in EBR at LBA {logical_offset) is not '
-                    'another EBR or a terminal')
-            logical_offset = part.first_lba + ext_offset
+            yield entry
 
-    def _get_primary(self):
-        mbr = self._header
-        ebr = None
-        for num, buf in enumerate(mbr.partitions, start=1):
-            part = MBRPartition.from_string(buf)
-            if part.part_type in (0x05, 0x0F):
-                if ebr is not None:
-                    warnings.warn(
-                        UserWarning('Multiple extended partitions found'))
-                yield from enumerate(self._get_logical(part.first_lba), start=5)
-            elif part.part_type != 0x00:
-                yield num, part
 
-    def __len__(self):
-        return sum(1 for num, part in self._get_primary())
+class FatSubDirectory(FatDirectory):
+    __slots__ = ('_cs', '_file')
 
-    def __getitem__(self, index):
-        for num, part in self._get_primary():
-            if num == index:
-                last_lba = part.first_lba + part.part_size
-                return DiskPartition(
-                    mem=self._mem[self._ss * part.first_lba:self._ss * last_lba],
-                    type=part.part_type,
-                    label=f'Partition {num}')
-        raise KeyError(index)
+    def __init__(self, fs, start):
+        self._cs = fs._cs
+        self._file = FatFile(fs, start)
 
-    def __iter__(self):
-        for num, part in self._get_primary():
-            last_lba = part.first_lba + part.part_size
-            yield DiskPartition(
-                mem=self._mem[self._ss * part.first_lba:self._ss * last_lba],
-                type=part.part_type,
-                label=f'Partition {num}')
+    def _get_cluster(self):
+        return self._file.cluster
+
+    def _iter_entries(self):
+        buf = bytearray(self._cs)
+        while self._file.readinto(buf):
+            for offset in range(0, len(buf), DirectoryEntry._FORMAT.size):
+                entry = DirectoryEntry.from_buffer(buf, offset)
+                if entry.attr == 0x0F:
+                    entry = LongFilenameEntry.from_buffer(buf, offset)
+                elif entry.filename[0] == 0:
+                    return
+                yield entry
+
+
+# The root directory in FAT32 is simply a regular sub-directory with the
+# starting cluster recorded in the BPB
+Fat32Root = FatSubDirectory
+
+
+class FatFile(io.RawIOBase):
+    __slots__ = ('_fs', '_start', '_map', '_size', '_pos')
+
+    def __init__(self, fs, start, size=None):
+        self._fs = fs
+        self._start = start
+        self._map = list(self._get_clusters())
+        # size should only be "None" in the case of directory entries; in this
+        # case, scan the FAT to determine # of clusters (and thus max. size)
+        if size is None:
+            size = len(self._map) * self._fs._cs
+        self._size = size
+        self._pos = 0
+
+    @property
+    def cluster(self):
+        return self._start
+
+    def _get_clusters(self):
+        cluster = self._start
+        if self._fs._fat_type == 'fat12':
+            fat = self._fs._fat
+            while 0x002 <= cluster <= 0xFEF:
+                yield cluster
+                if cluster % 2:
+                    offset = cluster + (cluster >> 1) + 1
+                    cluster = struct.unpack_from('<H', fat, offset) >> 4
+                else:
+                    offset = cluster + (cluster >> 1)
+                    cluster = struct.unpack_from('<H', fat, offset) & 0x0FFF
+        elif self._fs._fat_type == 'fat16':
+            fat = self._fs._fat.cast('H')
+            while 0x0002 <= cluster <= 0xFFEF:
+                yield cluster
+                cluster = fat[cluster]
+        elif self._fs._fat_type == 'fat32':
+            fat = self._fs._fat.cast('L')
+            while 0x0000002 <= cluster <= 0xFFFFFEF:
+                yield cluster
+                cluster = fat[cluster] & 0x0FFFFFFF
+        else:
+            assert False, 'unrecognized FAT type'
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def readall(self):
+        buf = bytearray(self._size - self._pos)
+        mem = memoryview(buf)
+        pos = 0
+        while self._pos < self._size:
+            pos += self.readinto(mem[pos:])
+        return bytes(buf)
+
+    def readinto(self, buf):
+        cs = self._fs._cs # cluster size
+        # index is which cluster of the file we wish to read; i.e. index 0
+        # represents the first cluster of the file; cluster is then the actual
+        # cluster number to read from the data portion (offset by 2 because
+        # the first data cluster is #2)
+        index = self._pos // cs
+        cluster = self._map[index] - 2
+        # left and right are the byte offsets within the cluster to return;
+        # read is the number of bytes to return
+        left = self._pos - (index * self._fs._cs)
+        right = min(cs, left + len(buf))
+        read = right - left
+        buf[:read] = self._fs._data[cluster * cs:(cluster + 1) * cs][left:right]
+        self._pos += read
+        return read
+
+    def seek(self, pos, whence):
+        if whence == io.SEEK_SET:
+            pos = pos
+        elif whence == io.SEEK_CUR:
+            pos = self._pos + pos
+        elif whence == io.SEEK_END:
+            pos = self._size + pos
+        else:
+            raise ValueError(f'invalid whence: {whence}')
+        if pos < 0:
+            raise IOError('invalid argument')
+        self._pos = pos
+        return self._pos
