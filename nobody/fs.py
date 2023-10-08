@@ -209,6 +209,7 @@ class FatSubDirectory(FatDirectory):
 
     def _iter_entries(self):
         buf = bytearray(self._cs)
+        self._file.seek(0)
         while self._file.readinto(buf):
             for offset in range(0, len(buf), DirectoryEntry._FORMAT.size):
                 entry = DirectoryEntry.from_buffer(buf, offset)
