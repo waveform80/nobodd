@@ -149,9 +149,59 @@ class FatPath:
                 return False
         return True
 
+    def _search(self, parent, parts):
+
+        def recursive(parent, parts):
+            yield from self._search(parent, parts)
+            for path in parent.iterdir():
+                if path.is_dir():
+                    yield from recursive(path, parts)
+
+        def wildcard(parent, part, parts):
+            part_re = re.compile(fnmatch.translate(part), re.IGNORECASE)
+            for path in parent.iterdir():
+                if part_re.match(path.name):
+                    yield from self._search(path, parts)
+
+        def precise(parent, part, parts):
+            part = part.lower()
+            for path in parent.iterdir():
+                if path.name.lower() == part:
+                    yield from self._search(path, parts)
+
+        if not parts:
+            yield parent
+        elif parent.is_dir():
+            part, *parts = parts
+            if not part:
+                raise ValueError('empty pattern component')
+            elif part == '**':
+                yield from recursive(parent, parts)
+            elif '**' in part:
+                raise ValueError(
+                    'invalid pattern: ** can only be an entire component')
+            elif '*' in part or '?' in part or '[' in part:
+                yield from wildcard(parent, part, parts)
+            else:
+                yield from precise(parent, part, parts)
+
     def glob(self, pattern):
         self._must_exist()
-        # TODO
+        pat_parts = PurePosixPath(pattern.lower()).parts
+        if not pat_parts:
+            raise ValueError('Unacceptable pattern')
+        if pat_parts[0] == '/':
+            raise ValueError('Non-relative patterns are not supported')
+        yield from self._search(self, pat_parts)
+
+    def rglob(self, pattern):
+        self._must_exist()
+        pat_parts = PurePosixPath(pattern.lower()).parts
+        if not pat_parts:
+            raise ValueError('Unacceptable pattern')
+        if pat_parts[0] == '/':
+            raise ValueError('Non-relative patterns are not supported')
+        yield from self._search(self, ('**',) + pat_parts)
 
     def stat(self, *, follow_symlinks=True):
         self._must_exist()
