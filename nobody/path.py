@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import stat
@@ -121,12 +122,19 @@ class FatPath:
         for entries in self._index:
             if not entries:
                 raise ValueError('empty dir entries')
-            if entries[-1].attr & 0x8: # volume-label
-                continue
-            elif entries[-1].attr & 0x10: # directory
+            if entries[-1].filename.startswith(b'\xe5'): # deleted
+                continue # skip deleted entry
+            elif (
+                isinstance(entries[0], LongFilenameEntry) and
+                entries[0].name_1.startswith(b'\xe5\x00')
+            ):
+                continue # skip deleted entry
+            elif entries[-1].attr & 0x8:
+                continue # skip volume label
+            elif entries[-1].attr & 0x10:
                 name = (entries[-1].filename + entries[-1].ext).rstrip(b' ')
                 if name in (b'.', b'..'):
-                    continue
+                    continue # skip "." and ".." directories
             yield FatPath._from_entries(self._fs, entries, prefix=str(self))
 
     def match(self, pattern):
