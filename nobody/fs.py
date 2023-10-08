@@ -285,18 +285,20 @@ class FatFile(io.RawIOBase):
     def readinto(self, buf):
         cs = self._fs._cs # cluster size
         # index is which cluster of the file we wish to read; i.e. index 0
-        # represents the first cluster of the file; cluster is then the actual
-        # cluster number to read from the data portion (offset by 2 because
-        # the first data cluster is #2)
+        # represents the first cluster of the file; left and right are the byte
+        # offsets within the cluster to return; read is the number of bytes to
+        # return
         index = self._pos // cs
-        cluster = self._map[index] - 2
-        # left and right are the byte offsets within the cluster to return;
-        # read is the number of bytes to return
-        left = self._pos - (index * self._fs._cs)
-        right = min(cs, left + len(buf))
-        read = right - left
-        buf[:read] = self._fs._data[cluster * cs:(cluster + 1) * cs][left:right]
-        self._pos += read
+        left = self._pos - (index * cs)
+        right = min(cs, left + len(buf), self._size - (index * cs))
+        read = max(right - left, 0)
+        if read > 0:
+            # cluster is then the actual cluster number to read from the data
+            # portion (offset by 2 because the first data cluster is #2)
+            cluster = self._map[index] - 2
+            buf[:read] = self._fs._data[
+                cluster * cs:(cluster + 1) * cs][left:right]
+            self._pos += read
         return read
 
     def seek(self, pos, whence=io.SEEK_SET):
