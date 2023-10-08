@@ -24,8 +24,8 @@ B     media_descriptor
 H     sectors_per_fat
 H     sectors_per_track
 H     heads_per_disk
-L     hidden_sectors
-L     fat32_total_sectors
+I     hidden_sectors
+I     fat32_total_sectors
 """
 
 class BootParameterBlock(
@@ -67,10 +67,10 @@ class ExtendedBootParameterBlock(
 
 
 FAT32_BOOT_PARAMETER_BLOCK = """
-L     sectors_per_fat
+I     sectors_per_fat
 H     mirror_flags
 H     version
-L     root_dir_cluster
+I     root_dir_cluster
 H     info_sector
 H     backup_sector
 12x   reserved
@@ -104,7 +104,7 @@ H     first_cluster_hi
 H     mtime
 H     mdate
 H     first_cluster_lo
-L     size
+I     size
 """
 
 class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):

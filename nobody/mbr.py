@@ -47,8 +47,8 @@ B     status
 3s    first_chs
 B     part_type
 3s    last_chs
-L     first_lba
-L     part_size
+I     first_lba
+I     part_size
 """
 
 class MBRPartition(namedtuple('MBRPartition', labels(MBR_PARTITION))):

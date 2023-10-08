@@ -11,8 +11,8 @@ from .tools import labels, formats
 GPT_HEADER = """
 8s   signature
 4s   revision
-L    header_size
-L    header_crc32
+I    header_size
+I    header_crc32
 4x   reserved
 Q    current_lba
 Q    backup_lba
@@ -20,9 +20,9 @@ Q    first_usable_lba
 Q    last_usable_lba
 16s  disk_guid
 Q    part_table_lba
-L    part_table_size
-L    part_entry_size
-L    part_table_crc32
+I    part_table_size
+I    part_entry_size
+I    part_table_crc32
 """
 
 class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
