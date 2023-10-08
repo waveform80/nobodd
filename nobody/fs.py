@@ -260,7 +260,7 @@ class FatFile(io.RawIOBase):
                 yield cluster
                 cluster = fat[cluster]
         elif self._fs._fat_type == 'fat32':
-            fat = self._fs._fat.cast('L')
+            fat = self._fs._fat.cast('I')
             while 0x0000002 <= cluster <= 0xFFFFFEF:
                 yield cluster
                 cluster = fat[cluster] & 0x0FFFFFFF
