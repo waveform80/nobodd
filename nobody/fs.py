@@ -299,7 +299,7 @@ class FatFile(io.RawIOBase):
         self._pos += read
         return read
 
-    def seek(self, pos, whence):
+    def seek(self, pos, whence=io.SEEK_SET):
         if whence == io.SEEK_SET:
             pos = pos
         elif whence == io.SEEK_CUR:
