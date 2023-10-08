@@ -307,7 +307,7 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
                 raise ValueError(
                     f'incorrect LongFilenameEntry.sequence: {sequence} != '
                     f'{part.sequence}')
-            filename += part.name_1 + part.name_2 + part.name_3
+            filename = part.name_1 + part.name_2 + part.name_3 + filename
         if sequence > 1:
             raise ValueError(f'missing {sequence} LongFilenameEntry items')
 
@@ -318,9 +318,15 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
             raise ValueError(
                 f'checksum mismatch in long filename: {sum_} != {checksum}')
         filename = filename.decode('utf-16le').rstrip('\uffff')
-        if filename[-1] != '\x00':
-            raise ValueError('missing terminal NUL in long filename')
-        filename = filename[:-1]
+        # There may be one trailing NUL char, but there may not if the filename
+        # fits perfectly in a LFN structure
+        if filename[-1:] == '\x00':
+            filename = filename[:-1]
+        # But there shouldn't be more than one!
+        if filename[-1:] == '\x00':
+            raise ValueError(f'excess NUL chars in long filename: {filename!r}')
+        if not filename:
+            raise ValueError('empty long filename')
     else:
         filename = entry.filename.rstrip(b' ').decode(dos_encoding)
         if entry.ext != b'   ':
