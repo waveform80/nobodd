@@ -4,24 +4,21 @@ from .disk import DiskImage
 from .fs import FatFileSystem
 
 def main():
-    img = DiskImage(sys.argv[1])
+    filename, partition, pattern = sys.argv[1:]
+    partition = int(partition)
+
+    img = DiskImage(filename)
     print(img.partitions.style)
     for part in img.partitions:
         print(part)
-    fs = FatFileSystem(img.partitions[1].data)
+    fs = FatFileSystem(img.partitions[partition].data)
     print(fs.fat_type)
     print(fs.label)
     print(fs.root.stat())
-    print('ls /')
-    for p in fs.root.iterdir():
-        print(p)
-    d = fs.root / 'adir/nobody'
-    import pudb; pudb.set_trace()
-    print(d.parents)
-    print('ls /adir/nobody/*.py')
-    for p in (fs.root / 'adir/nobody').iterdir():
-        print(p)
+    if pattern:
+        for path in fs.root.rglob(pattern):
+            print(path)
+    else:
+        for path in fs.root.iterdir():
+            print(path)
     return 0
-
-img = DiskImage('../test.img')
-fs = FatFileSystem(img.partitions[1].data)
