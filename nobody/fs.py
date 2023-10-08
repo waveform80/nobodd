@@ -34,7 +34,7 @@ class FatFileSystem:
         self._cs = bpb.bytes_per_sector * bpb.sectors_per_cluster
 
         fat_size = (
-            ebpb_fat32.sectors_per_fact if ebpb_fat32 is not None else
+            ebpb_fat32.sectors_per_fat if ebpb_fat32 is not None else
             bpb.sectors_per_fat) * bpb.bytes_per_sector
         root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
         # Root size must be rounded up to a whole number of sectors
