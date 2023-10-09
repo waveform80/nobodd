@@ -1,6 +1,6 @@
 import io
 import struct
-from collections.abc import Sequence
+from collections import abc
 
 from .fat import (
     BootParameterBlock,
@@ -50,11 +50,9 @@ class FatFileSystem:
             if ebpb_fat32 is None:
                 raise ValueError(
                     'File-system claims to be FAT32 but has no FAT32 EBPB')
-            self._root = FatPath._from_index(
-                self, Fat32Root(self, ebpb_fat32.root_dir_cluster))
+            self._root = ebpb_fat32.root_dir_cluster
         else:
-            self._root = FatPath._from_index(
-                self, Fat16Root(mem[root_offset:root_offset + root_size]))
+            self._root = mem[root_offset:root_offset + root_size]
 
         # Check the root directory is structured as expected. Apparently some
         # "non-mainstream" operating systems can use a variable-sized root
@@ -95,7 +93,10 @@ class FatFileSystem:
 
     @property
     def root(self):
-        return self._root
+        if self._fat_type == 'fat32':
+            return FatPath._from_index(self, Fat32Root(self, self._root))
+        else:
+            return FatPath._from_index(self, Fat16Root(self._root))
 
 
 def fat_type(mem):
@@ -149,14 +150,11 @@ def fat_type_from_count(bpb, ebpb):
         'fat32')
 
 
-class FatDirectory(Sequence):
+class FatDirectory(abc.Iterable):
     __slots__ = ()
 
     def _iter_entries(self):
         raise NotImplementedError
-
-    def __len__(self):
-        return sum(1 for entry in self)
 
     def __iter__(self):
         entries = []
@@ -168,12 +166,6 @@ class FatDirectory(Sequence):
                 else:
                     yield entries
                     entries = []
-
-    def __getitem__(self, index):
-        for i, entries in enumerate(self):
-            if index == i:
-                return entries
-        raise IndexError(index)
 
     cluster = property(lambda self: self._get_cluster())
 
@@ -192,8 +184,6 @@ class Fat16Root(FatDirectory):
             entry = DirectoryEntry.from_buffer(self._mem, offset)
             if entry.attr == 0x0F:
                 entry = LongFilenameEntry.from_buffer(self._mem, offset)
-            elif entry.filename[0] == 0:
-                break
             yield entry
 
 
@@ -215,8 +205,6 @@ class FatSubDirectory(FatDirectory):
                 entry = DirectoryEntry.from_buffer(buf, offset)
                 if entry.attr == 0x0F:
                     entry = LongFilenameEntry.from_buffer(buf, offset)
-                elif entry.filename[0] == 0:
-                    return
                 yield entry
 
 
