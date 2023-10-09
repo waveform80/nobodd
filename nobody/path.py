@@ -164,10 +164,9 @@ class FatPath:
                     yield from self._search(path, parts)
 
         def precise(parent, part, parts):
-            part = part.lower()
-            for path in parent.iterdir():
-                if path.name.lower() == part:
-                    yield from self._search(path, parts)
+            path = parent / part.lower()
+            if path.exists():
+                yield from self._search(path, parts)
 
         if not parts:
             yield parent
@@ -192,7 +191,11 @@ class FatPath:
             raise ValueError('Unacceptable pattern')
         if pat_parts[0] == '/':
             raise ValueError('Non-relative patterns are not supported')
-        yield from self._search(self, pat_parts)
+        yielded = set()
+        for path in self._search(self, pat_parts):
+            if path._path not in yielded:
+                yield path
+                yielded.add(path._path)
 
     def rglob(self, pattern):
         self._must_exist()
@@ -201,7 +204,11 @@ class FatPath:
             raise ValueError('Unacceptable pattern')
         if pat_parts[0] == '/':
             raise ValueError('Non-relative patterns are not supported')
-        yield from self._search(self, ('**',) + pat_parts)
+        yielded = set()
+        for path in self._search(self, pat_parts):
+            if path._path not in yielded:
+                yield path
+                yielded.add(path._path)
 
     def stat(self, *, follow_symlinks=True):
         self._must_exist()
