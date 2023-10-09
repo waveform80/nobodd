@@ -175,7 +175,11 @@ class FatPath:
             if not part:
                 raise ValueError('empty pattern component')
             elif part == '**':
-                yield from recursive(parent, parts)
+                yielded = set()
+                for path in recursive(parent, parts):
+                    if path._path not in yielded:
+                        yielded.add(path._path)
+                        yield path
             elif '**' in part:
                 raise ValueError(
                     'invalid pattern: ** can only be an entire component')
@@ -191,11 +195,7 @@ class FatPath:
             raise ValueError('Unacceptable pattern')
         if pat_parts[0] == '/':
             raise ValueError('Non-relative patterns are not supported')
-        yielded = set()
-        for path in self._search(self, pat_parts):
-            if path._path not in yielded:
-                yield path
-                yielded.add(path._path)
+        yield from self._search(self, pat_parts)
 
     def rglob(self, pattern):
         self._must_exist()
@@ -204,11 +204,7 @@ class FatPath:
             raise ValueError('Unacceptable pattern')
         if pat_parts[0] == '/':
             raise ValueError('Non-relative patterns are not supported')
-        yielded = set()
-        for path in self._search(self, pat_parts):
-            if path._path not in yielded:
-                yield path
-                yielded.add(path._path)
+        yield from self._search(self, ('**',) + pat_parts)
 
     def stat(self, *, follow_symlinks=True):
         self._must_exist()
