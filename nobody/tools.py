@@ -7,8 +7,9 @@ def labels(desc):
         if not fmt.endswith('x')
     )
 
-def formats(desc):
-    return '<' + ''.join(
+
+def formats(desc, prefix='<'):
+    return prefix + ''.join(
         fmt
         for line in desc.splitlines()
         if line
