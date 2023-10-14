@@ -18,45 +18,48 @@ def encode(s, errors='strict'):
         _netascii_match, s.encode('ascii', errors=errors)), len(s)
 
 def decode(s, errors='strict', final=False):
-    s = bytes(s)
-    buf = ''
-    consumed = 0
-    while s:
-        i = s.find(b'\r')
+    # We can pre-allocate the output array as the transform guarantees the
+    # length of output <= length of the input
+    buf_in = bytes(s)
+    buf_out = bytearray(len(s))
+    pos_in = pos_out = consumed = 0
+    while pos_in < len(buf_in):
+        i = buf_in.find(b'\r', pos_in)
         if i == -1:
-            buf += s.decode('ascii', errors=errors)
-            consumed += len(s)
-            break
-        elif i > 0:
-            buf += s[:i].decode('ascii', errors=errors)
-            s = s[i:]
-            consumed += i
-        elif len(s) > 1:
-            if s[1] == 0x0:
-                buf += '\r'
-                s = s[2:]
-                consumed += 2
-            elif s[1] == 0xA:
-                buf += os.linesep
-                s = s[2:]
-                consumed += 1
+            i = len(buf_in)
+        if i > pos_in:
+            buf_out[pos_out:pos_out + i - pos_in] = buf_in[pos_in:i]
+            pos_out += i - pos_in
+            pos_in = i
+        elif len(buf_in) > pos_in + 1:
+            if buf_in[i + 1] == 0x0:
+                buf_out[pos_out] = 0xD
+                pos_out += 1
+                pos_in += 2
+            elif buf_in[i + 1] == 0xA:
+                buf_out[pos_out:pos_out + len(_netascii_linesep)] = _netascii_linesep
+                pos_out += len(_netascii_linesep)
+                pos_in += 2
             else:
-                buf += handle_error(errors)
-                s = s[1:]
-                consumed += 1
+                err_out = handle_error(errors)
+                buf_out[pos_out:pos_out + len(err_out)] = err_out
+                pos_out += len(t)
+                pos_in += 1
         elif final:
-            buf += handle_error(errors)
-            consumed += 1
+            err_out = handle_error(errors)
+            buf_out[pos_out:pos_out + len(err_out)] = err_out
+            pos_out += len(t)
+            pos_in += 1
             break
-    return buf, consumed
+    return buf_out[:pos_out].decode('ascii', errors=errors), pos_in
 
 def handle_error(errors):
     if errors == 'strict':
         raise UnicodeError('invalid netascii')
     elif errors == 'ignore':
-        return ''
+        return b''
     elif errors == 'replace':
-        return '?'
+        return b'?'
     else:
         raise ValueError('invalid errors setting for netascii')
 
