@@ -1,10 +1,13 @@
+import io
 import struct
+import logging
+from pathlib import Path
 from enum import IntEnum, auto
 from collections import namedtuple
-from socketserver import DatagramRequestHandler, ThreadingUDPServer
+from socketserver import BaseRequestHandler, ThreadingUDPServer
 
 from . import netascii
-from .tools import labels, formats
+from .tools import labels, formats, BufferedTranscoder
 
 
 class OpCode(IntEnum):
@@ -40,10 +43,10 @@ class Packet:
     def from_bytes(cls, s):
         opcode, = struct.unpack_from('!H', s)
         return {
-            OpCode.RRQ:   RRQ,
-            OpCode.DATA:  DATA,
-            OpCode.ACK:   ACK,
-            OpCode.ERROR: ERROR,
+            OpCode.RRQ:   RRQPacket,
+            OpCode.DATA:  DATAPacket,
+            OpCode.ACK:   ACKPacket,
+            OpCode.ERROR: ERRORPacket,
         }[opcode].from_data(s[2:])
 
     @classmethod
@@ -144,38 +147,144 @@ class ERRORPacket(Packet):
         return cls(error, data[2:].rstrip(b'\0').decode('ascii', 'replace'))
 
 
-class TFTPHandler(DatagramRequestHandler):
+class TransferDone(Exception):
+    pass
+
+
+class TFTPClientState:
+    __slots__ = (
+        'block_size', 'block_num', 'last_block', 'source', 'mode', 'server')
+
+    def __init__(self, request, path, mode='octet', block_size=512):
+        self.source = path.open('rb')
+        if mode == 'netascii':
+            self.source = BufferedTranscoder(
+                self.source, 'netascii', 'ascii', errors='replace')
+        self.mode = mode
+        self.block_size = block_size
+        self.block_num = 0
+        self.last_block = None
+        #self.server = request.server.get_server(request.client_address)
+
+    def get(self, block_num):
+        if self.block_num + 1 == block_num:
+            if self.done:
+                raise TransferDone('last block acknowledged')
+            self.block_num = block_num
+            self.last_block = self.source.read(self.block_size)
+            return self.last_block
+        elif self.block_num == block_num:
+            # Re-transmit last block (because last DATA packet was presumably
+            # lost). In this case neither last_block nor block_num are updated
+            if self.last_block is not None:
+                return self.last_block
+        raise ValueError('invalid block number requested')
+
+    @property
+    def done(self):
+        return (
+            self.last_block is not None and
+            len(self.last_block) < self.block_size)
+
+
+class TFTPHandler(BaseRequestHandler):
+    client_states = {}
+
+    def setup(self):
+        self.packet, self.socket = self.request
+        self.rfile = io.BytesIO(self.packet)
+        self.wfile = io.BytesIO()
+
+    def finish(self):
+        self.socket.sendto(self.wfile.getvalue(), self.client_address)
+
+    def resolve_path(self, filename):
+        raise NotImplementedError
+
     def handle(self):
         try:
             packet = Packet.from_bytes(self.rfile.read())
-            handler = getattr(self, 'do_' + packet.opcode.name)
-            response = handler(packet)
+            self.server.logger.debug(
+                '%s:%s -> %r', *self.client_address, packet)
+            response = getattr(self, 'do_' + packet.opcode.name)(packet)
         except AttributeError as exc:
-            response = (
-                ERRORPacket(Error.UNDEFINED, 'Unsupported operation, {exc!s}'),)
+            self.server.logger.warning(
+                '%s:%s - err - unsupported operation %s',
+                *self.client_address, exc)
+            response = ERRORPacket(
+                Error.UNDEFINED, f'Unsupported operation, {exc!s}')
         except ValueError as exc:
-            response = (
-                ERRORPacket(Error.UNDEFINED, f'Invalid request, {exc!s}'),)
-        except:
-            response = (ERRORPacket(Error.UNDEFINED, 'Server error'),)
+            self.server.logger.warning(
+                '%s:%s - err - invalid request %s', *self.client_address, exc)
+            response = ERRORPacket(Error.UNDEFINED, f'Invalid request, {exc!s}')
+        except Exception as exc:
+            self.server.logger.exception(exc)
+            response = ERRORPacket(Error.UNDEFINED, 'Server error')
         finally:
-            self.send_response(response)
-
-    def send_response(self, packets):
-        for packet in packets:
-            self.wfile.write(packet.as_bytes)
-            self.wfile.flush()
+            if response is not None:
+                self.server.logger.debug(
+                    '%s:%s <- %r', *self.client_address, response)
+                self.wfile.write(bytes(response))
 
     def do_RRQ(self, packet):
-        pass
+        try:
+            state = TFTPClientState(
+                self, self.resolve_path(packet.filename), packet.mode)
+        except PermissionError:
+            return ERRORPacket(Error.NOT_AUTH)
+        except FileNotFoundError:
+            return ERRORPacket(Error.NOT_FOUND)
+        except OSError as exc:
+            return ERRORPacket(Error.UNDEFINED, str(exc))
+        else:
+            TFTPHandler.client_states[self.client_address] = state
+            self.server.logger.info(
+                '%s:%s - %s - %s', *self.client_address,
+                packet.mode, packet.filename)
+            return DATAPacket(1, state.get(1))
 
     def do_ACK(self, packet):
-        pass
+        try:
+            state = TFTPHandler.client_states[self.client_address]
+        except KeyError:
+            return ERRORPacket(Error.UNKNOWN_ID)
+        else:
+            try:
+                return DATAPacket(packet.block + 1, state.get(packet.block + 1))
+            except (ValueError, OSError) as exc:
+                return ERRORPacket(Error.UNDEFINED, str(exc))
+            except TransferDone:
+                self.server.logger.info(
+                    '%s:%s - finished', *self.client_address)
+                del TFTPHandler.client_states[self.client_address]
 
     def do_ERROR(self, packet):
-        pass
+        try:
+            del TFTPHandler.client_states[self.client_address]
+        except KeyError:
+            pass
 
 
 class TFTPServer(ThreadingUDPServer):
     allow_reuse_address = True
     allow_reuse_port = True
+    logger = logging.getLogger('tftpd')
+
+    #def get_server(self, client_address):
+    #    return TFTPServer(NEW_SOCKET(), self.RequestHandlerClass)
+
+
+class SimpleTFTPHandler(TFTPHandler):
+    def resolve_path(self, filename):
+        p = Path(filename).resolve()
+        if self.server.base_path in p.parents:
+            return p
+        else:
+            raise PermissionError(
+                f'{filename} is outside {self.server.base_path}')
+
+
+class SimpleTFTPServer(TFTPServer):
+    def __init__(self, server_address, base_path):
+        self.base_path = Path(base_path).resolve()
+        super().__init__(server_address, SimpleTFTPHandler)
