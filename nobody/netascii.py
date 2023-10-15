@@ -63,12 +63,14 @@ def handle_error(errors):
     else:
         raise ValueError('invalid errors setting for netascii')
 
+
 class IncrementalEncoder(codecs.IncrementalEncoder):
     def encode(self, input, final=False):
         return encode(input, self.errors)[0]
 
 class IncrementalDecoder(codecs.BufferedIncrementalDecoder):
     _buffer_decode = decode
+
 
 class StreamWriter(codecs.StreamWriter):
     def encode(self, s, errors='strict'):
@@ -77,6 +79,7 @@ class StreamWriter(codecs.StreamWriter):
 class StreamReader(codecs.StreamReader):
     def decode(self, s, errors='strict', final=False):
         return decode(s, errors, final)
+
 
 stateless_encode = encode
 
