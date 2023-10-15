@@ -1,9 +1,19 @@
 import sys
+import logging
 
 from .disk import DiskImage
 from .fs import FatFileSystem
+from .tftp import SimpleTFTPServer
+
 
 def main():
+    server = SimpleTFTPServer(('0.0.0.0', 1069), '.')
+    server.logger.addHandler(logging.StreamHandler(sys.stderr))
+    server.logger.setLevel(logging.INFO)
+    server.serve_forever()
+
+
+def main2():
     filename, partition, pattern = sys.argv[1:]
     partition = int(partition)
 
@@ -16,7 +26,7 @@ def main():
     print(fs.label)
     print(fs.root.stat())
     if pattern:
-        for path in fs.root.rglob(pattern):
+        for path in fs.root.glob(pattern):
             print(path)
     else:
         for path in fs.root.iterdir():
