@@ -3,14 +3,14 @@ import logging
 
 from .disk import DiskImage
 from .fs import FatFileSystem
-from .tftp import SimpleTFTPServer
+from .tftpd import SimpleTFTPServer
 
 
 def main():
-    server = SimpleTFTPServer(('0.0.0.0', 1069), '.')
-    server.logger.addHandler(logging.StreamHandler(sys.stderr))
-    server.logger.setLevel(logging.INFO)
-    server.serve_forever()
+    with SimpleTFTPServer(('0.0.0.0', 1069), '.') as server:
+        server.logger.addHandler(logging.StreamHandler(sys.stderr))
+        server.logger.setLevel(logging.INFO)
+        server.serve_forever()
 
 
 def main2():

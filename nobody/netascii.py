@@ -4,6 +4,14 @@ import re
 import codecs
 
 
+# The following references were essential in constructing this module; the
+# original TFTP version 2 [RFC1350], and the wikipedia page documenting the
+# protocol [1].
+#
+# [1]: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
+# [RFC1350]: https://datatracker.ietf.org/doc/html/rfc1350
+
+
 _netascii_linesep = os.linesep.encode('ascii')
 _netascii_re = re.compile(fr'({os.linesep}|\r)'.encode('ascii'))
 def _netascii_match(m):
