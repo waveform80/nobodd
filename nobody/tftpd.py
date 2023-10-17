@@ -1,7 +1,9 @@
 import logging
 from pathlib import Path
-from threading import Thread, Lock
+from contextlib import suppress
+from threading import Thread, Lock, Event
 from socketserver import DatagramRequestHandler, UDPServer, ThreadingMixIn
+from time import monotonic as time
 
 from . import netascii
 from .tools import BufferedTranscoder
@@ -11,6 +13,7 @@ from .tftp import (
     DATAPacket,
     ACKPacket,
     ERRORPacket,
+    OACKPacket,
     Error,
 )
 
@@ -21,7 +24,8 @@ class TransferDone(Exception):
 
 class TFTPClientState:
     __slots__ = (
-        'address', 'block_size', 'block_num', 'last_block', 'source', 'mode')
+        'address', 'source', 'mode', 'last_seen',
+        'blocks', 'blocks_read', 'block_size', 'last_block')
 
     def __init__(self, address, path, mode='octet', block_size=512):
         self.address = address
@@ -30,29 +34,31 @@ class TFTPClientState:
             self.source = BufferedTranscoder(
                 self.source, 'netascii', 'ascii', errors='replace')
         self.mode = mode
+        self.blocks = {}
+        self.blocks_read = 0
         self.block_size = block_size
-        self.block_num = 0
         self.last_block = None
+        self.last_seen = time()
+
+    def ack(self, block_num):
+        with suppress(KeyError):
+            del self.blocks[block_num]
 
     def get(self, block_num):
-        if self.block_num + 1 == block_num:
-            if self.done:
-                raise TransferDone('last block acknowledged')
-            self.block_num = block_num
-            self.last_block = self.source.read(self.block_size)
-            return self.last_block
-        elif self.block_num == block_num:
-            # Re-transmit last block (because last DATA packet was presumably
-            # lost). In this case neither last_block nor block_num are updated
-            if self.last_block is not None:
-                return self.last_block
-        raise ValueError('invalid block number requested')
-
-    @property
-    def done(self):
-        return (
-            self.last_block is not None and
-            len(self.last_block) < self.block_size)
+        if self.blocks_read + 1 == block_num:
+            if self.last_block is not None and not self.blocks:
+                raise TransferDone('read past last block')
+            self.blocks[block_num] = self.source.read(self.block_size)
+            self.blocks_read += 1
+            if len(self.blocks[block_num]) < self.block_size:
+                self.last_block = block_num
+            return self.blocks[block_num]
+        # Re-transmit unacknowledged block (because DATA packet was presumably
+        # lost). In this case blocks_read is not updated
+        try:
+            return self.blocks[block_num]
+        except KeyError:
+            raise ValueError('invalid block number requested')
 
 
 class TFTPHandler(DatagramRequestHandler):
@@ -89,21 +95,31 @@ class TFTPBaseHandler(TFTPHandler):
         raise NotImplementedError
 
     def do_RRQ(self, packet):
-        # Destroy any sub-server currently serving this client on this
-        # specific port
-        with self.server.sub_lock:
-            try:
-                server, thread = self.server.sub_threads.pop(
-                    self.client_address)
-            except KeyError:
-                pass
-            else:
-                server.done = True
+        # Construct a new sub-server with an ephemeral port to handler all
+        # further packets from this connection
         try:
             state = TFTPClientState(
                 self.client_address,
                 self.resolve_path(packet.filename),
-                packet.mode)
+                packet.mode,
+                int(packet.options.get('blksize', 512)))
+            options = {
+                name: value
+                for name, value in packet.options.items()
+                if name in {'blksize'}
+            }
+            self.server.logger.info(
+                '%s:%s - GET %s (%s)', *self.client_address,
+                packet.filename, packet.mode)
+            if options:
+                packet = OACKPacket(options)
+            else:
+                packet = DATAPacket(1, state.get(1))
+            server = TFTPSubServer(self.server, state)
+            self.server.subs.add(server)
+            self.server.logger.debug(
+                '%s:%s <- %s:%s - %r', *self.client_address,
+                *server.server_address, packet)
         except PermissionError:
             return ERRORPacket(Error.NOT_AUTH)
         except FileNotFoundError:
@@ -111,25 +127,9 @@ class TFTPBaseHandler(TFTPHandler):
         except OSError as exc:
             return ERRORPacket(Error.UNDEFINED, str(exc))
         else:
-            self.server.logger.info(
-                '%s:%s - GET %s (%s)', *self.client_address,
-                packet.filename, packet.mode)
-            # Construct a new server with an ephemeral port to handler all
-            # further packets from this connection. We cause the server to
-            # send the first DATA packet instead of returning it, as it must
-            # originate from the ephemeral port, not the main server port
-            server = TFTPSubServer(self.server, state)
-            thread = Thread(target=server.serve_forever)
-            packet = DATAPacket(1, state.get(1))
-            self.server.logger.debug(
-                '%s:%s - starting server on %s:%s', *self.client_address,
-                *server.server_address)
-            thread.start()
-            with self.server.sub_lock:
-                self.server.sub_threads[self.client_address] = (server, thread)
-            self.server.logger.debug(
-                '%s:%s <- %s:%s - %r', *self.client_address,
-                *server.server_address, packet)
+            # We cause the sub-server to send the first packet instead of
+            # returning it for the main server to send, as it must originate
+            # from the ephemeral port of the sub-server, not port 69
             server.socket.sendto(bytes(packet), self.client_address)
             return None
 
@@ -149,18 +149,21 @@ class TFTPSubHandler(TFTPHandler):
                 '%s:%s - bad client for %s:%s', *self.client_address,
                 *self.server.server_address)
         else:
+            self.server.client_state.last_seen = time()
             return super().handle()
 
     def do_ACK(self, packet):
         state = self.server.client_state
         try:
+            state.ack(packet.block)
             return DATAPacket(packet.block + 1, state.get(packet.block + 1))
         except (ValueError, OSError) as exc:
+            self.server.done = True
             return ERRORPacket(Error.UNDEFINED, str(exc))
         except TransferDone:
-            self.server.logger.info(
-                '%s:%s - finished', *self.client_address)
             self.server.done = True
+            self.server.logger.info(
+                '%s:%s - GET finished', *self.client_address)
 
     def do_ERROR(self, packet):
         self.server.done = True
@@ -170,64 +173,93 @@ class TFTPBaseServer(UDPServer):
     allow_reuse_address = True
     allow_reuse_port = True
     logger = logging.getLogger('tftpd')
-    sub_timeout = 1
 
     def __init__(self, address, handler_class):
         assert issubclass(handler_class, TFTPBaseHandler)
-        self.sub_lock = Lock()
-        self.sub_threads = {}
+        self.subs = TFTPSubServers()
         super().__init__(address, handler_class)
 
     def server_close(self):
-        with self.sub_lock:
-            for server, thread in self.sub_threads.values():
-                print(f'Shutting down {thread}')
-                server.done = True
-                server.shutdown()
-            for server, thread in self.sub_threads.values():
-                thread.join(timeout=self.sub_timeout)
-                if not thread.is_alive():
-                    warnings.warn(
-                        RuntimeWarning(
-                    f'failed to shutdown client thread for '
-                    f'{self.client_address}'))
-
-    def service_actions(self):
-        super().service_actions()
-        # Shutdown and remove servers (and their threads) which have finished.
-        # Currently this runs in the main server's thread and can potentially
-        # slow down accepting new requests; if this becomes a bottle-neck just
-        # farm this out to a separate "reaper" thread
-        with self.sub_lock:
-            to_remove = {
-                address
-                for address, (server, thread) in self.sub_threads.items()
-                if server.done
-            }
-            to_shutdown = [
-                self.sub_threads.pop(address)
-                for address in to_remove
-            ]
-        for server, thread in to_shutdown:
-            self.logger.debug(
-                '%s:%s - shutting down server on %s:%s',
-                *server.client_state.address, *server.server_address)
-            server.shutdown()
-            thread.join(timeout=self.sub_timeout)
-            if thread.is_alive():
-                raise RuntimeError(
-                    f'failed to shutdown thread for {server.server_address}')
+        super().server_close()
+        self.subs.close()
 
 
 class TFTPSubServer(UDPServer):
     allow_reuse_address = True
+    # NOTE: allow_reuse_port is left False as the sub-server is restricted to
+    # ephemeral ports
     logger = TFTPBaseServer.logger
+    sub_timeout = 5
 
     def __init__(self, main_server, client_state):
         self.done = False
         host, port = main_server.server_address
         super().__init__((host, 0), TFTPSubHandler)
         self.client_state = client_state
+
+    def service_actions(self):
+        super().service_actions()
+        if time() - self.client_state.last_seen > self.sub_timeout:
+            self.logger.warning(
+                '%s:%s - timed out to %s:%s', *self.client_state.address,
+                *self.server_address)
+            self.done = True
+
+
+class TFTPSubServers(Thread):
+    logger = TFTPBaseServer.logger
+
+    def __init__(self):
+        super().__init__()
+        self._done = Event()
+        self._lock = Lock()
+        self._alive = {}
+        self.start()
+
+    def close(self):
+        self._done.set()
+
+    def add(self, server):
+        # Transfers are uniquely identified by TID (transfer ID) which consists
+        # of the ephemeral server and client ports involved in the transfer. We
+        # actually use the full ephemeral server and client address and port
+        # combination (as we could be serving distinct networks on multiple
+        # interfaces)
+        tid = (server.server_address, server.client_state.address)
+        thread = Thread(target=server.serve_forever)
+        self.logger.debug(
+            '%s:%s - starting server on %s:%s', *server.client_state.address,
+            *server.server_address)
+        with self._lock:
+            with suppress(KeyError):
+                self._remove(tid)
+            self._alive[tid] = (server, thread)
+        thread.start()
+
+    def _remove(self, tid):
+        server, thread = self._alive.pop(tid)
+        self.logger.debug(
+            '%s:%s - shutting down server on %s:%s',
+            *server.client_state.address, *server.server_address)
+        server.shutdown()
+        thread.join(timeout=10)
+        if thread.is_alive():
+            raise RuntimeError(
+                f'failed to shutdown thread for {server.server_address}')
+
+    def run(self):
+        while not self._done.wait(0.01):
+            with self._lock:
+                to_remove = {
+                    tid
+                    for tid, (server, thread) in self._alive.items()
+                    if server.done
+                }
+                for tid in to_remove:
+                    self._remove(tid)
+        with self._lock:
+            while self._alive:
+                self._remove(next(iter(self._alive)))
 
 
 class SimpleTFTPHandler(TFTPBaseHandler):
