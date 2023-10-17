@@ -1,7 +1,8 @@
+import re
 import struct
 from enum import IntEnum, auto
 
-from .tools import labels, formats
+from .tools import labels, formats, FrozenDict
 
 
 # The following references were essential in constructing this module; the
@@ -18,6 +19,7 @@ class OpCode(IntEnum):
     DATA = auto()
     ACK = auto()
     ERROR = auto()
+    OACK = auto()
 
 
 class Error(IntEnum):
@@ -29,6 +31,7 @@ class Error(IntEnum):
     UNKNOWN_ID = auto()
     EXISTS = auto()
     UNKNOWN_USER = auto()
+    INVALID_OPT = auto()
 
 
 class Packet:
@@ -49,6 +52,7 @@ class Packet:
             OpCode.DATA:  DATAPacket,
             OpCode.ACK:   ACKPacket,
             OpCode.ERROR: ERRORPacket,
+            OpCode.OACK:  OACKPacket,
         }[opcode].from_data(s[2:])
 
     @classmethod
@@ -57,31 +61,57 @@ class Packet:
 
 
 class RRQPacket(Packet):
-    __slots__ = ('filename', 'mode')
+    __slots__ = ('filename', 'mode', 'options')
     opcode = OpCode.RRQ
+    options_re = re.compile(
+        rb'(?P<name>[\x20-\xFF]+)\0(?P<value>[\x01-\xFF]*)\0')
+    packet_re = re.compile(
+        rb'^'
+        rb'(?P<filename>[\x20-\xFF]+)\0'
+        rb'(?P<mode>[a-zA-Z]+)\0'
+        rb'(?P<options>(?:[\x20-\xFF]+\0[\x01-\xFF]*\0)*)'
+        rb'.*')
 
-    def __init__(self, filename, mode):
+    def __init__(self, filename, mode, options):
         self.filename = str(filename)
         self.mode = str(mode).lower()
+        self.options = FrozenDict(options)
 
     def __bytes__(self):
-        return struct.pack(
-            f'!H{len(self.filename)}sx{len(self.mode)}sx',
-            self.opcode, self.filename.encode('ascii'),
-            self.mode.encode('ascii'))
+        return b''.join((
+            struct.pack('!H', self.opcode),
+            self.filename.encode('ascii'), b'\0',
+            self.mode.encode('ascii'), b'\0',
+            b''.join(tuple(
+                s
+                for name, value in self.options.items()
+                for s in (
+                    name.encode('ascii'), b'\0',
+                    value.encode('ascii'), b'\0',
+                )
+            )),
+        ))
 
     @classmethod
     def from_data(cls, data):
-        filename, mode = data.split(b'\0', 1)
+        try:
+            filename, mode, suffix = cls.packet_re.match(data).groups()
+        except AttributeError:
+            raise ValueError('badly formed RRQ packet')
         # Technically the filename must be in ASCII format (7-bit chars in an
         # 8-bit field), but given ASCII is a strict subset of UTF-8, and that
         # UTF-8 cannot include NUL chars, I see no harm in permitting UTF-8
         # encoded filenames
         filename = filename.decode('utf-8')
-        mode = mode.rstrip(b'\0').decode('ascii').lower()
+        mode = mode.decode('ascii').lower()
         if mode not in ('netascii', 'octet'):
             raise ValueError('unsupported file mode')
-        return cls(filename, mode)
+        options = {
+            match.group('name').decode('ascii').lower():
+                match.group('value').decode('ascii').lower()
+            for match in cls.options_re.finditer(suffix)
+        }
+        return cls(filename, mode, options)
 
 
 class DATAPacket(Packet):
@@ -147,3 +177,31 @@ class ERRORPacket(Packet):
     def from_data(cls, data):
         error, = struct.unpack_from('!H', data)
         return cls(error, data[2:].rstrip(b'\0').decode('ascii', 'replace'))
+
+
+class OACKPacket(Packet):
+    __slots__ = ('options',)
+    opcode = OpCode.OACK
+    options_re = RRQPacket.options_re
+
+    def __init__(self, options):
+        self.options = FrozenDict(options)
+
+    def __bytes__(self):
+        return b''.join(tuple(
+            s
+            for name, value in self.options.items()
+            for s in (
+                name.encode('ascii'), b'\0',
+                value.encode('ascii'), b'\0',
+            )
+        ))
+
+    @classmethod
+    def from_data(cls, data):
+        options = {
+            match.group('name').decode('ascii').lower():
+                match.group('value').decode('ascii').lower()
+            for match in cls.options_re.finditer(suffix)
+        }
+        return cls(options)

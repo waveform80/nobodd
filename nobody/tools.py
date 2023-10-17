@@ -1,5 +1,6 @@
 import io
 import codecs
+from collections.abc import Mapping
 
 
 def labels(desc):
@@ -48,3 +49,31 @@ class BufferedTranscoder(io.RawIOBase):
         b[:to_read] = self._buffer[:to_read]
         del self._buffer[:to_read]
         return to_read
+
+
+class FrozenDict(Mapping):
+    """
+    A hashable, immutable mapping type.
+
+    The arguments to ``FrozenDict`` are processed just like those to ``dict``.
+    """
+    def __init__(self, *args):
+        self._d = dict(*args)
+        self._hash = None
+
+    def __iter__(self):
+        return iter(self._d)
+
+    def __len__(self):
+        return len(self._d)
+
+    def __getitem__(self, key):
+        return self._d[key]
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self._d})'
+
+    def __hash__(self):
+        if self._hash is None:
+            self._hash = hash((frozenset(self), frozenset(self.values())))
+        return self._hash
