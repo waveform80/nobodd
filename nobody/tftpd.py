@@ -191,18 +191,18 @@ class TFTPHandler(BaseRequestHandler):
             response = getattr(self, 'do_' + packet.opcode.name)(packet)
         except AttributeError as exc:
             self.server.logger.warning(
-                '%s - unsupported operation %s',
+                '%s - ERROR - unsupported operation; %s',
                 format_address(self.client_address), exc)
             response = ERRORPacket(
                 Error.UNDEFINED, f'Unsupported operation, {exc!s}')
         except ValueError as exc:
             self.server.logger.warning(
-                '%s - invalid request %s',
+                '%s - ERROR - invalid request; %s',
                 format_address(self.client_address), exc)
             response = ERRORPacket(Error.UNDEFINED, f'Invalid request, {exc!s}')
         except Exception as exc:
             self.server.logger.exception(
-                '%s - unexpected error %s',
+                '%s - ERROR - unexpected error; %s',
                 format_address(self.client_address), exc, exc_info=exc)
             response = ERRORPacket(Error.UNDEFINED, 'Server error')
         finally:
@@ -231,14 +231,14 @@ class TFTPBaseHandler(TFTPHandler):
 
     def do_RRQ(self, packet):
         try:
-            state = TFTPClientState(
-                self.client_address,
-                self.resolve_path(packet.filename),
-                packet.mode)
             self.server.logger.info(
                 '%s - RRQ (%s) %s',
                 format_address(self.client_address),
                 packet.mode, packet.filename)
+            state = TFTPClientState(
+                self.client_address,
+                self.resolve_path(packet.filename),
+                packet.mode)
             options = state.negotiate(packet.options)
             if options:
                 packet = OACKPacket(options)
@@ -253,12 +253,24 @@ class TFTPBaseHandler(TFTPHandler):
                 format_address(self.client_address),
                 format_address(server.server_address), packet)
         except BadOptions as exc:
+            self.server.logger.info(
+                '%s - ERROR - bad options; %s',
+                format_address(self.client_address), exc)
             return ERRORPacket(Error.INVALID_OPT, str(exc))
         except PermissionError:
+            self.server.logger.info(
+                '%s - ERROR - permission denied',
+                format_address(self.client_address))
             return ERRORPacket(Error.NOT_AUTH)
         except FileNotFoundError:
+            self.server.logger.info(
+                '%s - ERROR - not found',
+                format_address(self.client_address))
             return ERRORPacket(Error.NOT_FOUND)
         except OSError as exc:
+            self.server.logger.info(
+                '%s - ERROR - %s',
+                format_address(self.client_address), exc)
             return ERRORPacket(Error.UNDEFINED, str(exc))
         else:
             # We cause the sub-server to send the first packet instead of
@@ -279,7 +291,7 @@ class TFTPSubHandler(TFTPHandler):
     def handle(self):
         if self.client_address != self.server.client_state.address:
             self.server.logger.warning(
-                '%s - bad client for %s',
+                '%s - IGNORE - bad client for %s',
                 format_address(self.client_address),
                 format_address(self.server.server_address))
             return None
@@ -301,7 +313,7 @@ class TFTPSubHandler(TFTPHandler):
             self.server.done = True
             now = time_ns()
             self.server.logger.info(
-                '%s - RRQ finished (%.1f secs, %d bytes, ~%.1f Kb/s)',
+                '%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s',
                 format_address(self.client_address),
                 now - state.started, state.transferred,
                 state.transferred / (now - state.started) / 1024)
