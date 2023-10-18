@@ -1,8 +1,9 @@
+import io
 import logging
 from pathlib import Path
 from contextlib import suppress
 from threading import Thread, Lock, Event
-from socketserver import DatagramRequestHandler, UDPServer, ThreadingMixIn
+from socketserver import BaseRequestHandler, UDPServer, ThreadingMixIn
 from time import monotonic as time
 
 from . import netascii
@@ -61,7 +62,21 @@ class TFTPClientState:
             raise ValueError('invalid block number requested')
 
 
-class TFTPHandler(DatagramRequestHandler):
+class TFTPHandler(BaseRequestHandler):
+    def setup(self):
+        self.packet, self.socket = self.request
+        self.rfile = io.BytesIO(self.packet)
+        self.wfile = io.BytesIO()
+
+    def finish(self):
+        # We do this ourselves because the included DatagramRequestHandler
+        # is happy to send out an empty UDP packet when the handler writes
+        # nothing to wfile. This breaks certain TFTP clients; we want to
+        # explicit send nothing in this case
+        buf = self.wfile.getvalue()
+        if buf:
+            self.socket.sendto(buf, self.client_address)
+
     def handle(self):
         try:
             packet = Packet.from_bytes(self.rfile.read())
