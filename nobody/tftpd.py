@@ -1,4 +1,5 @@
 import io
+import os
 import logging
 from pathlib import Path
 from contextlib import suppress
@@ -7,7 +8,7 @@ from socketserver import BaseRequestHandler, UDPServer, ThreadingMixIn
 from time import monotonic as time
 
 from . import netascii
-from .tools import BufferedTranscoder
+from .tools import BufferedTranscoder, get_best_family, format_address
 from .tftp import (
     TFTP_BINARY,
     TFTP_NETASCII,
@@ -175,27 +176,32 @@ class TFTPHandler(BaseRequestHandler):
         try:
             packet = Packet.from_bytes(self.rfile.read())
             self.server.logger.debug(
-                '%s:%s -> %s:%s - %r', *self.client_address,
-                *self.server.server_address, packet)
+                '%s -> %s - %r',
+                format_address(self.client_address),
+                format_address(self.server.server_address), packet)
             response = getattr(self, 'do_' + packet.opcode.name)(packet)
         except AttributeError as exc:
             self.server.logger.warning(
-                '%s:%s - unsupported operation %s',
-                *self.client_address, exc)
+                '%s - unsupported operation %s',
+                format_address(self.client_address), exc)
             response = ERRORPacket(
                 Error.UNDEFINED, f'Unsupported operation, {exc!s}')
         except ValueError as exc:
             self.server.logger.warning(
-                '%s:%s - invalid request %s', *self.client_address, exc)
+                '%s - invalid request %s',
+                format_address(self.client_address), exc)
             response = ERRORPacket(Error.UNDEFINED, f'Invalid request, {exc!s}')
         except Exception as exc:
-            self.server.logger.exception(exc)
+            self.server.logger.exception(
+                '%s - unexpected error %s',
+                format_address(self.client_address), exc, exc_info=exc)
             response = ERRORPacket(Error.UNDEFINED, 'Server error')
         finally:
             if response is not None:
                 self.server.logger.debug(
-                    '%s:%s <- %s:%s - %r', *self.client_address,
-                    *self.server.server_address, response)
+                    '%s <- %s - %r',
+                    format_address(self.client_address),
+                    format_address(self.server.server_address), response)
                 self.wfile.write(bytes(response))
 
     def finish(self):
@@ -221,8 +227,9 @@ class TFTPBaseHandler(TFTPHandler):
                 self.resolve_path(packet.filename),
                 packet.mode)
             self.server.logger.info(
-                '%s:%s - GET %s (%s)', *self.client_address,
-                packet.filename, packet.mode)
+                '%s - RRQ (%s) %s',
+                format_address(self.client_address),
+                packet.mode, packet.filename)
             options = state.negotiate(packet.options)
             if options:
                 packet = OACKPacket(options)
@@ -234,8 +241,9 @@ class TFTPBaseHandler(TFTPHandler):
                 self.server, state, options.get(TFTP_TIMEOUT))
             self.server.subs.add(server)
             self.server.logger.debug(
-                '%s:%s <- %s:%s - %r', *self.client_address,
-                *server.server_address, packet)
+                '%s <- %s - %r',
+                format_address(self.client_address),
+                format_address(server.server_address), packet)
         except BadOptions as exc:
             return ERRORPacket(Error.INVALID_OPT, str(exc))
         except PermissionError:
@@ -263,8 +271,9 @@ class TFTPSubHandler(TFTPHandler):
     def handle(self):
         if self.client_address != self.server.client_state.address:
             self.server.logger.warning(
-                '%s:%s - bad client for %s:%s', *self.client_address,
-                *self.server.server_address)
+                '%s - bad client for %s',
+                format_address(self.client_address),
+                format_address(self.server.server_address))
             return None
         else:
             self.server.client_state.last_recv = time()
@@ -282,8 +291,12 @@ class TFTPSubHandler(TFTPHandler):
             return ERRORPacket(Error.UNDEFINED, str(exc))
         except TransferDone:
             self.server.done = True
+            now = time()
             self.server.logger.info(
-                '%s:%s - GET finished', *self.client_address)
+                '%s - RRQ finished (%.1f secs, %d bytes, ~%.1f Kb/s)',
+                format_address(self.client_address),
+                now - state.started, state.transferred,
+                state.transferred / (now - state.started) / 1024)
 
     def do_ERROR(self, packet):
         self.server.done = True
@@ -297,6 +310,7 @@ class TFTPBaseServer(UDPServer):
     def __init__(self, address, handler_class):
         assert issubclass(handler_class, TFTPBaseHandler)
         self.subs = TFTPSubServers()
+        self.address_family, address = get_best_family(*address)
         super().__init__(address, handler_class)
 
     def server_close(self):
@@ -314,8 +328,10 @@ class TFTPSubServer(UDPServer):
 
     def __init__(self, main_server, client_state, timeout=None):
         self.done = False
-        host, port = main_server.server_address
-        super().__init__((host, 0), TFTPSubHandler)
+        self.address_family = main_server.address_family
+        host, _, *suffix = main_server.server_address
+        address = (host, 0) + tuple(suffix)
+        super().__init__(address, TFTPSubHandler)
         self.client_state = client_state
         if timeout is not None:
             self.retry_timeout = timeout
@@ -329,8 +345,9 @@ class TFTPSubServer(UDPServer):
                 pass
         if time() - self.client_state.last_recv > self.fail_timeout:
             self.logger.warning(
-                '%s:%s - timed out to %s:%s', *self.client_state.address,
-                *self.server_address)
+                '%s - timed out to %s',
+                format_address(self.client_state.address),
+                format_address(self.server_address))
             self.done = True
 
 
@@ -356,8 +373,9 @@ class TFTPSubServers(Thread):
         tid = (server.server_address, server.client_state.address)
         thread = Thread(target=server.serve_forever)
         self.logger.debug(
-            '%s:%s - starting server on %s:%s', *server.client_state.address,
-            *server.server_address)
+            '%s - starting server on %s',
+            format_address(server.client_state.address),
+            format_address(server.server_address))
         with self._lock:
             with suppress(KeyError):
                 self._remove(tid)
@@ -367,8 +385,9 @@ class TFTPSubServers(Thread):
     def _remove(self, tid):
         server, thread = self._alive.pop(tid)
         self.logger.debug(
-            '%s:%s - shutting down server on %s:%s',
-            *server.client_state.address, *server.server_address)
+            '%s - shutting down server on %s',
+            format_address(server.client_state.address),
+            format_address(server.server_address))
         server.shutdown()
         thread.join(timeout=10)
         if thread.is_alive():

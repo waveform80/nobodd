@@ -1,5 +1,6 @@
 import io
 import codecs
+import socket
 from collections.abc import Mapping
 
 
@@ -20,6 +21,32 @@ def formats(desc, prefix='<'):
         if line
         for fmt, label in (line.split(None, 1),)
     )
+
+
+def get_best_family(host, port):
+    """
+    Given a *host* name and a *port* specification (either a number or a
+    service name), returns the network family (e.g. ``socket.AF_INET``) and
+    socket address to listen on as a tuple.
+    """
+    try:
+        infos = socket.getaddrinfo(
+            host, port,
+            type=socket.SOCK_STREAM,
+            flags=socket.AI_PASSIVE)
+    except socket.gaierror as exc:
+        raise ValueError('invalid host and port combination') from exc
+    for family, _, _, _, sockaddr in infos:
+        return family, sockaddr
+    raise ValueError('invalid host and port combination')
+
+
+def format_address(address):
+    host, port, *extra = address
+    if ':' in host:
+        return f'[{host}]:{port}'
+    else:
+        return f'{host}:{port}'
 
 
 class BufferedTranscoder(io.RawIOBase):
