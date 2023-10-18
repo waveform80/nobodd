@@ -7,7 +7,7 @@ from .tftpd import SimpleTFTPServer
 
 
 def main():
-    with SimpleTFTPServer(('0.0.0.0', 1069), '.') as server:
+    with SimpleTFTPServer(('::', 1069), '.') as server:
         server.logger.addHandler(logging.StreamHandler(sys.stderr))
         server.logger.setLevel(logging.INFO)
         server.serve_forever()
