@@ -13,6 +13,23 @@ from .tools import labels, formats, FrozenDict
 # [RFC1350]: https://datatracker.ietf.org/doc/html/rfc1350
 
 
+TFTP_BLKSIZE = 'blksize'
+TFTP_MIN_BLKSIZE = 8
+TFTP_DEF_BLKSIZE = 512
+TFTP_MAX_BLKSIZE = 65464
+
+TFTP_TIMEOUT = 'timeout'
+TFTP_MIN_TIMEOUT = 1
+TFTP_MAX_TIMEOUT = 255
+
+TFTP_BINARY = 'octet'
+TFTP_NETASCII = 'netascii'
+TFTP_MODES = {TFTP_BINARY, TFTP_NETASCII}
+
+TFTP_TSIZE = 'tsize'
+TFTP_OPTIONS = {TFTP_TSIZE, TFTP_BLKSIZE, TFTP_TIMEOUT}
+
+
 class OpCode(IntEnum):
     RRQ = 1
     WRQ = auto()
@@ -104,7 +121,7 @@ class RRQPacket(Packet):
         # encoded filenames
         filename = filename.decode('utf-8')
         mode = mode.decode('ascii').lower()
-        if mode not in ('netascii', 'octet'):
+        if mode not in TFTP_MODES:
             raise ValueError('unsupported file mode')
         options = {
             match.group('name').decode('ascii').lower():
@@ -193,7 +210,7 @@ class OACKPacket(Packet):
             for name, value in self.options.items()
             for s in (
                 name.encode('ascii'), b'\0',
-                value.encode('ascii'), b'\0',
+                str(value).encode('ascii'), b'\0',
             )
         ))
 
