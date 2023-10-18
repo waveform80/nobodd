@@ -5,7 +5,7 @@ from pathlib import Path
 from contextlib import suppress
 from threading import Thread, Lock, Event
 from socketserver import BaseRequestHandler, UDPServer, ThreadingMixIn
-from time import monotonic as time
+from time import monotonic_ns as time_ns
 
 from . import netascii
 from .tools import BufferedTranscoder, get_best_family, format_address
@@ -15,11 +15,13 @@ from .tftp import (
     TFTP_BLKSIZE,
     TFTP_TSIZE,
     TFTP_TIMEOUT,
+    TFTP_UTIMEOUT,
     TFTP_MIN_BLKSIZE,
     TFTP_DEF_BLKSIZE,
     TFTP_MAX_BLKSIZE,
-    TFTP_MIN_TIMEOUT,
-    TFTP_MAX_TIMEOUT,
+    TFTP_DEF_TIMEOUT_NS,
+    TFTP_MIN_TIMEOUT_NS,
+    TFTP_MAX_TIMEOUT_NS,
     Packet,
     RRQPacket,
     DATAPacket,
@@ -58,7 +60,7 @@ class BadOptions(ValueError):
 
 class TFTPClientState:
     __slots__ = (
-        'address', 'source', 'mode', 'started', 'last_recv',
+        'address', 'source', 'mode', 'started', 'timeout', 'last_recv',
         'blocks', 'blocks_read', 'block_size', 'last_ack_size')
 
     def __init__(self, address, path, mode=TFTP_BINARY):
@@ -72,7 +74,8 @@ class TFTPClientState:
         self.blocks_read = 0
         self.block_size = TFTP_DEF_BLKSIZE
         self.last_ack_size = None
-        self.started = self.last_recv = time()
+        self.timeout = TFTP_DEF_TIMEOUT_NS
+        self.started = self.last_recv = time_ns()
 
     def negotiate(self, options):
         # Strip out any options we don't support, but maintain the original
@@ -82,15 +85,14 @@ class TFTPClientState:
         options = {
             name: value
             for name, value in options.items()
-            if name in {TFTP_BLKSIZE, TFTP_TSIZE}
+            if name in TFTP_OPTIONS
         }
         # Reject stupid block sizes (less than 8 according to RFC2348, though
         # I'm sorely tempted to set this to 512!)
         if TFTP_BLKSIZE in options:
-            blksize = int(options[TFTP_BLKSIZE])
-            if blksize < TFTP_MIN_BLKSIZE:
+            self.block_size = min(TFTP_MAX_BLKSIZE, int(options[TFTP_BLKSIZE]))
+            if self.block_size < TFTP_MIN_BLKSIZE:
                 raise BadOptions('silly block size')
-            self.block_size = min(TFTP_MAX_BLKSIZE, blksize)
             options[TFTP_BLKSIZE] = self.block_size
         # There may be implementations or transfer modes where we cannot
         # (cheaply) determine the transfer size (netascii). In this case we
@@ -100,10 +102,17 @@ class TFTPClientState:
                 options[TFTP_TSIZE] = self.get_size()
             except OSError:
                 del options[TFTP_TSIZE]
+        # Accept timeout and utimeout with the latter taking precedence
+        # regardless of its order in the options. If both are present, timeout
+        # is removed from the returned options to indicate we accept utimeout
         if TFTP_TIMEOUT in options:
-            options[TFTP_TIMEOUT] = int(options[TFTP_TIMEOUT])
-            if not TFTP_MIN_TIMEOUT <= options[TFTP_TIMEOUT] <= TFTP_MAX_TIMEOUT:
+            self.timeout = int(options[TFTP_TIMEOUT]) * 1_000_000_000
+        if TFTP_UTIMEOUT in options:
+            self.timeout = int(options[TFTP_UTIMEOUT]) * 1_000
+            with suppress(KeyError):
                 del options[TFTP_TIMEOUT]
+        if not TFTP_MIN_TIMEOUT_NS <= self.timeout <= TFTP_MAX_TIMEOUT_NS:
+            raise BadOptions('silly timeout')
         return options
 
     def ack(self, block_num):
@@ -237,8 +246,7 @@ class TFTPBaseHandler(TFTPHandler):
                 packet = DATAPacket(1, state.get_block(1))
             # Construct a new sub-server with an ephemeral port to handler all
             # further packets from this connection
-            server = TFTPSubServer(
-                self.server, state, options.get(TFTP_TIMEOUT))
+            server = TFTPSubServer(self.server, state)
             self.server.subs.add(server)
             self.server.logger.debug(
                 '%s <- %s - %r',
@@ -276,7 +284,7 @@ class TFTPSubHandler(TFTPHandler):
                 format_address(self.server.server_address))
             return None
         else:
-            self.server.client_state.last_recv = time()
+            self.server.client_state.last_recv = time_ns()
             return super().handle()
 
     def do_ACK(self, packet):
@@ -291,7 +299,7 @@ class TFTPSubHandler(TFTPHandler):
             return ERRORPacket(Error.UNDEFINED, str(exc))
         except TransferDone:
             self.server.done = True
-            now = time()
+            now = time_ns()
             self.server.logger.info(
                 '%s - RRQ finished (%.1f secs, %d bytes, ~%.1f Kb/s)',
                 format_address(self.client_address),
@@ -323,27 +331,22 @@ class TFTPSubServer(UDPServer):
     # NOTE: allow_reuse_port is left False as the sub-server is restricted to
     # ephemeral ports
     logger = TFTPBaseServer.logger
-    retry_timeout = None
-    fail_timeout = 5
 
-    def __init__(self, main_server, client_state, timeout=None):
+    def __init__(self, main_server, client_state):
         self.done = False
         self.address_family = main_server.address_family
         host, _, *suffix = main_server.server_address
         address = (host, 0) + tuple(suffix)
         super().__init__(address, TFTPSubHandler)
         self.client_state = client_state
-        if timeout is not None:
-            self.retry_timeout = timeout
-            self.fail_timeout = timeout * 3
 
     def service_actions(self):
         super().service_actions()
         if self.retry_timeout is not None:
-            if time() - self.client_state.last_recv > self.retry_timeout:
+            if time_ns() - self.client_state.last_recv > self.retry_timeout:
                 # TODO re-transmit last packet
                 pass
-        if time() - self.client_state.last_recv > self.fail_timeout:
+        if time_ns() - self.client_state.last_recv > self.fail_timeout:
             self.logger.warning(
                 '%s - timed out to %s',
                 format_address(self.client_state.address),
