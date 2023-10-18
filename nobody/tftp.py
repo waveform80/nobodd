@@ -188,7 +188,7 @@ class OACKPacket(Packet):
         self.options = FrozenDict(options)
 
     def __bytes__(self):
-        return b''.join(tuple(
+        return struct.pack('!H', self.opcode) + b''.join(tuple(
             s
             for name, value in self.options.items()
             for s in (
