@@ -22,6 +22,7 @@ from .tftp import (
     TFTP_DEF_TIMEOUT_NS,
     TFTP_MIN_TIMEOUT_NS,
     TFTP_MAX_TIMEOUT_NS,
+    TFTP_OPTIONS,
     Packet,
     RRQPacket,
     DATAPacket,
@@ -283,7 +284,7 @@ class TFTPBaseHandler(TFTPHandler):
         # circumstance for this is rejection of negotiated options, in which
         # case we're not going to start a transfer anyway and no return
         # acknowledgement is required
-        pass
+        return None
 
 
 class TFTPSubHandler(TFTPHandler):
