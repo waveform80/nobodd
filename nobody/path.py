@@ -85,7 +85,7 @@ class FatPath:
             raise IsADirectoryError(f'Is a directory: {self}')
         if set(mode) & {'+', 'w'}:
             raise PermissionError(f'Permission denied: {self}')
-        if set(mode) >= {'r', 'b'}:
+        if set(mode) > {'r', 'b'}:
             raise ValueError(f'invalid mode: {mode}')
         if 'b' in mode:
             if buffering == 1:
