@@ -316,11 +316,12 @@ class TFTPSubHandler(TFTPHandler):
         except TransferDone:
             self.server.done = True
             now = time_ns()
+            duration = (now - state.started) / 1_000_000_000
             self.server.logger.info(
                 '%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s',
                 format_address(self.client_address),
-                now - state.started, state.transferred,
-                state.transferred / (now - state.started) / 1024)
+                duration, state.transferred,
+                state.transferred / duration / 1024)
 
     def do_ERROR(self, packet):
         self.server.done = True
