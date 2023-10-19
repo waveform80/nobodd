@@ -59,10 +59,6 @@ class BadOptions(ValueError):
 
 
 class TFTPClientState:
-    __slots__ = (
-        'address', 'source', 'mode', 'started', 'timeout', 'last_recv',
-        'blocks', 'blocks_read', 'block_size', 'last_ack_size')
-
     def __init__(self, address, path, mode=TFTP_BINARY):
         self.address = address
         self.source = path.open('rb')
@@ -76,6 +72,7 @@ class TFTPClientState:
         self.last_ack_size = None
         self.timeout = TFTP_DEF_TIMEOUT_NS
         self.started = self.last_recv = time_ns()
+        self.last_send = None
 
     def negotiate(self, options):
         # Strip out any options we don't support, but maintain the original
@@ -220,7 +217,9 @@ class TFTPHandler(BaseRequestHandler):
         # this case
         buf = self.wfile.getvalue()
         if buf:
-            self.socket.sendto(buf, self.client_address)
+            # We also return the number of bytes written; this is used in
+            # descendents to track when we've *actually* written something
+            return self.socket.sendto(buf, self.client_address)
 
 
 class TFTPBaseHandler(TFTPHandler):
@@ -299,6 +298,11 @@ class TFTPSubHandler(TFTPHandler):
             self.server.client_state.last_recv = time_ns()
             return super().handle()
 
+    def finish(self):
+        written = super().finish()
+        if written is not None:
+            self.server.client_state.last_send = time_ns()
+
     def do_ACK(self, packet):
         state = self.server.client_state
         try:
@@ -354,16 +358,23 @@ class TFTPSubServer(UDPServer):
 
     def service_actions(self):
         super().service_actions()
-        if self.retry_timeout is not None:
-            if time_ns() - self.client_state.last_recv > self.retry_timeout:
-                # TODO re-transmit last packet
-                pass
-        if time_ns() - self.client_state.last_recv > self.fail_timeout:
-            self.logger.warning(
-                '%s - timed out to %s',
-                format_address(self.client_state.address),
-                format_address(self.server_address))
-            self.done = True
+        now = time_ns()
+        state = self.client_state
+        if now - state.last_recv > state.timeout:
+            if state.last_send is None:
+                self.logger.error('internal error; timeout without send')
+                self.done = True
+            elif state.last_send - state.last_recv > state.timeout * 5:
+                self.logger.warning(
+                    '%s - timed out to %s',
+                    format_address(self.client_state.address),
+                    format_address(self.server_address))
+                self.done = True
+            elif now - state.last_send > state.timeout:
+                for block, data in state.blocks.items():
+                    packet = DATAPacket(block, data)
+                    self.socket.sendto(bytes(packet), state.address)
+                state.last_send = time_ns()
 
 
 class TFTPSubServers(Thread):
