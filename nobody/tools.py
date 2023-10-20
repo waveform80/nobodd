@@ -30,10 +30,7 @@ def get_best_family(host, port):
     socket address to listen on as a tuple.
     """
     try:
-        infos = socket.getaddrinfo(
-            host, port,
-            type=socket.SOCK_STREAM,
-            flags=socket.AI_PASSIVE)
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_UDP)
     except socket.gaierror as exc:
         raise ValueError('invalid host and port combination') from exc
     for family, _, _, _, sockaddr in infos:
