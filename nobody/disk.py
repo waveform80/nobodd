@@ -1,3 +1,4 @@
+import os
 import mmap
 import uuid
 from binascii import crc32
@@ -10,6 +11,8 @@ from .gpt import GPTHeader, GPTPartition
 class DiskImage:
     def __init__(self, filename_or_obj, sector_size=512):
         self._ss = sector_size
+        if isinstance(filename_or_obj, os.PathLike):
+            filename_or_obj = filename_or_obj.__fspath__()
         self._opened = isinstance(filename_or_obj, str)
         if self._opened:
             self._file = open(filename_or_obj, 'rb')
