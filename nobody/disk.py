@@ -24,13 +24,20 @@ class DiskImage:
     def __repr__(self):
         return f'<{self.__class__.__name__} file={self._file!r}>'
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     def close(self):
         if self._map is not None:
+            self._mem.release()
             self._map.close()
             if self._opened:
                 self._file.close()
-        self._mem = None
         self._map = None
+        self._mem = None
         self._file = None
 
     @property
@@ -68,6 +75,15 @@ class DiskPartition:
         return (
             f'<{self.__class__.__name__} size={len(self._mem)} '
             f'label={self._label!r} type={self._type!r}>')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        self._mem.release()
 
     @property
     def type(self):
@@ -110,40 +126,42 @@ class DiskPartitionsGPT(Mapping):
         return self._mem[self._ss * start:self._ss * (start + table_sectors)]
 
     def __len__(self):
-        table = self._get_table()
-        count = 0
-        for offset in range(0, len(table), self._header.part_entry_size):
-            entry = GPTPartition.from_buffer(table, offset)
-            if entry.type_guid != b'\x00' * 16:
-                count += 1
-        return count
+        with self._get_table() as table:
+            count = 0
+            for offset in range(0, len(table), self._header.part_entry_size):
+                entry = GPTPartition.from_buffer(table, offset)
+                if entry.type_guid != b'\x00' * 16:
+                    count += 1
+            return count
 
     def __getitem__(self, index):
         if not 1 <= index <= self._header.part_table_size:
             raise KeyError(index)
-        table = self._get_table()
-        entry = GPTPartition.from_buffer(
-            table, self._header.part_entry_size * (index - 1))
-        if entry.part_guid == b'\x00' * 16:
-            raise KeyError(index)
-        return DiskPartition(
-            mem=self._mem[
-                self._ss * entry.first_lba:self._ss * (entry.last_lba + 1)],
-            type=uuid.UUID(bytes_le=entry.type_guid),
-            label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
-
-    def __iter__(self):
-        table = self._get_table()
-        for index in range(self._header.part_table_size):
+        with self._get_table() as table:
             entry = GPTPartition.from_buffer(
-                table, self._header.part_entry_size * index)
+                table, self._header.part_entry_size * (index - 1))
             if entry.part_guid == b'\x00' * 16:
-                continue
-            yield DiskPartition(
-                mem=self._mem[
-                    self._ss * entry.first_lba:self._ss * (entry.last_lba + 1)],
+                raise KeyError(index)
+            start = self._ss * entry.first_lba
+            finish = self._ss * (entry.last_lba + 1)
+            return DiskPartition(
+                mem=self._mem[start:finish],
                 type=uuid.UUID(bytes_le=entry.type_guid),
                 label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
+
+    def __iter__(self):
+        with self._get_table() as table:
+            for index in range(self._header.part_table_size):
+                entry = GPTPartition.from_buffer(
+                    table, self._header.part_entry_size * index)
+                if entry.part_guid == b'\x00' * 16:
+                    continue
+                start = self._ss * entry.first_lba
+                finish = self._ss * (entry.last_lba + 1)
+                yield DiskPartition(
+                    mem=self._mem[start:finish],
+                    type=uuid.UUID(bytes_le=entry.type_guid),
+                    label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
 
 
 class DiskPartitionsMBR(Mapping):

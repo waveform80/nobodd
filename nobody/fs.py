@@ -77,6 +77,22 @@ class FatFileSystem:
             f'<{self.__class__.__name__} label={self.label!r} '
             f'fat_type={self.fat_type!r}>')
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        if self._fat is not None:
+            self._fat.release()
+            self._data.release()
+            if self._fat_type != 'fat32':
+                self._root.release()
+        self._fat = None
+        self._data = None
+        self._root = None
+
     def open_dir(self, cluster):
         return FatSubDirectory(self, cluster)
 
