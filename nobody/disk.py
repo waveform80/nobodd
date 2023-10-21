@@ -156,12 +156,7 @@ class DiskPartitionsGPT(Mapping):
                     table, self._header.part_entry_size * index)
                 if entry.part_guid == b'\x00' * 16:
                     continue
-                start = self._ss * entry.first_lba
-                finish = self._ss * (entry.last_lba + 1)
-                yield DiskPartition(
-                    mem=self._mem[start:finish],
-                    type=uuid.UUID(bytes_le=entry.type_guid),
-                    label=entry.part_label.decode('utf-16-le').rstrip('\x00'))
+                yield index
 
 
 class DiskPartitionsMBR(Mapping):
@@ -223,8 +218,4 @@ class DiskPartitionsMBR(Mapping):
 
     def __iter__(self):
         for num, part in self._get_primary():
-            last_lba = part.first_lba + part.part_size
-            yield DiskPartition(
-                mem=self._mem[self._ss * part.first_lba:self._ss * last_lba],
-                type=part.part_type,
-                label=f'Partition {num}')
+            yield num
