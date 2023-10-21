@@ -144,19 +144,19 @@ class TFTPClientState:
             # open fd (guarantees we're talking about the same file even if
             # that filename got re-written since we opened it)
             return os.fstat(self.source.fileno()).st_size
-        except AttributeError:
+        except (OSError, AttributeError):
             # If the source doesn't have a fileno() attribute, fall back to
             # seeking to the end of the file (temporarily) to determine its
             # size. Again, this guarantees we're looking at the right file
             pos = self.source.tell()
             size = self.source.seek(0, io.SEEK_END)
             self.source.seek(pos)
-            return result
+            return size
         # Note that both these methods fail in the case of the netascii mode as
         # BufferedTranscoder has no fileno and is not seekable, but that's
         # entirely deliberate. We don't want to incur the potential expense of
         # determining the transfer size of a netascii transfer so we'll fail
-        # with an exception there (which in turn means the tsize negotation
+        # with an OSError there (which in turn means the tsize negotation
         # will fail and the option will be excluded from OACK)
 
     @property
