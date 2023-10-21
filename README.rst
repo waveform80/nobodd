@@ -14,7 +14,9 @@ Usage
 
 If you have an appropriately customized OS image already placed in a file
 (``ubuntu.img``), and the serial number of the Pi in question (``1234ABCD``)
-then serving it as simple as::
+then serving it as simple as:
+
+.. code-block:: console
 
     $ sudo nobody --board 1234ABCD,ubuntu.img
 
