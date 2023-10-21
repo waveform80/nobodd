@@ -3,9 +3,9 @@ import struct
 from collections import abc
 
 from .fat import (
-    BootParameterBlock,
-    ExtendedBootParameterBlock,
-    FAT32BootParameterBlock,
+    BIOSParameterBlock,
+    ExtendedBIOSParameterBlock,
+    FAT32BIOSParameterBlock,
     DirectoryEntry,
     LongFilenameEntry,
 )
@@ -122,9 +122,9 @@ def fat_type(mem):
         b'FAT16   ': 'fat16',
         b'FAT32   ': 'fat32',
     }
-    bpb = BootParameterBlock.from_buffer(mem)
-    ebpb = ExtendedBootParameterBlock.from_buffer(
-        mem, BootParameterBlock._FORMAT.size)
+    bpb = BIOSParameterBlock.from_buffer(mem)
+    ebpb = ExtendedBIOSParameterBlock.from_buffer(
+        mem, BIOSParameterBlock._FORMAT.size)
     try:
         fat_type = fat_types[ebpb.file_system]
         if fat_type is not None:
@@ -133,11 +133,11 @@ def fat_type(mem):
         pass
     if ebpb.extended_boot_sig in (0x28, 0x29):
         return fat_type_from_count(bpb, ebpb), bpb, ebpb, None
-    ebpb_fat32 = FAT32BootParameterBlock.from_buffer(
-        mem, BootParameterBlock._FORMAT.size)
-    ebpb = ExtendedBootParameterBlock.from_buffer(
-        mem, BootParameterBlock._FORMAT.size +
-        FAT32BootParameterBlock._FORMAT.size)
+    ebpb_fat32 = FAT32BIOSParameterBlock.from_buffer(
+        mem, BIOSParameterBlock._FORMAT.size)
+    ebpb = ExtendedBIOSParameterBlock.from_buffer(
+        mem, BIOSParameterBlock._FORMAT.size +
+        FAT32BIOSParameterBlock._FORMAT.size)
     try:
         fat_type = fat_types[ebpb.file_system]
         if fat_type is not None:

@@ -1,3 +1,17 @@
+"""
+The data structures used in the FAT file-system.
+
+.. autoclass:: BIOSParameterBlock
+
+.. autoclass:: ExtendedBIOSParameterBlock
+
+.. autoclass:: FAT32BIOSParameterBlock
+
+.. autoclass:: DirectoryEntry
+
+.. autoclass:: LongFilenameEntry
+"""
+
 import struct
 from collections import namedtuple
 
@@ -11,7 +25,7 @@ from .tools import labels, formats
 #
 # [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 
-BOOT_PARAMETER_BLOCK = """
+BIOS_PARAMETER_BLOCK = """
 3x    jump_instruction
 8s    oem_name
 H     bytes_per_sector
@@ -28,17 +42,33 @@ I     hidden_sectors
 I     fat32_total_sectors
 """
 
-class BootParameterBlock(
-        namedtuple('BootParameterBlock', labels(BOOT_PARAMETER_BLOCK))):
+class BIOSParameterBlock(
+        namedtuple('BIOSParameterBlock', labels(BOOT_PARAMETER_BLOCK))):
+    """
+    The `BIOS Parameter Block`_ is found at the very start of a FAT file system
+    (of any type). It provides several (effectively unused) legacy fields, but
+    also several fields still used exclusively in later FAT variants (like the
+    count of FAT-32 sectors).
+
+    .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(BOOT_PARAMETER_BLOCK))
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a BIOSParameterBlock from the byte-string *s* which must be
+        of the correct size.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a BIOSParameterBlock from the buffer *buf* at the specified
+        *offset* which defaults to 0.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
@@ -51,9 +81,21 @@ B     extended_boot_sig
 8s    file_system
 """
 
-class ExtendedBootParameterBlock(
-        namedtuple('ExtendedBootParameterBlock',
+class ExtendedBIOSParameterBlock(
+        namedtuple('ExtendedBIOSParameterBlock',
                    labels(EXTENDED_BOOT_PARAMETER_BLOCK))):
+    """
+    The `Extended BIOS Parameter Block`_ is found either immediately after the
+    `BIOS Parameter Block`_ (in FAT-12 and FAT-16 formats), or after the
+    `FAT32 BIOS Parameter Block`_ (in FAT-32 formats).
+
+    It provides several (effectively unused) legacy fields, but also provides
+    the "file_system" field which is used as the primary means of
+    distinguishing the different FAT types (see :func:`nobody.fs.fat_type`),
+    and the self-explanatory "volume_label" field.
+
+    .. _Extended BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Extended_BIOS_Parameter_Block
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(EXTENDED_BOOT_PARAMETER_BLOCK))
 
@@ -76,8 +118,8 @@ H     backup_sector
 12x   reserved
 """
 
-class FAT32BootParameterBlock(
-        namedtuple('FAT32BootParameterBlock',
+class FAT32BIOSParameterBlock(
+        namedtuple('FAT32BIOSParameterBlock',
                    labels(FAT32_BOOT_PARAMETER_BLOCK))):
     __slots__ = ()
     _FORMAT = struct.Struct(formats(FAT32_BOOT_PARAMETER_BLOCK))
