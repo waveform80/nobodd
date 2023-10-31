@@ -6,11 +6,33 @@ import fnmatch
 import datetime as dt
 from pathlib import PurePosixPath
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
+from itertools import zip_longest
 
 from .fat import DirectoryEntry, LongFilenameEntry
 
 
 class FatPath:
+    """
+    A :class:`~pathlib.Path`-like object representing a filepath within an
+    associated :class:`~nobodd.fs.FatFileSystem`.
+
+    There is rarely a need to construct this class directly. Instead, instances
+    should be obtained via the :attr:`~nobodd.fs.FatFileSystem.root` property
+    of a :class:`~nobodd.fs.FatFileSystem`. If constructed directly, *fs* is a
+    :class:`~nobodd.fs.FatFileSystem` instance, and *pathsegments* is the
+    sequence of strings to be joined with a path separator into the path.
+
+    Instances provide almost all the facilities of the :class:`pathlib.Path`
+    class they are modeled after, including the crucial :meth:`open` method,
+    :meth:`iterdir`, :meth:`glob`, and :meth:`rglob` for enumerating
+    directories, :meth:`stat`, :meth:`is_dir`, and :meth:`is_file` for querying
+    information about files, division for construction of new paths, and all
+    the usual :attr:`name`, :attr:`parent`, :attr:`stem`, and :attr:`suffix`
+    attributes.
+
+    As the implementation is read-only, any methods associated with file-system
+    modification (``mkdir``, ``chmod``, etc.) are not included.
+    """
     __slots__ = ('_fs', '_index', '_entry', '_path', '_resolved')
 
     def __init__(self, fs, path):
@@ -28,6 +50,11 @@ class FatPath:
 
     @classmethod
     def _from_index(cls, fs, index, prefix='/'):
+        """
+        Internal class method for constructing an instance from *fs* (a
+        :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
+        :class:`~nobodd.fs.FatDirectory` instance), and a *prefix* path.
+        """
         self = cls(fs, prefix)
         self._index = index
         self._resolved = True
@@ -35,6 +62,12 @@ class FatPath:
 
     @classmethod
     def _from_entries(cls, fs, entries, prefix='/'):
+        """
+        Internal class method for constructing an instance from *fs* (a
+        :class:`~nobodd.fs.FatFileSystem` instance), *entries* (a sequence of
+        associated :class:`~nobodd.fat.LongFilenameEntry` and
+        :class:`~nobodd.fat.DirectoryEntry` instances), and a *prefix* path.
+        """
         filename, entry = get_filename_entry(entries)
         if not prefix.endswith('/'):
             prefix += '/'
@@ -50,6 +83,10 @@ class FatPath:
         return self
 
     def _resolve(self):
+        """
+        Internal method which "resolves" a constructed path to find the
+        corresponding structures on disk (if the path exists).
+        """
         if self._resolved:
             return
         assert self._index is None
@@ -74,12 +111,29 @@ class FatPath:
             self._resolved = True
 
     def _must_exist(self):
+        """
+        Internal method which is called to check that a constructed path
+        actually exists in the file-system. Calls :meth:`_resolve` to find the
+        corresponding disk structures (if they exist).
+        """
         self._resolve()
         if not self.exists():
             raise FileNotFoundError(f'No such file or directory: {self}')
 
     def open(self, mode='r', buffering=-1, encoding=None, errors=None,
              newline=None):
+        """
+        Open the file pointed to by the path, like the built-in
+        :func:`~io.open` function does. The *mode*, *buffering*, *encoding*,
+        *errors* and *newline* options are as for the :func:`~io.open`
+        function. If successful, a :class:`~nobodd.fs.FatFile` instance is
+        returned.
+
+        .. note::
+
+            This implementation is read-only, so any modes other than "r" and
+            "rb" will fail with :exc:`PermissionError`.
+        """
         self._must_exist()
         if self.is_dir():
             raise IsADirectoryError(f'Is a directory: {self}')
@@ -116,6 +170,25 @@ class FatPath:
         return f
 
     def iterdir(self):
+        """
+        When the path points to a directory, yield path objects of the
+        directory contents::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> for child in fs.root.iterdir(): child
+            ...
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/foo')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/bar.txt')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/setup.cfg')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/baz')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/adir')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/BDIR')
+
+        The children are yielded in arbitrary order (the order they are found
+        in the file-system), and the special entries ``'.'`` and ``'..'`` are
+        not included.
+        """
         self._must_exist()
         if not self.is_dir():
             raise NotADirectoryError(f'Not a directory: {self}')
@@ -138,6 +211,28 @@ class FatPath:
             yield FatPath._from_entries(self._fs, entries, prefix=str(self))
 
     def match(self, pattern):
+        """
+        Match this path against the provided glob-style pattern. Returns
+        a :class:`bool` indicating if the match is successful.
+
+        If *pattern* is relative, the path may be either relative or absolute,
+        and matching is done from the right::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> f = fs / 'nobodd' / 'mbr.py'
+            >>> f
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/mbr.py')
+            >>> f.match('*.py')
+            True
+            >>> f.match('nobodd/*.py')
+            True
+            >>> f.match('/*.py')
+            False
+
+        As FAT file-systems are case-insensitive, all matches are likewise
+        case-insensitive.
+        """
         pat_parts = PurePosixPath(pattern.lower()).parts
         if not pat_parts:
             raise ValueError('empty pattern')
@@ -150,6 +245,12 @@ class FatPath:
         return True
 
     def _search(self, parent, parts):
+        """
+        Internal generator function for the implementation of :meth:`glob` and
+        :meth:`rglob`. Called with *parent*, the containing :class:`FatPath`,
+        and *parts*, the sequence of path components (in the form of strings)
+        to match against.
+        """
 
         def recursive(parent, parts):
             yield from self._search(parent, parts)
@@ -189,6 +290,33 @@ class FatPath:
                 yield from precise(parent, part, parts)
 
     def glob(self, pattern):
+        """
+        Glob the given relative *pattern* in the directory represented by this
+        path, yielding matching files (of any kind)::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> sorted((fs.root / 'nobodd').glob('*.py'))
+            [FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/__init__.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/disk.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/fat.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/fs.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/gpt.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/main.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/mbr.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/tftp.py'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/tools.py')]
+
+        Patterns are the same as for :func:`~fnmatch.fnmatch`, with the
+        addition of "``**``" which means "this directory and all
+        subdirectories, recursively". In other words, in enables recurisve
+        globbing.
+
+        .. warning::
+
+            Using the "``**``" pattern in large directory trees may consume an
+            inordinate amount of time.
+        """
         self._must_exist()
         pat_parts = PurePosixPath(pattern.lower()).parts
         if not pat_parts:
@@ -198,6 +326,10 @@ class FatPath:
         yield from self._search(self, pat_parts)
 
     def rglob(self, pattern):
+        """
+        This is like calling :meth:`glob` with a prefix of "``**/``" to the
+        specified *pattern*.
+        """
         self._must_exist()
         pat_parts = PurePosixPath(pattern.lower()).parts
         if not pat_parts:
@@ -207,6 +339,29 @@ class FatPath:
         yield from self._search(self, ('**',) + pat_parts)
 
     def stat(self, *, follow_symlinks=True):
+        """
+        Return a :class:`os.stat_result` object containing information about
+        this path::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.stat().st_size
+            388
+            >>> p.stat().st_ctime
+            1696606672.02
+
+        .. note::
+
+            In a FAT file-system, ``atime`` has day resolution, ``mtime`` has
+            2-second resolution, and ``ctime`` has either 2-second or
+            millisecond resolution depending on the driver that created it.
+            Directories have no timestamp information.
+
+        The *follow_symlinks* parameter is included purely for compatibility
+        with :meth:`pathlib.Path.stat`; it is ignored as symlinks are not
+        supported.
+        """
         self._must_exist()
         if self._index is not None:
             return os.stat_result((
@@ -238,49 +393,129 @@ class FatPath:
 
     @property
     def fs(self):
+        """
+        Returns the :class:`FatFileSystem` instance that this instance was
+        constructed with.
+        """
         return self._fs
 
     @property
     def root(self):
+        """
+        Returns a string representing the root. This is always "/".
+        """
         return '/'
 
     @property
     def anchor(self):
+        """
+        Returns the concatenation of the drive and root. This is always "/".
+        """
         return '/'
 
     @property
     def name(self):
+        """
+        A string representing the final path component, excluding the root::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.name
+            'main.py'
+        """
         return self._path.name
 
     @property
     def suffix(self):
+        """
+        The file extension of the final component, if any:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.suffix
+            '.py'
+        """
         return self._path.suffix
 
     @property
     def suffixes(self):
+        """
+        A list of the path's file extensions:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd.tar.gz')
+            >>> p.suffixes
+            ['.tar', '.gz']
+        """
         return self._path.suffixes
 
     @property
     def stem(self):
+        """
+        The final path component, without its suffix:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.stem
+            'main'
+        """
         return self._path.stem
 
     def read_text(self, encoding=None, errors=None):
+        """
+        Return the decoded contents of the pointed-to file as a string:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> (fs.root / 'foo').read_text()
+            'foo\\n'
+        """
         with self.open(encoding=encoding, errors=errors) as f:
             return f.read()
 
     def read_bytes(self):
+        """
+        Return the binary contents of the pointed-to file as a bytes object:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> (fs.root / 'foo').read_text()
+            b'foo\\n'
+        """
         with self.open(mode='rb') as f:
             return f.read()
 
     def exists(self):
+        """
+        Whether the path points to an existing file or directory:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> (fs.root / 'foo').exists()
+            True
+            >>> (fs.root / 'fooo').exists()
+            False
+        """
         self._resolve()
         return self._index is not None or self._entry is not None
 
     def is_dir(self):
+        """
+        Return a :class:`bool` indicating whether the path points to a
+        directory. :data:`False` is also returned if the path doesn't exist.
+        """
         self._resolve()
         return self._index is not None
 
     def is_file(self):
+        """
+        Returns a :class:`bool` indicating whether the path points to a regular
+        file. :data:`False` is also returned if the path doesn't exist.
+        """
         self._resolve()
         return self._index is None and self._entry is not None
 
