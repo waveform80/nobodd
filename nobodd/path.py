@@ -33,20 +33,23 @@ class FatPath:
     As the implementation is read-only, any methods associated with file-system
     modification (``mkdir``, ``chmod``, etc.) are not included.
     """
-    __slots__ = ('_fs', '_index', '_entry', '_path', '_resolved')
+    __slots__ = ('_fs', '_index', '_entry', '_parts', '_resolved')
 
-    def __init__(self, fs, path):
+    def __init__(self, fs, *pathsegments):
         self._fs = fs
         self._index = None
         self._entry = None
+        self._parts = get_parts(*pathsegments)
         self._resolved = False
-        self._path = PurePosixPath(path)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self._fs!r}, {str(self._path)!r})'
+        return f'{self.__class__.__name__}({self._fs!r}, {self.__str__()!r})'
 
     def __str__(self):
-        return str(self._path)
+        if self._parts == ('',):
+            return '/'
+        else:
+            return '/'.join(self._parts)
 
     @classmethod
     def _from_index(cls, fs, index, prefix='/'):
@@ -92,7 +95,7 @@ class FatPath:
         assert self._index is None
         assert self._entry is None
         try:
-            parts = self._path.parts
+            parts = self.parts
             if parts[0] != '/':
                 raise ValueError('relative FatPath cannot be resolved')
             parts = parts[1:]
@@ -233,10 +236,10 @@ class FatPath:
         As FAT file-systems are case-insensitive, all matches are likewise
         case-insensitive.
         """
-        pat_parts = PurePosixPath(pattern.lower()).parts
+        pat_parts = get_parts(pattern.lower())
         if not pat_parts:
             raise ValueError('empty pattern')
-        parts = self._path.parts
+        parts = self.parts
         if len(pat_parts) > len(parts):
             return False
         for part, pat in zip(reversed(parts), reversed(pat_parts)):
@@ -424,7 +427,7 @@ class FatPath:
             >>> p.name
             'main.py'
         """
-        return self._path.name
+        return self._parts[-1]
 
     @property
     def suffix(self):
@@ -437,7 +440,11 @@ class FatPath:
             >>> p.suffix
             '.py'
         """
-        return self._path.suffix
+        name = self.name
+        try:
+            return name[name.rindex('.'):]
+        except ValueError:
+            return ''
 
     @property
     def suffixes(self):
@@ -450,7 +457,11 @@ class FatPath:
             >>> p.suffixes
             ['.tar', '.gz']
         """
-        return self._path.suffixes
+        name = self.name
+        if name.endswith('.'):
+            return []
+        else:
+            return ['.' + s for s in name.lstrip('.').split('.')[1:]]
 
     @property
     def stem(self):
@@ -463,7 +474,26 @@ class FatPath:
             >>> p.stem
             'main'
         """
-        return self._path.stem
+        name = self.name
+        try:
+            return name[:name.rindex('.')]
+        except ValueError:
+            return name
+
+    @property
+    def parts(self):
+        """
+        A tuple giving access to the path's various components:
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.parts
+            ['/', 'nobodd', 'main.py']
+        """
+        return tuple(
+            '/' if index == 0 and part == '' else part
+            for index, part in enumerate(self._parts))
 
     def read_text(self, encoding=None, errors=None):
         """
@@ -520,30 +550,68 @@ class FatPath:
         return self._index is None and self._entry is not None
 
     def is_mount(self):
-        return self._path == PurePosixPath('/')
+        return self._parts == ('',)
 
     def is_absolute(self):
-        return self._path.is_absolute()
+        return self._parts[:1] == ('',)
 
     def is_relative_to(self, *other):
-        return self._path.is_relative_to(*other)
+        raise NotImplementedError
 
     def relative_to(self, *other):
-        return FatPath(self._fs, self._path.relative_to(*other))
+        raise NotImplementedError
 
     def joinpath(self, *other):
-        return type(self)(self._fs, self._path.joinpath(*other))
+        other = get_parts(*other)
+        if other[:1] == ('',):
+            return type(self)(self._fs, *other)
+        else:
+            return type(self)(self._fs, *self._parts, *other)
 
     def with_name(self, name):
-        return type(self)(self._fs, self._path.with_name(name))
+        raise NotImplementedError
 
     def with_stem(self, stem):
-        return type(self)(self._fs, self._path.with_stem(stem))
+        raise NotImplementedError
 
     def with_suffix(self, suffix):
-        return type(self)(self._fs, self._path.with_suffix(suffix))
+        raise NotImplementedError
 
     __truediv__ = joinpath
+
+    def __eq__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
+        if self._fs is not other._fs:
+            raise TypeError(
+                f'comparison is not supported between instances of '
+                f'{self.__class__.__name__} with different file-systems')
+        return all(
+            sp.lower() == op.lower()
+            for sp, op in zip_longest(self._parts, other._parts, fillvalue=''))
+
+    def __le__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
+        if self._fs is not other._fs:
+            raise TypeError(
+                f'comparison is not supported between instances of '
+                f'{self.__class__.__name__} with different file-systems')
+        return all(
+            sp.lower() <= op.lower()
+            for sp, op in zip_longest(self.parts, other.parts, fillvalue=''))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        return self.__le__(other) and not self.__eq__(other)
+
+    def __gt__(self, other):
+        return not self.__le__(other)
+
+    def __ge__(self, other):
+        return self.__eq__(other) or self.__gt__(other)
 
     @property
     def parents(self):
@@ -637,3 +705,11 @@ def get_timestamp(date, time, ms=0):
 def get_cluster(entry, fat_type):
     return entry.first_cluster_lo | (
         entry.first_cluster_hi << 16 if fat_type == 'fat32' else 0)
+
+
+def get_parts(*pathsegments):
+    return tuple(
+        part
+        for i1, segment in enumerate(pathsegments)
+        for i2, part in enumerate(segment.split('/'))
+        if i1 == i2 == 0 or part)
