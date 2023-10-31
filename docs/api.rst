@@ -44,8 +44,8 @@ TFTP Service
 The :class:`nobodd.tftpd.TFTPBaseServer` and
 :class:`nobodd.tftpd.TFTPBaseHandler` are two classes which may be customized
 to produce a TFTP server. Two example classes are included,
-:class:`~nobodd.tftpd.SimpleTFTPServer` and
-:class:`~nobodd.tftp.SimpleTFTPHandler` which serve files directly from a
+:class:`nobodd.tftpd.SimpleTFTPServer` and
+:class:`nobodd.tftpd.SimpleTFTPHandler` which serve files directly from a
 specified path.
 
 .. toctree::
