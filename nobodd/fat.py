@@ -43,7 +43,7 @@ I     fat32_total_sectors
 """
 
 class BIOSParameterBlock(
-        namedtuple('BIOSParameterBlock', labels(BOOT_PARAMETER_BLOCK))):
+        namedtuple('BIOSParameterBlock', labels(BIOS_PARAMETER_BLOCK))):
     """
     The `BIOS Parameter Block`_ is found at the very start of a FAT file system
     (of any type). It provides several (effectively unused) legacy fields, but
@@ -53,7 +53,7 @@ class BIOSParameterBlock(
     .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
     """
     __slots__ = ()
-    _FORMAT = struct.Struct(formats(BOOT_PARAMETER_BLOCK))
+    _FORMAT = struct.Struct(formats(BIOS_PARAMETER_BLOCK))
 
     @classmethod
     def from_string(cls, s):
@@ -72,7 +72,7 @@ class BIOSParameterBlock(
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
-EXTENDED_BOOT_PARAMETER_BLOCK = """
+EXTENDED_BIOS_PARAMETER_BLOCK = """
 B     drive_number
 1x    reserved
 B     extended_boot_sig
@@ -83,7 +83,7 @@ B     extended_boot_sig
 
 class ExtendedBIOSParameterBlock(
         namedtuple('ExtendedBIOSParameterBlock',
-                   labels(EXTENDED_BOOT_PARAMETER_BLOCK))):
+                   labels(EXTENDED_BIOS_PARAMETER_BLOCK))):
     """
     The `Extended BIOS Parameter Block`_ is found either immediately after the
     `BIOS Parameter Block`_ (in FAT-12 and FAT-16 formats), or after the
@@ -97,7 +97,7 @@ class ExtendedBIOSParameterBlock(
     .. _Extended BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Extended_BIOS_Parameter_Block
     """
     __slots__ = ()
-    _FORMAT = struct.Struct(formats(EXTENDED_BOOT_PARAMETER_BLOCK))
+    _FORMAT = struct.Struct(formats(EXTENDED_BIOS_PARAMETER_BLOCK))
 
     @classmethod
     def from_string(cls, s):
@@ -108,7 +108,7 @@ class ExtendedBIOSParameterBlock(
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
-FAT32_BOOT_PARAMETER_BLOCK = """
+FAT32_BIOS_PARAMETER_BLOCK = """
 I     sectors_per_fat
 H     mirror_flags
 H     version
@@ -120,9 +120,9 @@ H     backup_sector
 
 class FAT32BIOSParameterBlock(
         namedtuple('FAT32BIOSParameterBlock',
-                   labels(FAT32_BOOT_PARAMETER_BLOCK))):
+                   labels(FAT32_BIOS_PARAMETER_BLOCK))):
     __slots__ = ()
-    _FORMAT = struct.Struct(formats(FAT32_BOOT_PARAMETER_BLOCK))
+    _FORMAT = struct.Struct(formats(FAT32_BIOS_PARAMETER_BLOCK))
 
     @classmethod
     def from_string(cls, s):

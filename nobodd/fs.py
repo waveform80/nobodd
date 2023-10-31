@@ -243,10 +243,6 @@ class FatFile(io.RawIOBase):
         self._size = size
         self._pos = 0
 
-    @property
-    def cluster(self):
-        return self._start
-
     def _get_clusters(self):
         cluster = self._start
         if self._fs._fat_type == 'fat12':
