@@ -30,6 +30,10 @@ class FatPath:
     the usual :attr:`name`, :attr:`parent`, :attr:`stem`, and :attr:`suffix`
     attributes.
 
+    Instances are also comparable for the purposes of sorting, but only within
+    the same :class:`~nobodd.fs.FatFileSystem` instance (comparisons across
+    file-system instances raise :exc:`TypeError`).
+
     As the implementation is read-only, any methods associated with file-system
     modification (``mkdir``, ``chmod``, etc.) are not included.
     """
@@ -550,18 +554,46 @@ class FatPath:
         return self._index is None and self._entry is not None
 
     def is_mount(self):
+        """
+        Returns a :class:`bool` indicating whether the path is a *mount point*.
+        In this implementation, this is only :data:`True` for the root path.
+        """
         return self._parts == ('',)
 
     def is_absolute(self):
+        """
+        Return whether the path is absolute or not. A path is considered
+        absolute if it has a "/" prefix.
+        """
         return self._parts[:1] == ('',)
 
     def is_relative_to(self, *other):
+        """
+        Return whether or not this path is relative to the *other* path.
+        """
         raise NotImplementedError
 
     def relative_to(self, *other):
+        """
+        Compute a version of this path relative to the path represented by
+        *other*. If it's impossible, :exc:`ValueError` is raised.
+        """
         raise NotImplementedError
 
     def joinpath(self, *other):
+        """
+        Calling this method is equivalent to combining the path with each of
+        the *other* arguments in turn::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> fs.root
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/')
+            >>> fs.root.joinpath('nobodd')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd')
+            >>> fs.root.joinpath('nobodd', 'main.py')
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/main.py')
+        """
         other = get_parts(*other)
         if other[:1] == ('',):
             return type(self)(self._fs, *other)
@@ -569,12 +601,25 @@ class FatPath:
             return type(self)(self._fs, *self._parts, *other)
 
     def with_name(self, name):
+        """
+        Return a new path with the :attr:`name` changed. If the original path
+        doesn't have a name, :exc:`ValueError` is raised.
+        """
         raise NotImplementedError
 
     def with_stem(self, stem):
+        """
+        Return a new path with the :attr:`stem` changed. If the original path
+        doesn't have a name, :exc:`ValueError` is raised.
+        """
         raise NotImplementedError
 
     def with_suffix(self, suffix):
+        """
+        Return a new path with the :attr:`suffix` changed. If the original path
+        doesn't have a suffix, the new *suffix* is appended instead. If the
+        *suffix* is an empty string, the original suffix is removed.
+        """
         raise NotImplementedError
 
     __truediv__ = joinpath
@@ -632,6 +677,21 @@ class FatPath:
 
 
 def get_filename_entry(entries, dos_encoding='iso-8859-1'):
+    """
+    Given a sequence of :class:`~nobodd.fat.LongFilenameEntry` instances,
+    ending with a single :class:`~nobodd.fat.DirectoryEntry` (as would
+    typically be found in a FAT directory index), return the decoded filename,
+    and the directory entry record.
+
+    If no long filename entries are present, the filename will be derived from
+    the directory entry record.
+
+    .. note::
+
+        This function also carries out several checks, including the filename
+        checksum, that all checksums match, that the number of entries is
+        valid, etc. Any violations found will raise :exc:`ValueError`.
+    """
     # The extration of the long filename could be simpler, but let's do all
     # the checks we can (the structure includes a *lot* of redundancy for
     # checking things!)
@@ -691,6 +751,11 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
 
 
 def get_timestamp(date, time, ms=0):
+    """
+    Given the integers *date*,  *time*, and optionally *ms* (from various
+    fields in :class:`~nobodd.fat.DirectoryEntry`), return a
+    :class:`~datetime.datetime` with the decoded timestamp.
+    """
     return dt.datetime(
         year=1980 + ((date & 0xFE00) >> 9),
         month=(date & 0x1E0) >> 5,
@@ -703,11 +768,23 @@ def get_timestamp(date, time, ms=0):
 
 
 def get_cluster(entry, fat_type):
+    """
+    Given *entry*, a :class:`~nobodd.fat.DirectoryEntry`, and the *fat_type*
+    indicating the size of FAT clusters, return the first cluster of the file
+    associated with the directory entry.
+    """
     return entry.first_cluster_lo | (
         entry.first_cluster_hi << 16 if fat_type == 'fat32' else 0)
 
 
 def get_parts(*pathsegments):
+    """
+    Given *pathsegments*, split them on the "/" path separator, and return a
+    :class:`tuple` containing each path segment.
+
+    If the path segments refer to an absolute path (beginning with "/") the
+    first element of the returned :class:`tuple` will be an empty string.
+    """
     return tuple(
         part
         for i1, segment in enumerate(pathsegments)
