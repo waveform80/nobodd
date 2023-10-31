@@ -23,6 +23,22 @@ from .path import FatPath
 # retrieve)
 
 class FatFileSystem:
+    """
+    Represents a `FAT`_ file-system, contained at the start of the buffer
+    object *mem* with a *sector_size* defaulting to 512 bytes.
+
+    This class supports the FAT-12, FAT-16, and FAT-32 formats, and will
+    automatically determine which to use from the headers found at the start of
+    *mem*. The type in use may be queried from :attr:`fat_type`. Of primary use
+    is the :attr:`root` attribute which provides a
+    :class:`~nobodd.path.FatPath` instance representing the root directory of
+    the file-system.
+
+    Instances can (and should) be used as a context manager; exiting the
+    context will call the :meth:`close` method implicitly.
+
+    .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
+    """
     def __init__(self, mem, sector_size=512):
         self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
         if bpb.bytes_per_sector != sector_size:
@@ -56,7 +72,7 @@ class FatFileSystem:
 
         # Check the root directory is structured as expected. Apparently some
         # "non-mainstream" operating systems can use a variable-sized root
-        # directory on FAT12/16, but we're not expecting to deal with any of
+        # directory on FAT-12/16, but we're not expecting to deal with any of
         # those
         if self._fat_type == 'fat32' and bpb.max_root_entries != 0:
             raise ValueError(
@@ -84,6 +100,10 @@ class FatFileSystem:
         self.close()
 
     def close(self):
+        """
+        Releases the memory references derived from the buffer the instance was
+        constructed with. This method is idempotent.
+        """
         if self._fat is not None:
             self._fat.release()
             self._data.release()
@@ -94,21 +114,61 @@ class FatFileSystem:
         self._root = None
 
     def open_dir(self, cluster):
+        """
+        Opens the sub-directory in the specified *cluster*, returning a
+        :class:`FatSubDirectory` instance representing it.
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class.
+        """
         return FatSubDirectory(self, cluster)
 
     def open_file(self, cluster, size):
+        """
+        Opens the file at the specified *cluster* with the specified *size* in
+        bytes, returning a :class:`FatFile` instance representing it.
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class.
+        """
         return FatFile(self, cluster, size)
 
     @property
     def fat_type(self):
+        """
+        Returns a :class:`str` indicating the type of `FAT`_ file-system
+        present. Returns one of "fat12", "fat16", or "fat32".
+        """
         return self._fat_type
 
     @property
     def label(self):
+        """
+        Returns the label from the header of the file-system. This is an ASCII
+        string up to 11 characters long.
+        """
         return self._label
 
     @property
     def root(self):
+        """
+        Returns a :class:`~nobodd.path.FatPath` instance (a
+        :class:`~pathlib.Path`-like object) representing the root directory of
+        the FAT file-system. For example::
+
+            from nobodd.disk import DiskImage
+            from nobodd.fs import FatFileSystem
+
+            with DiskImage('test.img') as img:
+                with FatFileSystem(img.partitions[1].data) as fs:
+                    print('ls /')
+                    for p in fs.root.iterdir():
+                        print(p.name)
+        """
         if self._fat_type == 'fat32':
             return FatPath._from_index(self, Fat32Root(self, self._root))
         else:
@@ -116,6 +176,19 @@ class FatFileSystem:
 
 
 def fat_type(mem):
+    """
+    Given a `FAT`_ file-system at the start of the buffer *mem*, determine its
+    type, and decode its headers. Returns a four-tuple containing:
+
+    * one of the strings "fat12", "fat16", or "fat32"
+
+    * a :class:`~nobodd.fat.BIOSParameterBlock` instance
+
+    * a :class:`~nobodd.fat.ExtendedBIOSParameterBlock` instance
+
+    * a :class:`~nobodd.fat.FAT32BIOSParameterBlock`, if one is present, or
+      :data:`None` otherwise
+    """
     fat_types = {
         b'FAT     ': None,
         b'FAT12   ': 'fat12',
@@ -151,6 +224,17 @@ def fat_type(mem):
 
 
 def fat_type_from_count(bpb, ebpb):
+    """
+    Derives the type of the `FAT`_ file-system when it cannot be determined
+    directly from the *bpb* and *ebpb* headers (the
+    :class:`~nobodd.fat.BIOSParameterBlock`, and
+    :class:`~nobodd.fat.ExtendedBIOSParameterBlock` respectively).
+
+    Uses `known limits`_ on the number of clusters to derive the type of FAT in
+    use. Returns one of the strings "fat12", "fat16", or "fat32".
+
+    .. _known limits: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Size_limits
+    """
     total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
     fat_sectors = (
         bpb.fat_count *
@@ -167,6 +251,14 @@ def fat_type_from_count(bpb, ebpb):
 
 
 class FatDirectory(abc.Iterable):
+    """
+    An abstract :class:`~collections.abc.Iterable` representing a `FAT`_
+    directory.
+
+    When iterated, yields :class:`~nobodd.fat.DirectoryEntry` or
+    :class:`~nobodd.fat.LongFilenameEntry` instances until the end of the
+    directory is encountered.
+    """
     __slots__ = ()
 
     def _iter_entries(self):
@@ -187,6 +279,11 @@ class FatDirectory(abc.Iterable):
 
 
 class Fat16Root(FatDirectory):
+    """
+    A derivative of :class:`FatDirectory` representing the (fixed-size) root
+    directory of a FAT-16 file-system. Must be constructed with *mem*, which is
+    a buffer object covering the root directory clusters.
+    """
     __slots__ = ('_mem',)
 
     def __init__(self, mem):
@@ -204,6 +301,12 @@ class Fat16Root(FatDirectory):
 
 
 class FatSubDirectory(FatDirectory):
+    """
+    A derivative of :class:`FatDirectory` representing a sub-directory in a FAT
+    file-system (of any type). Must be constructed with *fs* (a
+    :class:`FatFileSystem` instance) and *start*, the first cluster of the
+    sub-directory.
+    """
     __slots__ = ('_cs', '_file')
 
     def __init__(self, fs, start):
@@ -211,7 +314,7 @@ class FatSubDirectory(FatDirectory):
         self._file = FatFile(fs, start)
 
     def _get_cluster(self):
-        return self._file.cluster
+        return self._file._start
 
     def _iter_entries(self):
         buf = bytearray(self._cs)
@@ -230,6 +333,32 @@ Fat32Root = FatSubDirectory
 
 
 class FatFile(io.RawIOBase):
+    """
+    Represents an open file from a :class:`FatFileSystem`.
+
+    You should never need to construct this instance directly. Instead it is
+    returned by the :meth:`~nobodd.path.FatPath.open` method of
+    :class:`~nobodd.path.FatPath` instances. For example::
+
+        from nobodd.disk import DiskImage
+        from nobodd.fs import FatFileSystem
+
+        with DiskImage('test.img') as img:
+            with FatFileSystem(img.partitions[1].data) as fs:
+                path = fs.root / 'bar.txt'
+                with path.open('r', encoding='utf-8') as f:
+                    print(f.read())
+
+    Instancese can (and should) be used as context managers to implicitly close
+    references upon exiting the context. Instances are readable and seekable,
+    but not writable (this is a read-only implementation), using all the
+    methods derived from the base :class:`io.RawIOBase` class.
+
+    If constructed manually, *fs* is the associated :class:`FatFileSystem`
+    instance, *start* is the first cluster of the file, and *size* is
+    (optionally) the size in bytes of the file. If unspecified, the file is
+    assumed to fill all its clusters.
+    """
     __slots__ = ('_fs', '_start', '_map', '_size', '_pos')
 
     def __init__(self, fs, start, size=None):

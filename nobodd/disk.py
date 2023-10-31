@@ -9,6 +9,28 @@ from .gpt import GPTHeader, GPTPartition
 
 
 class DiskImage:
+    """
+    Represents a disk image, specified by *filename_or_obj* which must be a
+    :class:`str` or :class:`~pathlib.Path` naming the file, or a file-like
+    object.
+
+    If a file-like object is provided, it *must* have a ``fileno`` method which
+    returns a valid file-descriptor number (the class uses :class:`~mmap.mmap`
+    internally which requires a "real" file).
+
+    The disk image is expected to be partitioned with either an `MBR`_ or a
+    `GPT`_. The partitions within the image can be enumerated with the
+    :attr:`partitions` attribute. The instance can (and should) be used as
+    a context manager; exiting the context will call the :meth:`close` method
+    implicitly.
+
+    If specified, *sector_size* is the size of sectors (in bytes) within the
+    disk image. This defaults to 512 bytes, and should almost always be left
+    alone.
+
+    .. _MBR: https://en.wikipedia.org/wiki/Master_boot_record
+    .. _GPT: https://en.wikipedia.org/wiki/GUID_Partition_Table
+    """
     def __init__(self, filename_or_obj, sector_size=512):
         self._ss = sector_size
         if isinstance(filename_or_obj, os.PathLike):
@@ -31,6 +53,18 @@ class DiskImage:
         self.close()
 
     def close(self):
+        """
+        Destroys the memory mapping used on the file provided. If the file was
+        opened by this class, it will also be closed. This method is
+        idempotent.
+
+        .. note::
+
+            All mappings derived from this one *must* be closed before calling
+            this method. By far the easiest means of arranging this is to
+            consistently use context managers with all instances derived from
+            this.
+        """
         if self._map is not None:
             self._mem.release()
             self._map.close()
@@ -42,6 +76,16 @@ class DiskImage:
 
     @property
     def partitions(self):
+        """
+        Provides access to the partitions in the image as a
+        :class:`~collections.abc.Mapping` of partition number to
+        :class:`DiskPartition` instances.
+
+        .. note::
+
+            Disk partition numbers start from 1 and need not be contiguous,
+            especially in the case of MBR tables containing logical partitions.
+        """
         # This is a bit hacky, but reliable enough for our purposes. We check
         # for the "EFI PART" signature at the start of LBA1 and, if we find it,
         # we assume we're dealing with GPT. We don't check for a protective or
@@ -66,6 +110,12 @@ class DiskImage:
 
 
 class DiskPartition:
+    """
+    Represents an individual disk partition within a :class:`DiskImage`.
+
+    Instances of this class are returned as the values of the mapping provided
+    by :attr:`DiskImage.partitions`.
+    """
     def __init__(self, mem, label, type):
         self._mem = mem
         self._label = label
@@ -87,18 +137,47 @@ class DiskPartition:
 
     @property
     def type(self):
+        """
+        The type of the partition. For `GPT`_ partitions, this will be a
+        :class:`uuid.UUID` instance. For `MBR`_ partitions, this will be an
+        :class:`int`.
+        """
         return self._type
 
     @property
     def label(self):
+        """
+        The label of the partition. `GPT`_ partitions may have a 36 character
+        unicode label. `MBR`_ partitions do not have a label, so the string
+        "Partition {num}" will be used instead (where *{num}* is the partition
+        number).
+        """
         return self._label
 
     @property
     def data(self):
+        """
+        Returns a buffer (specifically, a :class:`memoryview`) covering the
+        contents of the partition in the owning :class:`DiskImage`.
+        """
         return self._mem
 
 
 class DiskPartitionsGPT(Mapping):
+    """
+    Provides a :class:`~collections.abc.Mapping` from partition number to
+    :class:`DiskPartition` instances for a `GPT`_.
+
+    *mem* is the buffer covering the whole disk image, and *header* is a
+    :class:`~nobodd.gpt.GPTHeader` instance decoded from the front of the
+    `GPT`_. *sector_size* specifies the sector size of the disk image, which
+    should almost always be left at the default of 512 bytes.
+
+    The :attr:`style` instance attribute can be queried to determine this is a
+    GPT.
+
+    .. autoattribute:: style
+    """
     style = 'gpt'
 
     def __init__(self, mem, header, sector_size=512):
@@ -160,6 +239,20 @@ class DiskPartitionsGPT(Mapping):
 
 
 class DiskPartitionsMBR(Mapping):
+    """
+    Provides a :class:`~collections.abc.Mapping` from partition number to
+    :class:`DiskPartition` instances for a `MBR`_.
+
+    *mem* is the buffer covering the whole disk image, and *header* is a
+    :class:`~nobodd.gpt.MBRHeader` instance decoded from the front of the
+    `MBR`_. *sector_size* specifies the sector size of the disk image, which
+    should almost always be left at the default of 512 bytes.
+
+    The :data:`style` instance attribute can be queried to determine this is a
+    MBR style partition table.
+
+    .. autoattribute:: style
+    """
     style = 'mbr'
 
     def __init__(self, mem, header, sector_size=512):

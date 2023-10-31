@@ -8,38 +8,16 @@ Defines the data structures used by the `FAT`_ file system. You should never
 need these directly; use the :class:`nobodd.fs.FatFileSystem` class instead.
 
 
-BIOSParameterBlock
-==================
-
-.. autodata:: BIOS_PARAMETER_BLOCK
+Data Structures
+===============
 
 .. autoclass:: BIOSParameterBlock
 
-ExtendedBIOSParameterBlock
-==========================
-
-.. autodata:: EXTENDED_BIOS_PARAMETER_BLOCK
-
 .. autoclass:: ExtendedBIOSParameterBlock
-
-FAT32BIOSParameterBlock
-=======================
-
-.. autodata:: FAT32_BIOS_PARAMETER_BLOCK
 
 .. autoclass:: FAT32BIOSParameterBlock
 
-DirectoryEntry
-==============
-
-.. autodata:: DIRECTORY_ENTRY
-
 .. autoclass:: DirectoryEntry
-
-LongFilenameEntry
-=================
-
-.. autodata:: LONG_FILENAME_ENTRY
 
 .. autoclass:: LongFilenameEntry
 

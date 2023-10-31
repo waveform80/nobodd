@@ -46,6 +46,9 @@ pygments_style = 'sphinx'
 # -- Autodoc configuration ------------------------------------------------
 
 autodoc_member_order = 'groupwise'
+autodoc_default_options = {
+    'members': True,
+}
 autodoc_mock_imports = []
 
 # -- Intersphinx configuration --------------------------------------------

@@ -9,16 +9,11 @@ partitioning style. You should never need these directly; use the
 :class:`nobodd.disk.DiskImage` class instead.
 
 
-MBRHeader
-=========
-
-.. autodata:: MBR_HEADER
+Data Structures
+===============
 
 .. autoclass:: MBRHeader
 
-MBRPartition
-============
-
-.. autodata:: MBR_PARTITION
-
 .. autoclass:: MBRPartition
+
+.. _Master Boot Record: https://en.wikipedia.org/wiki/Master_boot_record

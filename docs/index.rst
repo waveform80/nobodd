@@ -13,3 +13,9 @@ Contents
     development
     changelog
     license
+
+Indices and tables
+==================
+
+* :ref:`modindex`
+* :ref:`genindex`

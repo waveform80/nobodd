@@ -1,17 +1,3 @@
-"""
-The data structures used in the FAT file-system.
-
-.. autoclass:: BIOSParameterBlock
-
-.. autoclass:: ExtendedBIOSParameterBlock
-
-.. autoclass:: FAT32BIOSParameterBlock
-
-.. autoclass:: DirectoryEntry
-
-.. autoclass:: LongFilenameEntry
-"""
-
 import struct
 from collections import namedtuple
 
@@ -20,7 +6,7 @@ from .tools import labels, formats
 
 # Structures sourced from the indispensible Wikipedia page on the Design of the
 # FAT file system [1]. Note that we're using the DOS 3.31 BPB definition below
-# as it's used in all modern FAT12/16/32 implementations (and we're not
+# as it's used in all modern FAT-12/16/32 implementations (and we're not
 # interested in supporting ancient FAT images here).
 #
 # [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
@@ -94,7 +80,9 @@ class ExtendedBIOSParameterBlock(
     distinguishing the different FAT types (see :func:`nobodd.fs.fat_type`),
     and the self-explanatory "volume_label" field.
 
+    .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
     .. _Extended BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Extended_BIOS_Parameter_Block
+    .. _FAT32 BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FAT32_Extended_BIOS_Parameter_Block
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(EXTENDED_BIOS_PARAMETER_BLOCK))
@@ -121,6 +109,18 @@ H     backup_sector
 class FAT32BIOSParameterBlock(
         namedtuple('FAT32BIOSParameterBlock',
                    labels(FAT32_BIOS_PARAMETER_BLOCK))):
+    """
+    The `FAT32 BIOS Parameter Block`_ is found immediately after the `BIOS
+    Parameter Block`_ in FAT-32 formats. In FAT-12 and FAT-16 formats it should
+    not occur.
+
+    It crucially provides the cluster containing the root directory (which is
+    structured as a normal sub-directory in FAT-32) as well as the number of
+    sectors per FAT, specifically for FAT-32. All other fields are ignored by
+    this implementation.
+
+    .. _FAT32 BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FAT32_Extended_BIOS_Parameter_Block
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(FAT32_BIOS_PARAMETER_BLOCK))
 
@@ -150,6 +150,24 @@ I     size
 """
 
 class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
+    """
+    A FAT `directory entry`_ is a fixed-size structure which repeats up to the
+    size of a cluster within a FAT root or sub-directory.
+
+    It contains the (8.3 sized) filename of an entry, the size in bytes, the
+    cluster at which the entry's data starts, the entry's attributes (which
+    determine whether the entry represents a file or another sub-directory),
+    and (depending on the format), the creation, modification, and access
+    timestamps.
+
+    Entries may represent deleted items in which case the first character of
+    the *filename* will be 0xE5. If the *attr* is 0x0F, the entry is actually a
+    long-filename entry and should be converted to :class:`LongFilenameEntry`.
+    If *attr* is 0x10, the entry represents a sub-directory. See `directory
+    entry`_ for more details.
+
+    .. _directory entry: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_entry
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(DIRECTORY_ENTRY))
 
@@ -179,6 +197,19 @@ H     first_cluster
 
 class LongFilenameEntry(
         namedtuple('LongFilenameEntry', labels(LONG_FILENAME_ENTRY))):
+    """
+    A FAT `long filename`_ is a variant of the FAT `directory entry`_ where the
+    *attr* field is 0x0F.
+
+    Several of these entries will appear before their corresponding
+    :class:`DirectoryEntry`, but will be in *reverse* order. A *checksum* is
+    incorporated for additional verification, and a *sequence* number
+    indicating the number of segments, and which one is "last" (first in the
+    byte-stream, but last in character order).
+
+    .. _directory entry: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_entry
+    .. _long filename: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#VFAT_long_file_names
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(LONG_FILENAME_ENTRY))
 

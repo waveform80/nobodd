@@ -38,8 +38,8 @@ Internal Classes and Functions
 ==============================
 
 You should never need to interact with these classes directly; they exist to
-enumerate the different types of root directory under FAT12, FAT16, and FAT32,
-and sub-directories (which are common across FAT types).
+enumerate the different types of root directory under FAT-12, FAT-16, and
+FAT-32, and sub-directories (which are common across FAT types).
 
 .. autoclass:: FatDirectory
 
@@ -53,4 +53,6 @@ and sub-directories (which are common across FAT types).
     root directory is represented by the same structure as a regular
     sub-directory.
 
-.. autofunc:: fat_type
+.. autofunction:: fat_type
+
+.. autofunction:: fat_type_from_count

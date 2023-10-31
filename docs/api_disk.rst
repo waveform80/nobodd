@@ -66,13 +66,14 @@ DiskPartition
 
 .. autoclass:: DiskPartition
 
-DiskPartitionsGPT
-=================
+Internal Classes
+================
+
+You should not need to use these classes directly; they will be instantiated
+automatically when querying the :attr:`DiskImage.partitions` attribute
+according to the detected table format.
 
 .. autoclass:: DiskPartitionsGPT
-
-DiskPartitionsMBR
-=================
 
 .. autoclass:: DiskPartitionsMBR
 

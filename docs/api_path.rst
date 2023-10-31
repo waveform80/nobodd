@@ -35,8 +35,8 @@ FatPath
 Internal Functions
 ==================
 
-.. autofunc:: get_filename_entry
+.. autofunction:: get_filename_entry
 
-.. autofunc:: get_timestamp
+.. autofunction:: get_timestamp
 
-.. autofunc:: get_cluster
+.. autofunction:: get_cluster
