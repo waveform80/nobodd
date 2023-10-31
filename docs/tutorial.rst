@@ -24,6 +24,11 @@ The following tutorial assumes you have:
 Raspberry Pi
 ============
 
+Configure the Raspberry Pi for networking boot. The 3B+ is capable of network
+boot out of the box, but the 3B, 4B, and 5 all require configuration. Follow
+`the instructions <netboot-your-pi_>`_ on the official documentation to
+activate network boot on your device.
+
 
 Ubuntu Server
 =============
@@ -97,3 +102,5 @@ First Boot
 
 Troubleshooting
 ===============
+
+.. _netboot-your-pi: https://www.raspberrypi.com/documentation/computers/remote-access.html#network-boot-your-raspberry-pi
