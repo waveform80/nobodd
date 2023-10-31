@@ -2,7 +2,7 @@
 Changelog
 ==================
 
-.. currentmodule:: nobody
+.. currentmodule:: nobodd
 
 
 Release 0.1 (2023-??-??)

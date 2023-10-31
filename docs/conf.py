@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # vim: set fileencoding=utf-8:
 #
-# nobody: A simple TFTP boot server for the Raspberry Pi
+# nobodd: A simple TFTP boot server for the Raspberry Pi
 
 import sys
 import os
@@ -95,7 +95,7 @@ epub_show_urls = 'no'
 # -- Options for manual page output ---------------------------------------
 
 man_pages = [
-    ('cli_nobody', 'nobody', 'nobody - the TFTP server', [info['author']], 1),
+    ('cli_nobodd', 'nobodd', 'nobodd - the TFTP server', [info['author']], 1),
 ]
 
 man_show_urls = True

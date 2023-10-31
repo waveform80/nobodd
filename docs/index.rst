@@ -8,7 +8,7 @@ Contents
 
     install
     tutorial
-    cli_nobody
+    cli_nobodd
     api
     development
     changelog

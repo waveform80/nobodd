@@ -2,7 +2,7 @@
 Tutorial
 ========
 
-nobody is a confusingly named, but simple TFTP server intended for net-booting
+nobodd is a confusingly named, but simple TFTP server intended for net-booting
 Raspberry Pis directly from OS images without having to loop-back mount or
 otherwise re-write those images. An initial loop-back mount is usually required
 to customize the boot-sequence in an OS image (to point it at the correct root

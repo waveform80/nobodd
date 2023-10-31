@@ -2,11 +2,11 @@
 Development
 ===========
 
-.. currentmodule:: nobody
+.. currentmodule:: nobodd
 
 The main GitHub repository for the project can be found at:
 
-    https://github.com/waveform80/nobody
+    https://github.com/waveform80/nobodd
 
 
 .. _dev_install:
@@ -14,7 +14,7 @@ The main GitHub repository for the project can be found at:
 Development installation
 ========================
 
-If you wish to develop nobody, obtain the source by cloning the GitHub
+If you wish to develop nobodd, obtain the source by cloning the GitHub
 repository and then use the "develop" target of the Makefile which will install
 the package as a link to the cloned repository allowing in-place development.
 The following example demonstrates this method within a virtual Python
@@ -31,29 +31,29 @@ restarted your shell, continue:
 .. code-block:: console
 
     $ cd
-    $ mkvirtualenv -p /usr/bin/python3 nobody
-    $ workon nobody
-    (nobody) $ git clone https://github.com/waveform80/nobody.git
-    (nobody) $ cd nobody
-    (nobody) $ make develop
+    $ mkvirtualenv -p /usr/bin/python3 nobodd
+    $ workon nobodd
+    (nobodd) $ git clone https://github.com/waveform80/nobodd.git
+    (nobodd) $ cd nobodd
+    (nobodd) $ make develop
 
 To pull the latest changes from git into your clone and update your
 installation:
 
 .. code-block:: console
 
-    $ workon nobody
-    (nobody) $ cd ~/nobody
-    (nobody) $ git pull
-    (nobody) $ make develop
+    $ workon nobodd
+    (nobodd) $ cd ~/nobodd
+    (nobodd) $ git pull
+    (nobodd) $ make develop
 
 To remove your installation, destroy the sandbox and the clone:
 
 .. code-block:: console
 
-    (nobody) $ deactivate
-    $ rmvirtualenv nobody
-    $ rm -rf ~/nobody
+    (nobodd) $ deactivate
+    $ rmvirtualenv nobodd
+    $ rm -rf ~/nobodd
 
 
 Building the docs
@@ -75,9 +75,9 @@ documentation in all supported formats (HTML, ePub, and PDF):
 
 .. code-block:: console
 
-    $ workon nobody
-    (nobody) $ cd ~/nobody
-    (nobody) $ make doc
+    $ workon nobodd
+    (nobodd) $ cd ~/nobodd
+    (nobodd) $ make doc
 
 However, the easiest way to develop the documentation is with the "preview"
 target which will build the HTML version of the docs, and start a web-server to
@@ -87,9 +87,9 @@ automatically as required:
 
 .. code-block:: console
 
-    $ workon nobody
-    (nobody) $ cd ~/nobody
-    (nobody) $ make preview
+    $ workon nobodd
+    (nobodd) $ cd ~/nobodd
+    (nobodd) $ make preview
 
 The HTML output is written to :file:`build/html` while the PDF output
 goes to :file:`build/latex`.
@@ -98,14 +98,14 @@ goes to :file:`build/latex`.
 Test suite
 ==========
 
-If you wish to run the nobody test suite, follow the instructions in
+If you wish to run the nobodd test suite, follow the instructions in
 :ref:`dev_install` above and then make the "test" target within the sandbox:
 
 .. code-block:: console
 
-    $ workon nobody
-    (nobody) $ cd ~/nobody
-    (nobody) $ make test
+    $ workon nobodd
+    (nobodd) $ cd ~/nobodd
+    (nobodd) $ make test
 
 The test suite is also setup for usage with the :command:`tox` utility, in
 which case it will attempt to execute the test suite with all supported

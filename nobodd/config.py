@@ -27,10 +27,10 @@ except ImportError:
 # The locations to attempt to read the configuration from
 XDG_CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', '~/.config'))
 CONFIG_LOCATIONS = (
-    Path('/etc/nobody.conf'),
-    Path('/usr/local/etc/nobody.conf'),
-    Path(XDG_CONFIG_HOME / 'nobody.conf'),
-    Path('~/.nobody.conf'),
+    Path('/etc/nobodd.conf'),
+    Path('/usr/local/etc/nobodd.conf'),
+    Path(XDG_CONFIG_HOME / 'nobodd.conf'),
+    Path('~/.nobodd.conf'),
 )
 
 
@@ -272,7 +272,7 @@ def duration(s):
 def get_parser(config, **kwargs):
     parser = ConfigArgumentParser(**kwargs)
     parser.add_argument(
-        '--version', action='version', version=version('nobody'))
+        '--version', action='version', version=version('nobodd'))
 
     tftp_section = parser.add_argument_group('tftp', section='tftp')
     tftp_section.add_argument(
@@ -304,7 +304,7 @@ def get_config():
     config = ConfigParser(
         delimiters=('=',), empty_lines_in_values=False, interpolation=None,
         strict=False)
-    with resources.path('nobody', 'default.conf') as default_conf:
+    with resources.path('nobodd', 'default.conf') as default_conf:
         config.read(default_conf)
     valid = {config.default_section: set()}
     for section, keys in config.items():

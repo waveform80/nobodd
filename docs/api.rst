@@ -2,7 +2,7 @@
 API Reference
 =============
 
-In additional to being a service, nobody can also be used as an API from Python
+In additional to being a service, nobodd can also be used as an API from Python
 to access disk images, determining their partitioning style, enumerating the
 available partitions, and reading FAT file-systems (either from within a disk
 image, or just standalone). It can also be used as the basis of a generic TFTP
@@ -13,7 +13,7 @@ The following sections list the modules by their topic.
 Disk Images
 ===========
 
-The :class:`nobody.disk.DiskImage` class is the primary entry-point for dealing
+The :class:`nobodd.disk.DiskImage` class is the primary entry-point for dealing
 with disk images.
 
 .. toctree::
@@ -27,7 +27,7 @@ with disk images.
 FAT Filesystem
 ==============
 
-The :class:`nobody.fs.FatFileSystem` class is the primary entry-point for
+The :class:`nobodd.fs.FatFileSystem` class is the primary entry-point for
 handling FAT file-systems.
 
 .. toctree::
@@ -41,11 +41,11 @@ handling FAT file-systems.
 TFTP Service
 ============
 
-The :class:`nobody.tftpd.TFTPBaseServer` and
-:class:`nobody.tftpd.TFTPBaseHandler` are two classes which may be customized
+The :class:`nobodd.tftpd.TFTPBaseServer` and
+:class:`nobodd.tftpd.TFTPBaseHandler` are two classes which may be customized
 to produce a TFTP server. Two example classes are included,
-:class:`~nobody.tftpd.SimpleTFTPServer` and
-:class:`~nobody.tftp.SimpleTFTPHandler` which serve files directly from a
+:class:`~nobodd.tftpd.SimpleTFTPServer` and
+:class:`~nobodd.tftp.SimpleTFTPHandler` which serve files directly from a
 specified path.
 
 .. toctree::
@@ -58,12 +58,12 @@ specified path.
 Command line application
 ========================
 
-The :mod:`nobody.main` module contains the primary classes,
-:class:`~nobody.main.BootServer` and :class:`~nobody.main.BootHandler` which
+The :mod:`nobodd.main` module contains the primary classes,
+:class:`~nobodd.main.BootServer` and :class:`~nobodd.main.BootHandler` which
 define a TFTP server that reads files from FAT file-systems contained in OS
 images.
 
-The other modules, :mod:`nobody.config` and :mod:`nobody.tools` provide
+The other modules, :mod:`nobodd.config` and :mod:`nobodd.tools` provide
 configuration parsing and miscellaneous utilities respectively.
 
 .. toctree::

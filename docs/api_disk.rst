@@ -1,10 +1,10 @@
 ==============
-nobody.disk
+nobodd.disk
 ==============
 
-.. module:: nobody.disk
+.. module:: nobodd.disk
 
-The :mod:`nobody.disk` module contains the :class:`DiskImage` class which is
+The :mod:`nobodd.disk` module contains the :class:`DiskImage` class which is
 the primary entry point for handling disk images. Constructed with a filename
 (or file-like object which provides a valid :meth:`~io.IOBase.fileno` method),
 the class will attempt to determine if `MBR`_ or `GPT`_ style partitioning is
@@ -13,12 +13,12 @@ enumerate, or access the data of, individual partitions:
 
 .. code-block:: pycon
 
-    >>> from nobody.disk import DiskImage
+    >>> from nobodd.disk import DiskImage
     >>> img = DiskImage('test-gpt.img')
     >>> img.partitions.style
     'gpt'
     >>> img.partitions
-    <nobody.disk.DiskPartitionsGPT object at 0x7f6248b99c30>
+    <nobodd.disk.DiskPartitionsGPT object at 0x7f6248b99c30>
     >>> len(img.partitions)
     2
     >>> img.partitions[1]
@@ -34,10 +34,10 @@ partitions 1, 5, and 6:
 
 .. code-block:: pycon
 
-    >>> from nobody.disk import DiskImage
+    >>> from nobodd.disk import DiskImage
     >>> img = DiskImage('test-ebr.img')
     >>> img.partitions
-    <nobody.disk.DiskPartitionsMBR object at 0x7f74fda8d3f0>
+    <nobodd.disk.DiskPartitionsMBR object at 0x7f74fda8d3f0>
     >>> img.partitions.style
     'mbr'
     >>> len(img.partitions)

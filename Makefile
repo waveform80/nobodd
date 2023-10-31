@@ -30,7 +30,7 @@ SUBDIRS:=
 DIST_WHEEL=dist/$(WHEEL_NAME)-$(VER)-py3-none-any.whl
 DIST_TAR=dist/$(NAME)-$(VER).tar.gz
 DIST_ZIP=dist/$(NAME)-$(VER).zip
-MAN_PAGES=man/nobody.1
+MAN_PAGES=man/nobodd.1
 
 
 # Default target

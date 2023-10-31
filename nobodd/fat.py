@@ -91,7 +91,7 @@ class ExtendedBIOSParameterBlock(
 
     It provides several (effectively unused) legacy fields, but also provides
     the "file_system" field which is used as the primary means of
-    distinguishing the different FAT types (see :func:`nobody.fs.fat_type`),
+    distinguishing the different FAT types (see :func:`nobodd.fs.fat_type`),
     and the self-explanatory "volume_label" field.
 
     .. _Extended BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Extended_BIOS_Parameter_Block
