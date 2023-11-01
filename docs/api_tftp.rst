@@ -17,6 +17,42 @@ Enumerations
 .. autoclass:: Error
 
 
+Constants
+=========
+
+.. data:: TFTP_BLKSIZE
+.. data:: TFTP_MIN_BLKSIZE
+.. data:: TFTP_DEF_BLKSIZE
+.. data:: TFTP_MAX_BLKSIZE
+
+    Constants defining the ``blksize`` TFTP option; the name of the option, its
+    minimum, default, and maximum values.
+
+.. data:: TFTP_TIMEOUT
+.. data:: TFTP_UTIMEOUT
+.. data:: TFTP_MIN_TIMEOUT_NS
+.. data:: TFTP_DEF_TIMEOUT_NS
+.. data:: TFTP_MAX_TIMEOUT_NS
+
+    Constants defining the ``timeout`` and ``utimeout`` TFTP options; the name
+    of the options, the minimum, default, and maximum values, in units of
+    nano-seconds.
+
+.. data:: TFTP_BINARY
+.. data:: TFTP_NETASCII
+.. data:: TFTP_MODES
+
+    Constants defining the available transfer modes.
+
+.. data:: TFTP_TSIZE
+
+    Constant defining the name of the ``tsize`` TFTP option.
+
+.. data:: TFTP_OPTIONS
+
+    Constant defining the TFTP options available for negotiation.
+
+
 Packets
 =======
 

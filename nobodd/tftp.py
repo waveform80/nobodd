@@ -27,10 +27,11 @@ TFTP_DEF_TIMEOUT_NS = 1_000_000_000 # 1s
 
 TFTP_BINARY = 'octet'
 TFTP_NETASCII = 'netascii'
-TFTP_MODES = {TFTP_BINARY, TFTP_NETASCII}
+TFTP_MODES = frozenset({TFTP_BINARY, TFTP_NETASCII})
 
 TFTP_TSIZE = 'tsize'
-TFTP_OPTIONS = {TFTP_TSIZE, TFTP_BLKSIZE, TFTP_TIMEOUT, TFTP_UTIMEOUT}
+TFTP_OPTIONS = frozenset({TFTP_TSIZE, TFTP_BLKSIZE, TFTP_TIMEOUT,
+                          TFTP_UTIMEOUT})
 
 
 class OpCode(IntEnum):
@@ -52,8 +53,8 @@ class OpCode(IntEnum):
 class Error(IntEnum):
     """
     Enumeration of error status for the `Trivial File Transfer Protocol`_
-    (TFTP). These are used in packets with :class:`OpCode` ERROR to indicate
-    the sort of error that has occurred.
+    (TFTP). These are used in packets with :class:`OpCode` ``ERROR`` to
+    indicate the sort of error that has occurred.
 
     .. _Trivial File Transfer Protocol: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
     """
@@ -135,7 +136,7 @@ class Packet:
 
 class RRQPacket(Packet):
     """
-    Concrete type for RRQ (read request) packets.
+    Concrete type for ``RRQ`` (read request) packets.
 
     These packets are sent by a client to initiate a transfer. They include the
     *filename* to be sent, the *mode* to send it (one of the strings "octet" or
@@ -198,11 +199,11 @@ class RRQPacket(Packet):
 
 class DATAPacket(Packet):
     """
-    Concrete type for DATA packets.
+    Concrete type for ``DATA`` packets.
 
-    These are sent in response to RRQ, WRQ, or ACK packets and each contains a
-    block of the file to transfer, *data* (by default, 512 bytes long unless
-    this is the final DATA packet), and the *block* number.
+    These are sent in response to ``RRQ``, ``WRQ``, or ``ACK`` packets and each
+    contains a block of the file to transfer, *data* (by default, 512 bytes
+    long unless this is the final ``DATA`` packet), and the *block* number.
     """
     __slots__ = ('block', 'data')
     opcode = OpCode.DATA
@@ -223,10 +224,10 @@ class DATAPacket(Packet):
 
 class ACKPacket(Packet):
     """
-    Concrete type for ACK packets.
+    Concrete type for ``ACK`` packets.
 
-    These are sent in response to DATA packets, and acknowledge the successful
-    receipt of the specified *block*.
+    These are sent in response to ``DATA`` packets, and acknowledge the
+    successful receipt of the specified *block*.
     """
     __slots__ = ('block',)
     opcode = OpCode.ACK
@@ -245,14 +246,14 @@ class ACKPacket(Packet):
 
 class ERRORPacket(Packet):
     """
-    Concrete type for ERROR packets.
+    Concrete type for ``ERROR`` packets.
 
     These are sent by either end of a transfer to indicate a fatal error
-    condition. Receipt of an ERROR packet immediately terminates a transfer
+    condition. Receipt of an ``ERROR`` packet immediately terminates a transfer
     without further acknowledgment.
 
-    The ERROR packet contains the *error* code (an :class:`Error` value) and a
-    descriptive *message*.
+    The ``ERROR`` packet contains the *error* code (an :class:`Error` value)
+    and a descriptive *message*.
     """
     __slots__ = ('error', 'message')
     opcode = OpCode.ERROR
@@ -286,11 +287,12 @@ class ERRORPacket(Packet):
 
 class OACKPacket(Packet):
     """
-    Concrete type for OACK packets.
+    Concrete type for ``OACK`` packets.
 
-    This is sent by the server instead of an initial DATA packet, when the
-    client includes options in the RRQ packet. The content of the packet is all
-    the *options* the server accepts, and their (potentially revised) values.
+    This is sent by the server instead of an initial ``DATA`` packet, when the
+    client includes options in the ``RRQ`` packet. The content of the packet is
+    all the *options* the server accepts, and their (potentially revised)
+    values.
     """
     __slots__ = ('options',)
     opcode = OpCode.OACK

@@ -59,4 +59,3 @@ never be needed (directly) by applications.
 .. autoexception:: AlreadyAcknowledged
 
 .. autoexception:: BadOptions
-

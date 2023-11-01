@@ -50,16 +50,52 @@ from .tftp import (
 
 
 class TransferDone(Exception):
-    pass
+    """
+    Exception raised internally to signal that a transfer has been completed.
+    """
 
 class AlreadyAcknowledged(ValueError):
-    pass
+    """
+    Exception raised internally to indicate that a particular data packet was
+    already acknowledged, and does not require repeated acknowlegement.
+    """
 
 class BadOptions(ValueError):
-    pass
+    """
+    Exception raised when a client passes invalid options in a
+    :class:`~nobodd.tftp.RRQPacket`.
+    """
 
 
 class TFTPClientState:
+    """
+    Represents the state of a single transfer with a client. Constructed with
+    the client's *address* (format varies according to family), the *path* of
+    the file to transfer (must be a :class:`~pathlib.Path`-like object,
+    specifically one with a functioning :meth:`~pathlib.Path.open` method), and
+    the *mode* of the transfer (must be either :data:`~nobodd.tftp.TFTP_BINARY`
+    or :data:`~nobodd.tftp.TFTP_NETASCII`).
+
+    .. attribute:: blocks
+
+        An internal mapping of block numbers to blocks. This caches blocks that
+        have been read, transmitted, but not yet acknowledged. As ``ACK``
+        packets are received, blocks are removed from this cache.
+
+    .. attribute:: block_size
+
+        The size, in bytes, of blocks to transfer to the client.
+
+    .. attribute:: timeout
+
+        The timeout, in nano-seconds, to use before re-transmitting packets to
+        the client.
+
+    .. attribute:: mode
+
+        The transfer mode. One of :data:`~nobodd.tftp.TFTP_BINARY` or
+        :data:`~nobodd.tftp.TFTP_NETASCII`.
+    """
     def __init__(self, address, path, mode=TFTP_BINARY):
         self.address = address
         self.source = path.open('rb')
@@ -76,6 +112,19 @@ class TFTPClientState:
         self.last_send = None
 
     def negotiate(self, options):
+        """
+        Called with *options*, a mapping of option names to values (both
+        :class:`str`) that the client wishes to negotiate.
+
+        Currently supported options are defined in
+        :data:`nobodd.tftp.TFTP_OPTIONS`. The original *options* mapping is
+        left unchanged. Returns a new options mapping containing only those
+        options that we understand and accept, and with values adjusted to
+        those that we can support.
+
+        Raises :exc:`BadOptions` in the case that the client requests
+        pathologically silly or dangerous options.
+        """
         # Strip out any options we don't support, but maintain the original
         # order of them (in accordance with RFC2347); this also ensures the
         # local options dict is distinct from the one passed in (so we can't
@@ -114,10 +163,25 @@ class TFTPClientState:
         return options
 
     def ack(self, block_num):
+        """
+        Specifies that *block_num* has been acknowledged by the client and can
+        be removed from :attr:`blocks`, the internal block cache.
+        """
         with suppress(KeyError):
             self.last_ack_size = len(self.blocks.pop(block_num))
 
     def get_block(self, block_num):
+        """
+        Returns the :class:`bytes` of the specified *block_num*.
+
+        If the *block_num* has not been read yet, this will cause the
+        :attr:`source` to be read. Otherwise, it will be returned from the
+        as-yet unacknowledged block cache (in :attr:`blocks`). If the block
+        has already been acknowledged, which may happen asynchronously, this
+        will raise :exc:`AlreadyAcknowledged`.
+
+        A :exc:`ValueError` is raised if an invalid block is requested.
+        """
         if self.blocks_read + 1 == block_num:
             if self.finished:
                 raise TransferDone('transfer completed')
@@ -139,6 +203,16 @@ class TFTPClientState:
                 raise ValueError('invalid block number requested')
 
     def get_size(self):
+        """
+        Attempts to calculate the size of the transfer. This is used when
+        negotiating the ``tsize`` option.
+
+        At first, :func:`os.fstat` is attempted on the open file; if this fails
+        (e.g. because there's no valid ``fileno``), the routine will attempt to
+        :meth:`~io.IOBase.seek` to the end of the file briefly to determine
+        its size. Raises :exc:`OSError` in the case that the size cannot be
+        determined.
+        """
         try:
             # The most reliable method of determining size is to stat the
             # open fd (guarantees we're talking about the same file even if
@@ -161,6 +235,10 @@ class TFTPClientState:
 
     @property
     def transferred(self):
+        """
+        Returns the number of bytes transferred to client and successfully
+        acknowledged.
+        """
         if self.last_ack_size is None:
             return 0
         else:
@@ -168,12 +246,28 @@ class TFTPClientState:
 
     @property
     def finished(self):
+        """
+        Indicates whether the transfer has completed or not. A transfer is
+        considered complete when the final (under-sized) block has been sent to
+        the client *and acknowledged*.
+        """
         return (
             self.last_ack_size is not None and
             self.last_ack_size < self.block_size)
 
 
 class TFTPHandler(BaseRequestHandler):
+    """
+    Abstract base handler for TFTP transfers.
+
+    This handles decoding TFTP packets with the classes defined in
+    :mod:`nobodd.tftp`. If the decoding is successful, it attempts to call a
+    corresponding ``do_`` method (e.g. ``do_RRQ``, ``do_ACK``) with the decoded
+    packet. The handler must return a :class:`nobodd.tftp.Packet` in response.
+
+    This base class defines no ``do_`` methods itself; see
+    :class:`TFTPBaseHandler` and :class:`TFTPSubHandler`.
+    """
     def setup(self):
         self.packet, self.socket = self.request
         self.rfile = io.BytesIO(self.packet)
@@ -224,12 +318,41 @@ class TFTPHandler(BaseRequestHandler):
 
 
 class TFTPBaseHandler(TFTPHandler):
+    """
+    A abstract base handler for building TFTP servers.
+
+    Implemented :meth:`do_RRQ` to handle the initial
+    :class:`nobodd.tftp.RRQPacket` of a transfer. This calls the abstract
+    :meth:`resolve_path` to obtain the :class:`~pathlib.Path`-like object
+    representing the requested file. Descendents must (at a minimum) override
+    :meth:`resolve_path` to implement a TFTP server.
+    """
+
     def resolve_path(self, filename):
-        # Must be overridden by descendents to provide a Path(-like) object
-        # representing the requested *filename*
+        """
+        Given *filename*, as requested by a TFTP client, returns a
+        :class:`~pathlib.Path`-like object.
+
+        In the base class, this is an abstract method which raises
+        :exc:`NotImplementedError`. Descendents must override this method to
+        return a :class:`~pathlib.Path`-like object, specifically one with a
+        working :meth:`~pathlib.Path.open` method, representing the file
+        requested, or raise an :exc:`OSError` (e.g. :exc:`FileNotFoundError`)
+        if the requested *filename* is invalid.
+        """
         raise NotImplementedError
 
     def do_RRQ(self, packet):
+        """
+        Handles *packet*, initial :class:`nobodd.tftp.RRQPacket` of a
+        connection.
+
+        If option negotiation succeeds, and :meth:`resolve_path` returns a
+        valid :class:`~pathlib.Path`-like object, this method will spin up a
+        :class:`TFTPSubServer` instance in a background thread (see
+        :class:`TFTPSubServers`) on an ephemeral port to handle all further
+        interaction with this client.
+        """
         try:
             self.server.logger.info(
                 '%s - RRQ (%s) %s',
