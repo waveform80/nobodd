@@ -6,11 +6,12 @@ from .tools import labels, formats, FrozenDict
 
 
 # The following references were essential in constructing this module; the
-# original TFTP version 2 [RFC1350], and the wikipedia page documenting the
-# protocol [1].
+# original TFTP version 2 [RFC1350], the TFTP option extension [RFC2347], and
+# the wikipedia page documenting the protocol [1].
 #
 # [1]: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
 # [RFC1350]: https://datatracker.ietf.org/doc/html/rfc1350
+# [RFC2347]: https://datatracker.ietf.org/doc/html/rfc2347
 
 
 TFTP_BLKSIZE = 'blksize'
@@ -33,6 +34,13 @@ TFTP_OPTIONS = {TFTP_TSIZE, TFTP_BLKSIZE, TFTP_TIMEOUT, TFTP_UTIMEOUT}
 
 
 class OpCode(IntEnum):
+    """
+    Enumeration of op-codes for the `Trivial File Transfer Protocol`_ (TFTP).
+    These appear at the start of any TFTP packet to indicate what sort of
+    packet it is.
+
+    .. _Trivial File Transfer Protocol: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
+    """
     RRQ = 1
     WRQ = auto()
     DATA = auto()
@@ -42,6 +50,13 @@ class OpCode(IntEnum):
 
 
 class Error(IntEnum):
+    """
+    Enumeration of error status for the `Trivial File Transfer Protocol`_
+    (TFTP). These are used in packets with :class:`OpCode` ERROR to indicate
+    the sort of error that has occurred.
+
+    .. _Trivial File Transfer Protocol: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
+    """
     UNDEFINED = 0
     NOT_FOUND = auto()
     NOT_AUTH = auto()
@@ -54,6 +69,30 @@ class Error(IntEnum):
 
 
 class Packet:
+    """
+    Abstract base class for all TFTP packets. This provides the class method
+    :meth:`Packet.from_bytes` which constructs and returns the appropriate
+    concrete sub-class for the :class:`OpCode` found at the beginning of the
+    packet's data.
+
+    Instances of the concrete classes may be converted back to :class:`bytes`
+    simply by calling :class:`bytes` on them::
+
+        >>> b = b'\\x00\\x01config.txt\\0octet\\0'
+        >>> r = Packet.from_bytes(b)
+        >>> r
+        RRQPacket(filename='config.txt', mode='octet', options=FrozenDict({}))
+        >>> bytes(r)
+        b'\\x00\\x01config.txt\\x00octet\\x00'
+
+    Concrete classes can also be constructed directly, for conversion into
+    :class:`bytes` during transfer::
+
+        >>> bytes(ACKPacket(block=10))
+        b'\\x00\\x04\\x00\\n'
+        >>> bytes(RRQPacket('foo', 'netascii', {'tsize': 0}))
+        b'\\x00\\x01foo.txt\\x00netascii\\x00tsize\\x000\\x00'
+    """
     __slots__ = ()
     opcode = None
 
@@ -65,6 +104,14 @@ class Packet:
 
     @classmethod
     def from_bytes(cls, s):
+        """
+        Given a :class:`bytes`-string *s*, checks the :class:`OpCode` at the
+        front, and constructs one of the concrete packet types defined below,
+        returning (instead of :class:`Packet` which is abstract)::
+
+            >>> Packet.from_bytes(b'\\x00\\x01config.txt\\0octet\\0')
+            RRQPacket(filename='config.txt', mode='octet', options=FrozenDict({}))
+        """
         opcode, = struct.unpack_from('!H', s)
         return {
             OpCode.RRQ:   RRQPacket,
@@ -76,10 +123,24 @@ class Packet:
 
     @classmethod
     def from_data(cls, data):
+        """
+        Constructs an instance of the packet class with the specified *data*
+        (which is everything in the :class:`bytes`-string passed to
+        :meth:`from_bytes` minus the header). This method is not implemented in
+        :class:`Packet` but is expected to be implemented in any concrete
+        descendant.
+        """
         raise NotImplementedError()
 
 
 class RRQPacket(Packet):
+    """
+    Concrete type for RRQ (read request) packets.
+
+    These packets are sent by a client to initiate a transfer. They include the
+    *filename* to be sent, the *mode* to send it (one of the strings "octet" or
+    "netascii"), and any *options* the client wishes to negotiate.
+    """
     __slots__ = ('filename', 'mode', 'options')
     opcode = OpCode.RRQ
     options_re = re.compile(
@@ -91,9 +152,11 @@ class RRQPacket(Packet):
         rb'(?P<options>(?:[\x20-\xFF]+\0[\x01-\xFF]*\0)*)'
         rb'.*')
 
-    def __init__(self, filename, mode, options):
+    def __init__(self, filename, mode, options=None):
         self.filename = str(filename)
         self.mode = str(mode).lower()
+        if options is None:
+            options = ()
         self.options = FrozenDict(options)
 
     def __bytes__(self):
@@ -106,7 +169,7 @@ class RRQPacket(Packet):
                 for name, value in self.options.items()
                 for s in (
                     name.encode('ascii'), b'\0',
-                    value.encode('ascii'), b'\0',
+                    str(value).encode('ascii'), b'\0',
                 )
             )),
         ))
@@ -134,6 +197,13 @@ class RRQPacket(Packet):
 
 
 class DATAPacket(Packet):
+    """
+    Concrete type for DATA packets.
+
+    These are sent in response to RRQ, WRQ, or ACK packets and each contains a
+    block of the file to transfer, *data* (by default, 512 bytes long unless
+    this is the final DATA packet), and the *block* number.
+    """
     __slots__ = ('block', 'data')
     opcode = OpCode.DATA
 
@@ -152,6 +222,12 @@ class DATAPacket(Packet):
 
 
 class ACKPacket(Packet):
+    """
+    Concrete type for ACK packets.
+
+    These are sent in response to DATA packets, and acknowledge the successful
+    receipt of the specified *block*.
+    """
     __slots__ = ('block',)
     opcode = OpCode.ACK
 
@@ -168,6 +244,16 @@ class ACKPacket(Packet):
 
 
 class ERRORPacket(Packet):
+    """
+    Concrete type for ERROR packets.
+
+    These are sent by either end of a transfer to indicate a fatal error
+    condition. Receipt of an ERROR packet immediately terminates a transfer
+    without further acknowledgment.
+
+    The ERROR packet contains the *error* code (an :class:`Error` value) and a
+    descriptive *message*.
+    """
     __slots__ = ('error', 'message')
     opcode = OpCode.ERROR
 
@@ -199,6 +285,13 @@ class ERRORPacket(Packet):
 
 
 class OACKPacket(Packet):
+    """
+    Concrete type for OACK packets.
+
+    This is sent by the server instead of an initial DATA packet, when the
+    client includes options in the RRQ packet. The content of the packet is all
+    the *options* the server accepts, and their (potentially revised) values.
+    """
     __slots__ = ('options',)
     opcode = OpCode.OACK
     options_re = RRQPacket.options_re
