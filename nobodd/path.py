@@ -4,7 +4,6 @@ import re
 import stat
 import fnmatch
 import datetime as dt
-from pathlib import PurePosixPath
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
@@ -38,6 +37,7 @@ class FatPath:
     modification (``mkdir``, ``chmod``, etc.) are not included.
     """
     __slots__ = ('_fs', '_index', '_entry', '_parts', '_resolved')
+    sep = '/'
 
     def __init__(self, fs, *pathsegments):
         self._fs = fs
@@ -51,12 +51,12 @@ class FatPath:
 
     def __str__(self):
         if self._parts == ('',):
-            return '/'
+            return self.sep
         else:
-            return '/'.join(self._parts)
+            return self.sep.join(self._parts)
 
     @classmethod
-    def _from_index(cls, fs, index, prefix='/'):
+    def _from_index(cls, fs, index, prefix=sep):
         """
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
@@ -68,7 +68,7 @@ class FatPath:
         return self
 
     @classmethod
-    def _from_entries(cls, fs, entries, prefix='/'):
+    def _from_entries(cls, fs, entries, prefix=sep):
         """
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *entries* (a sequence of
@@ -76,13 +76,13 @@ class FatPath:
         :class:`~nobodd.fat.DirectoryEntry` instances), and a *prefix* path.
         """
         filename, entry = get_filename_entry(entries)
-        if not prefix.endswith('/'):
-            prefix += '/'
+        if not prefix.endswith(cls.sep):
+            prefix += cls.sep
         if entry.attr & 0x10: # directory
             cluster = entry.first_cluster_lo | (
                 entry.first_cluster_hi << 16 if fs.fat_type == 'fat32' else 0)
             self = cls._from_index(
-                fs, fs.open_dir(cluster), prefix + filename + '/')
+                fs, fs.open_dir(cluster), prefix + filename + cls.sep)
         else:
             self = cls(fs, prefix + filename)
         self._entry = entry
@@ -100,7 +100,7 @@ class FatPath:
         assert self._entry is None
         try:
             parts = self.parts
-            if parts[0] != '/':
+            if parts[0] != self.sep:
                 raise ValueError('relative FatPath cannot be resolved')
             parts = parts[1:]
             parent = self._fs.root
@@ -285,8 +285,8 @@ class FatPath:
             elif part == '**':
                 yielded = set()
                 for path in recursive(parent, parts):
-                    if path._path not in yielded:
-                        yielded.add(path._path)
+                    if path._parts not in yielded:
+                        yielded.add(path._parts)
                         yield path
             elif '**' in part:
                 raise ValueError(
@@ -325,10 +325,10 @@ class FatPath:
             inordinate amount of time.
         """
         self._must_exist()
-        pat_parts = PurePosixPath(pattern.lower()).parts
+        pat_parts = tuple(p.lower() for p in self.parts)
         if not pat_parts:
             raise ValueError('Unacceptable pattern')
-        if pat_parts[0] == '/':
+        if pat_parts[0] == self.sep:
             raise ValueError('Non-relative patterns are not supported')
         yield from self._search(self, pat_parts)
 
@@ -338,10 +338,10 @@ class FatPath:
         specified *pattern*.
         """
         self._must_exist()
-        pat_parts = PurePosixPath(pattern.lower()).parts
+        pat_parts = tuple(p.lower() for p in self.parts)
         if not pat_parts:
             raise ValueError('Unacceptable pattern')
-        if pat_parts[0] == '/':
+        if pat_parts[0] == self.sep:
             raise ValueError('Non-relative patterns are not supported')
         yield from self._search(self, ('**',) + pat_parts)
 
@@ -379,7 +379,7 @@ class FatPath:
                 0,                     # uid
                 0,                     # gid
                 0,                     # size
-                0,                     # atime XXX
+                0,                     # atime
                 0,                     # mtime
                 0))                    # ctime
         elif self._entry is not None:
@@ -411,14 +411,14 @@ class FatPath:
         """
         Returns a string representing the root. This is always "/".
         """
-        return '/'
+        return self.sep
 
     @property
     def anchor(self):
         """
         Returns the concatenation of the drive and root. This is always "/".
         """
-        return '/'
+        return self.sep
 
     @property
     def name(self):
@@ -496,8 +496,52 @@ class FatPath:
             ['/', 'nobodd', 'main.py']
         """
         return tuple(
-            '/' if index == 0 and part == '' else part
+            self.sep if index == 0 and part == '' else part
             for index, part in enumerate(self._parts))
+
+    @property
+    def parent(self):
+        """
+        The logical parent of the path::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.parent
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd')
+
+        You cannot go past an anchor::
+
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.parent.parent.parent
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/')
+        """
+        if len(self._parts) > 1:
+            return type(self)(self._fs, *self._parts[:-1])
+        elif self._parts == ('',) or self._parts == ('.',):
+            return self
+        else:
+            return type(self)(self._fs, '.')
+
+    @property
+    def parents(self):
+        """
+        An immutable sequence providing access to the logical ancestors of the
+        path::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.parents
+            (FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd'),
+             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/'))
+        """
+        result = [self.parent]
+        self = result[-1]
+        while self.parent is not self:
+            result.append(self.parent)
+            self = result[-1]
+        return tuple(result)
 
     def read_text(self, encoding=None, errors=None):
         """
@@ -571,14 +615,27 @@ class FatPath:
         """
         Return whether or not this path is relative to the *other* path.
         """
-        raise NotImplementedError
+        try:
+            self.relative_to(*other)
+        except ValueError:
+            return False
+        else:
+            return True
 
     def relative_to(self, *other):
         """
         Compute a version of this path relative to the path represented by
         *other*. If it's impossible, :exc:`ValueError` is raised.
         """
-        raise NotImplementedError
+        if not other:
+            raise TypeError('need at least one argument')
+        to = type(self)(self._fs, *other)
+        n = len(to._parts)
+        if self._parts[:n] != to._parts:
+            raise ValueError(
+                f'{self!r} is not in the subpath of {to!r} OR one path is '
+                f'relative and the other is absolute')
+        return type(self)(self._fs, *self._parts[n:])
 
     def joinpath(self, *other):
         """
@@ -605,14 +662,18 @@ class FatPath:
         Return a new path with the :attr:`name` changed. If the original path
         doesn't have a name, :exc:`ValueError` is raised.
         """
-        raise NotImplementedError
+        if not self.name:
+            raise ValueError(f'{self!r} has an empty name')
+        if not name or name[-1] == self.sep:
+            raise ValueError(f'invalid name {name!r}')
+        return type(self)(self._fs, *self._parts[:-1], name)
 
     def with_stem(self, stem):
         """
         Return a new path with the :attr:`stem` changed. If the original path
         doesn't have a name, :exc:`ValueError` is raised.
         """
-        raise NotImplementedError
+        return self.with_name(stem + self.suffix)
 
     def with_suffix(self, suffix):
         """
@@ -620,7 +681,17 @@ class FatPath:
         doesn't have a suffix, the new *suffix* is appended instead. If the
         *suffix* is an empty string, the original suffix is removed.
         """
-        raise NotImplementedError
+        if self.sep in suffix:
+            raise ValueError(f'Invalid suffix {suffix!r}')
+        if suffix and not suffix.startswith('.') or suffix == '.':
+            raise ValueError(f'Invalid suffix {suffix!r}')
+        name = self.name
+        old_suffix = self.suffix
+        if not old_suffix:
+            name = name + suffix
+        else:
+            name = name[:-len(old_suffix)] + suffix
+        return self.with_name(name)
 
     __truediv__ = joinpath
 
@@ -631,7 +702,7 @@ class FatPath:
             raise TypeError(
                 f'comparison is not supported between instances of '
                 f'{self.__class__.__name__} with different file-systems')
-        return all(
+        return len(sp) == len(op) and all(
             sp.lower() == op.lower()
             for sp, op in zip_longest(self._parts, other._parts, fillvalue=''))
 
@@ -657,23 +728,6 @@ class FatPath:
 
     def __ge__(self, other):
         return self.__eq__(other) or self.__gt__(other)
-
-    @property
-    def parents(self):
-        result = [self.parent]
-        self = result[-1]
-        while self.parent is not self:
-            result.append(self.parent)
-            self = result[-1]
-        return result
-
-    @property
-    def parent(self):
-        parent = self._path.parent
-        if self._path == parent:
-            return self
-        else:
-            return type(self)(self._fs, parent)
 
 
 def get_filename_entry(entries, dos_encoding='iso-8859-1'):
@@ -788,5 +842,5 @@ def get_parts(*pathsegments):
     return tuple(
         part
         for i1, segment in enumerate(pathsegments)
-        for i2, part in enumerate(segment.split('/'))
+        for i2, part in enumerate(str(segment).split('/'))
         if i1 == i2 == 0 or part)
