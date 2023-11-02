@@ -262,18 +262,28 @@ class TFTPHandler(BaseRequestHandler):
 
     This handles decoding TFTP packets with the classes defined in
     :mod:`nobodd.tftp`. If the decoding is successful, it attempts to call a
-    corresponding ``do_`` method (e.g. ``do_RRQ``, ``do_ACK``) with the decoded
-    packet. The handler must return a :class:`nobodd.tftp.Packet` in response.
+    corresponding ``do_`` method (e.g. :meth:`~TFTPBaseHandler.do_RRQ`,
+    :meth:`~TFTPSubHandler.do_ACK`) with the decoded packet. The handler must
+    return a :class:`nobodd.tftp.Packet` in response.
 
     This base class defines no ``do_`` methods itself; see
     :class:`TFTPBaseHandler` and :class:`TFTPSubHandler`.
     """
     def setup(self):
+        """
+        Overridden to set up the :attr:`rfile` and :attr:`wfile` objects.
+        """
         self.packet, self.socket = self.request
         self.rfile = io.BytesIO(self.packet)
         self.wfile = io.BytesIO()
 
     def handle(self):
+        """
+        Attempts to decode the incoming :class:`~nobodd.tftp.Packet` and
+        dispatch it to an appropriately named ``do_`` method. If the method
+        returns another :class:`~nobodd.tftp.Packet`, it will be sent as the
+        response.
+        """
         try:
             packet = Packet.from_bytes(self.rfile.read())
             self.server.logger.debug(
@@ -306,14 +316,20 @@ class TFTPHandler(BaseRequestHandler):
                 self.wfile.write(bytes(response))
 
     def finish(self):
-        # We do this ourselves because socketserver.DatagramRequestHandler
-        # sends out an empty UDP packet when the handler writes nothing to
-        # wfile. This breaks certain TFTP clients; we want to do nothing in
-        # this case
+        """
+        Overridden to send the response written to :attr:`wfile`. Returns the
+        number of bytes written.
+
+        .. note::
+
+            In contrast to the usual DatagramRequestHandler, this method does
+            *not* send an empty packet in the event that :attr:`wfile` has no
+            content, as that confused several TFTP clients.
+        """
         buf = self.wfile.getvalue()
         if buf:
-            # We also return the number of bytes written; this is used in
-            # descendents to track when we've *actually* written something
+            # Return the number of bytes written; this is used in descendents
+            # to track when we've *actually* written something
             return self.socket.sendto(buf, self.client_address)
 
 
@@ -321,8 +337,8 @@ class TFTPBaseHandler(TFTPHandler):
     """
     A abstract base handler for building TFTP servers.
 
-    Implemented :meth:`do_RRQ` to handle the initial
-    :class:`nobodd.tftp.RRQPacket` of a transfer. This calls the abstract
+    Implements :meth:`do_RRQ` to handle the initial
+    :class:`~nobodd.tftp.RRQPacket` of a transfer. This calls the abstract
     :meth:`resolve_path` to obtain the :class:`~pathlib.Path`-like object
     representing the requested file. Descendents must (at a minimum) override
     :meth:`resolve_path` to implement a TFTP server.
@@ -344,7 +360,7 @@ class TFTPBaseHandler(TFTPHandler):
 
     def do_RRQ(self, packet):
         """
-        Handles *packet*, initial :class:`nobodd.tftp.RRQPacket` of a
+        Handles *packet*, the initial :class:`~nobodd.tftp.RRQPacket` of a
         connection.
 
         If option negotiation succeeds, and :meth:`resolve_path` returns a
@@ -403,15 +419,34 @@ class TFTPBaseHandler(TFTPHandler):
             return None
 
     def do_ERROR(self, packet):
-        # Ignore error packets to the main port entirely; the only legitimate
-        # circumstance for this is rejection of negotiated options, in which
-        # case we're not going to start a transfer anyway and no return
-        # acknowledgement is required
+        """
+        Handles :class:`~nobodd.tftp.ERRORPacket` by ignoring it. The only way
+        this should appear on the main port is at the start of a transfer,
+        which would imply we're not going to start a transfer anyway.
+        """
         return None
 
 
 class TFTPSubHandler(TFTPHandler):
+    """
+    Handler for all client interaction after the initial
+    :class:`~nobodd.tftp.RRQPacket`.
+
+    Only the initial packet goes to the "main" TFTP port (69). After that, each
+    transfer communicates between the client's original port (presumably in the
+    ephemeral range) and an ephemeral server port, specific to that transfer.
+    This handler is spawned by the main handler (a descendent of
+    :class:`TFTPBaseHandler`) and deals with all further client communication.
+    In practice this means it only handles :class:`~nobodd.tftp.ACKPacket` and
+    :class:`~nobodd.tftp.ERRORPacket`.
+    """
+
     def handle(self):
+        """
+        Overridden to verify that the incoming packet came from the address
+        (and port) that originally spawned this sub-handler. Logs and otherwise
+        ignores all packets that do not meet this criteria.
+        """
         if self.client_address != self.server.client_state.address:
             self.server.logger.warning(
                 '%s - IGNORE - bad client for %s',
@@ -423,11 +458,21 @@ class TFTPSubHandler(TFTPHandler):
             return super().handle()
 
     def finish(self):
+        """
+        Overridden to note the last time we communicated with this client. This
+        is used by the re-transmit algorithm.
+        """
         written = super().finish()
         if written is not None:
             self.server.client_state.last_send = time_ns()
 
     def do_ACK(self, packet):
+        """
+        Handles :class:`~nobodd.tftp.ACKPacket` by calling
+        :meth:`TFTPClientState.ack`. Terminates the thread for this sub-handler
+        if the transfer is complete, and otherwise sends the next
+        :class:`~nobodd.tftp.DATAPacket` in response.
+        """
         state = self.server.client_state
         try:
             state.ack(packet.block)
@@ -448,10 +493,23 @@ class TFTPSubHandler(TFTPHandler):
                 state.transferred / duration / 1024)
 
     def do_ERROR(self, packet):
+        """
+        Handles :class:`~nobodd.tftp.ERRORPacket` by terminating the transfer
+        (in accordance with the spec.)
+        """
         self.server.done = True
 
 
 class TFTPBaseServer(UDPServer):
+    """
+    A abstract base for building TFTP servers.
+
+    To build a concrete TFTP server, make a descendent of
+    :class:`TFTPBaseHandler` that overrides
+    :meth:`~TFTPBaseHandler.resolve_path`, then make a descendent of this class
+    that calls ``super().__init__`` with the overridden handler class. See
+    :class:`TFTPSimpleHandler` and :class:`TFTPSimpleServer` for examples.
+    """
     allow_reuse_address = True
     allow_reuse_port = True
     logger = logging.getLogger('tftpd')
@@ -468,6 +526,13 @@ class TFTPBaseServer(UDPServer):
 
 
 class TFTPSubServer(UDPServer):
+    """
+    The server class associated with :class:`TFTPSubHandler`.
+
+    You should never need to instantiate this class yourself. The base handler
+    should create an instance of this to handle all communication with the
+    client after the initial ``RRQ`` packet.
+    """
     allow_reuse_address = True
     # NOTE: allow_reuse_port is left False as the sub-server is restricted to
     # ephemeral ports
@@ -482,6 +547,9 @@ class TFTPSubServer(UDPServer):
         self.client_state = client_state
 
     def service_actions(self):
+        """
+        Overridden to handle re-transmission after a timeout.
+        """
         super().service_actions()
         now = time_ns()
         state = self.client_state
@@ -503,6 +571,12 @@ class TFTPSubServer(UDPServer):
 
 
 class TFTPSubServers(Thread):
+    """
+    Manager class for the threads running :class:`TFTPSubServer`.
+
+    :class:`TFTPBaseServer` creates an instance of this to keep track of the
+    background threads that are running transfers with :class:`TFTPSubServer.
+    """
     logger = TFTPBaseServer.logger
 
     def __init__(self):
