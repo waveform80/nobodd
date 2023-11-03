@@ -173,6 +173,10 @@ def boolean(s):
 
 
 def mac_address(s):
+    """
+    Convert the string *s* to a tuple of 6 :class:`int` values, representing
+    the specified MAC-address.
+    """
     try:
         return tuple(int(p, base=16) for p in s.split(':', 5))
     except ValueError:

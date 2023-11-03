@@ -76,6 +76,10 @@ class TFTPClientState:
     the *mode* of the transfer (must be either :data:`~nobodd.tftp.TFTP_BINARY`
     or :data:`~nobodd.tftp.TFTP_NETASCII`).
 
+    .. attribute:: address
+
+        The address of the client.
+
     .. attribute:: blocks
 
         An internal mapping of block numbers to blocks. This caches blocks that
@@ -86,15 +90,19 @@ class TFTPClientState:
 
         The size, in bytes, of blocks to transfer to the client.
 
-    .. attribute:: timeout
-
-        The timeout, in nano-seconds, to use before re-transmitting packets to
-        the client.
-
     .. attribute:: mode
 
         The transfer mode. One of :data:`~nobodd.tftp.TFTP_BINARY` or
         :data:`~nobodd.tftp.TFTP_NETASCII`.
+
+    .. attribute:: source
+
+        The file-like object opened from the specified *path*.
+
+    .. attribute:: timeout
+
+        The timeout, in nano-seconds, to use before re-transmitting packets to
+        the client.
     """
     def __init__(self, address, path, mode=TFTP_BINARY):
         self.address = address
@@ -508,7 +516,7 @@ class TFTPBaseServer(UDPServer):
     :class:`TFTPBaseHandler` that overrides
     :meth:`~TFTPBaseHandler.resolve_path`, then make a descendent of this class
     that calls ``super().__init__`` with the overridden handler class. See
-    :class:`TFTPSimpleHandler` and :class:`TFTPSimpleServer` for examples.
+    :class:`SimpleTFTPHandler` and :class:`SimpleTFTPServer` for examples.
     """
     allow_reuse_address = True
     allow_reuse_port = True
@@ -575,7 +583,7 @@ class TFTPSubServers(Thread):
     Manager class for the threads running :class:`TFTPSubServer`.
 
     :class:`TFTPBaseServer` creates an instance of this to keep track of the
-    background threads that are running transfers with :class:`TFTPSubServer.
+    background threads that are running transfers with :class:`TFTPSubServer`.
     """
     logger = TFTPBaseServer.logger
 
@@ -590,6 +598,10 @@ class TFTPSubServers(Thread):
         self._done.set()
 
     def add(self, server):
+        """
+        Add *server*, a :class:`TFTPSubServer` instance, as a new background
+        thread to be tracked.
+        """
         # Transfers are uniquely identified by TID (transfer ID) which consists
         # of the ephemeral server and client ports involved in the transfer. We
         # actually use the full ephemeral server and client address and port
@@ -608,6 +620,10 @@ class TFTPSubServers(Thread):
         thread.start()
 
     def _remove(self, tid):
+        """
+        Shutdown the server and join the background thread responsible for the
+        transfer with *tid*.
+        """
         server, thread = self._alive.pop(tid)
         self.logger.debug(
             '%s - shutting down server on %s',
@@ -620,6 +636,11 @@ class TFTPSubServers(Thread):
                 f'failed to shutdown thread for {server.server_address}')
 
     def run(self):
+        """
+        Watches background threads for completed or otherwise terminated
+        transfers. Shuts down all remaining servers (and their corresponding
+        threads) at termination.
+        """
         while not self._done.wait(0.01):
             with self._lock:
                 to_remove = {
@@ -635,8 +656,16 @@ class TFTPSubServers(Thread):
 
 
 class SimpleTFTPHandler(TFTPBaseHandler):
+    """
+    An implementation of :class:`TFTPBaseHandler` that overrides uses
+    :attr:`SimpleTFTPServer.base_path` for :meth:`resolve_path`.
+    """
+
     def resolve_path(self, filename):
-        p = Path(filename).resolve()
+        """
+        Resolves *filename* against :attr:`SimpleTFTPServer.base_path`.
+        """
+        p = (self.server.base_path / filename).resolve()
         if self.server.base_path in p.parents:
             return p
         else:
@@ -645,6 +674,15 @@ class SimpleTFTPHandler(TFTPBaseHandler):
 
 
 class SimpleTFTPServer(ThreadingMixIn, TFTPBaseServer):
+    """
+    A trivial (pun intended) implementation of :class:`TFTPBaseServer` that
+    resolves requested paths against *base_path* (a :class:`str` or
+    :class:`~pathlib.Path`).
+
+    .. attribute:: base_path
+
+        The *base_path* specified in the constructor.
+    """
     def __init__(self, server_address, base_path):
         self.base_path = Path(base_path).resolve()
         super().__init__(server_address, SimpleTFTPHandler)
