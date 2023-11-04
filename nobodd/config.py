@@ -7,6 +7,7 @@ from fnmatch import fnmatchcase
 from collections import namedtuple
 from configparser import ConfigParser
 from argparse import ArgumentParser, SUPPRESS
+from ipaddress import ip_address
 
 # NOTE: The fallback comes first here as Python 3.7 incorporates
 # importlib.resources but at a version incompatible with our requirements.
@@ -172,18 +173,7 @@ def boolean(s):
         raise ValueError(f'invalid boolean value: {s}')
 
 
-def mac_address(s):
-    """
-    Convert the string *s* to a tuple of 6 :class:`int` values, representing
-    the specified MAC-address.
-    """
-    try:
-        return tuple(int(p, base=16) for p in s.split(':', 5))
-    except ValueError:
-        raise ValueError(f'invalid MAC address {s!r}')
-
-
-class Board(namedtuple('Board', ('serial', 'image', 'partition', 'mac'))):
+class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
     @classmethod
     def from_section(cls, config, section):
         assert section.startswith('board:')
@@ -192,22 +182,22 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'mac'))):
         image = values['image']
         part = int(values.get('partition', 1))
         try:
-            mac = mac_address(values['mac'])
+            ip = ip_address(values['ip'])
         except KeyError:
-            mac = None
-        return cls(serial, Path(image), part, mac)
+            ip = None
+        return cls(serial, Path(image), part, ip)
 
     @classmethod
     def from_string(cls, s):
         serial, image, *extra = s.split(',')
         serial = int(serial, base=16)
-        mac = part = None
+        ip = part = None
         if len(extra) > 2:
             raise ValueError(
-                f'expected serial,filename,[part],[mac] instead of {s}')
+                f'expected serial,filename,[part],[ip] instead of {s}')
         elif len(extra) > 1:
             part = extra[0]
-            mac = extra[1]
+            ip = extra[1]
         elif len(extra) > 0:
             part = extra[0]
         if part:
@@ -217,9 +207,9 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'mac'))):
                 raise Value(f'invalid partition number {part!r}')
         else:
             part = 1
-        if mac is not None:
-            mac = mac_address(mac)
-        return cls(serial, Path(image), part, mac)
+        if ip is not None:
+            ip = ip_address(ip)
+        return cls(serial, Path(image), part, ip)
 
 
 _SPANS = {
@@ -292,14 +282,14 @@ def get_parser(config, **kwargs):
 
     parser.add_argument(
         '--board', dest='boards', type=Board.from_string, action='append',
-        metavar='SERIAL,FILENAME[,PART[,MAC]]', default=[
+        metavar='SERIAL,FILENAME[,PART[,IP]]', default=[
             Board.from_section(config[section])
             for section in config
             if section.startswith('board:')
         ],
         help="can be specified multiple times to define boards which are to "
         "be served boot images over TFTP; if PART is omitted the default is "
-        "1; if MAC is omitted the MAC address will not be checked")
+        "1; if IP is omitted the IP address will not be checked")
 
     return parser
 

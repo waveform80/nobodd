@@ -42,6 +42,8 @@ class BootHandler(TFTPBaseHandler):
             board = self.server.boards[serial]
         except (ValueError, KeyError):
             raise FileNotFoundError(filename)
+        if board.ip is not None and self.client_address[0] != board.ip:
+            raise PermissionError('IP does not match')
         boot_filename = Path('').joinpath(*p.parts[1:])
         try:
             image, fs = self.server.images[serial]
