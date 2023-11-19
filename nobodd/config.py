@@ -2,6 +2,7 @@ import os
 import re
 import socket
 from pathlib import Path
+from decimal import Decimal
 from contextlib import suppress
 from fnmatch import fnmatchcase
 from collections import namedtuple
@@ -28,8 +29,8 @@ except ImportError:
 # The locations to attempt to read the configuration from
 XDG_CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', '~/.config'))
 CONFIG_LOCATIONS = (
-    Path('/etc/nobodd.conf'),
-    Path('/usr/local/etc/nobodd.conf'),
+    Path('/etc/nobodd/config'),
+    Path('/usr/local/etc/nobodd/config'),
     Path(XDG_CONFIG_HOME / 'nobodd.conf'),
     Path('~/.nobodd.conf'),
 )
@@ -173,6 +174,26 @@ def boolean(s):
         raise ValueError(f'invalid boolean value: {s}')
 
 
+def size(s):
+    """
+    Convert the string *s*, which must contain a number followed by an optional
+    suffix (MB for mega-bytes, GB, for giga-bytes, etc.), return the absolute
+    integer value (scale the number in the string by the suffix given).
+    """
+    for power, suffix in enumerate(['KB', 'MB', 'GB', 'TB'], start=1):
+        if s.endswith(suffix):
+            n = Decimal(s[:-len(suffix)])
+            result = int(n * 2 ** (10 * power))
+            break
+    else:
+        if s.endswith('B'):
+            result = int(s[:-1])
+        else:
+            # No recognized suffix; attempt straight conversion
+            result = int(s)
+    return result
+
+
 class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
     @classmethod
     def from_section(cls, config, section):
@@ -313,13 +334,17 @@ def get_config():
     # Figure out which configuration items represent paths. These will need
     # special handling when loading configuration files as the values will be
     # resolved relative to the containing configuration file
-    path_items = get_parser(config).of_type(Path) | {('board:*', 'image')}
+    path_items = get_parser(config).of_type(Path) | {
+        ('board:*', 'image'),
+        ('tftp', 'includedir'),
+    }
 
     # Attempt to load each of the pre-defined locations for the "main"
     # configuration, validating sections and keys against the default template
     # loaded above
-    for path in CONFIG_LOCATIONS:
-        path = path.expanduser()
+    to_read = list(CONFIG_LOCATIONS)
+    while to_read:
+        path = to_read.pop(0).expanduser()
         config.read(path)
         for section, keys in config.items():
             try:
@@ -338,4 +363,9 @@ def get_config():
                     if not value.is_absolute():
                         value = (path.parent / value).resolve()
                     config[section][key] = str(value)
+        try:
+            for conf in Path(config['tftp'].pop('includedir')).glob('*.conf'):
+                to_read.append(conf)
+        except KeyError:
+            pass
     return config
