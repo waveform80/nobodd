@@ -171,8 +171,10 @@ class FatFileSystem:
         """
         if self._fat_type == 'fat32':
             return FatPath._from_index(self, Fat32Root(self, self._root))
-        else:
+        elif self._fat_type == 'fat16':
             return FatPath._from_index(self, Fat16Root(self._root))
+        else:
+            return FatPath._from_index(self, Fat12Root(self._root))
 
 
 def fat_type(mem):
@@ -233,7 +235,8 @@ def fat_type_from_count(bpb, ebpb):
     Uses `known limits`_ on the number of clusters to derive the type of FAT in
     use. Returns one of the strings "fat12", "fat16", or "fat32".
 
-    .. _known limits: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Size_limits
+    .. _known limits:
+        https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Size_limits
     """
     total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
     fat_sectors = (
@@ -252,12 +255,15 @@ def fat_type_from_count(bpb, ebpb):
 
 class FatDirectory(abc.Iterable):
     """
-    An abstract :class:`~collections.abc.Iterable` representing a `FAT`_
-    directory.
+    An abstract :class:`~collections.abc.Iterable` representing a `FAT
+    directory`_.
 
     When iterated, yields :class:`~nobodd.fat.DirectoryEntry` or
     :class:`~nobodd.fat.LongFilenameEntry` instances until the end of the
     directory is encountered.
+
+    .. _FAT directory:
+        https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table
     """
     __slots__ = ()
 
@@ -330,6 +336,9 @@ class FatSubDirectory(FatDirectory):
 # The root directory in FAT32 is simply a regular sub-directory with the
 # starting cluster recorded in the BPB
 Fat32Root = FatSubDirectory
+
+# The root directory in FAT12 is structured the same as FAT16
+Fat12Root = Fat16Root
 
 
 class FatFile(io.RawIOBase):
