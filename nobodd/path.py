@@ -316,7 +316,7 @@ class FatPath:
 
         Patterns are the same as for :func:`~fnmatch.fnmatch`, with the
         addition of "``**``" which means "this directory and all
-        subdirectories, recursively". In other words, in enables recurisve
+        subdirectories, recursively". In other words, it enables recurisve
         globbing.
 
         .. warning::
@@ -401,8 +401,8 @@ class FatPath:
     @property
     def fs(self):
         """
-        Returns the :class:`FatFileSystem` instance that this instance was
-        constructed with.
+        Returns the :class:`~nobodd.fs.FatFileSystem` instance that this
+        instance was constructed with.
         """
         return self._fs
 

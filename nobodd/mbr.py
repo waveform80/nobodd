@@ -21,19 +21,38 @@ H     boot_sig
 """
 
 class MBRHeader(namedtuple('MBRHeader', labels(MBR_HEADER))):
+    """
+    A :func:`~collections.namedtuple` representing the fields of the `MBR
+    header`_.
+
+    .. _MBR header:
+        https://en.wikipedia.org/wiki/Master_boot_record#Sector_layout
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(MBR_HEADER))
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`MBRHeader` from the byte-string *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`MBRHeader` from the specified *offset* (which
+        defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
     @property
     def partitions(self):
+        """
+        Returns a sequence of the partitions defined by the header. This is
+        always 4 elements long, and not all elements are guaranteed to be
+        valid, or in order on the disk.
+        """
         return (
             self.partition_1,
             self.partition_2,
@@ -52,13 +71,27 @@ I     part_size
 """
 
 class MBRPartition(namedtuple('MBRPartition', labels(MBR_PARTITION))):
+    """
+    A :func:`~collections.namedtuple` representing the fields of an `MBR
+    partition entry`_.
+
+    .. _MBR header:
+        https://en.wikipedia.org/wiki/Master_boot_record#Sector_layout
+    """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(MBR_PARTITION))
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`MBRPartition` from the byte-string *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`MBRPartition` from the specified *offset* (which
+        defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))

@@ -53,6 +53,11 @@ FAT-32, and sub-directories (which are common across FAT types).
     root directory is represented by the same structure as a regular
     sub-directory.
 
+.. class:: Fat12Root
+
+    This is a trivial alias of :class:`Fat16Root` because FAT-12 uses the same
+    structure as FAT-16 for the root directory.
+
 .. autofunction:: fat_type
 
 .. autofunction:: fat_type_from_count

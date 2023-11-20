@@ -31,10 +31,10 @@ I     fat32_total_sectors
 class BIOSParameterBlock(
         namedtuple('BIOSParameterBlock', labels(BIOS_PARAMETER_BLOCK))):
     """
-    The `BIOS Parameter Block`_ is found at the very start of a FAT file system
-    (of any type). It provides several (effectively unused) legacy fields, but
-    also several fields still used exclusively in later FAT variants (like the
-    count of FAT-32 sectors).
+    A :func:`~collections.namedtuple` representing the `BIOS Parameter Block`_
+    found at the very start of a FAT file system (of any type). This provides
+    several (effectively unused) legacy fields, but also several fields still
+    used exclusively in later FAT variants (like the count of FAT-32 sectors).
 
     .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
     """
@@ -44,16 +44,15 @@ class BIOSParameterBlock(
     @classmethod
     def from_string(cls, s):
         """
-        Construct a BIOSParameterBlock from the byte-string *s* which must be
-        of the correct size.
+        Construct a :class:`BIOSParameterBlock` from the byte-string *s*.
         """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
         """
-        Construct a BIOSParameterBlock from the buffer *buf* at the specified
-        *offset* which defaults to 0.
+        Construct a :class:`BIOSParameterBlock` from the specified *offset*
+        (which defaults to 0) in the buffer protocol object, *buf*.
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
@@ -71,11 +70,12 @@ class ExtendedBIOSParameterBlock(
         namedtuple('ExtendedBIOSParameterBlock',
                    labels(EXTENDED_BIOS_PARAMETER_BLOCK))):
     """
-    The `Extended BIOS Parameter Block`_ is found either immediately after the
-    `BIOS Parameter Block`_ (in FAT-12 and FAT-16 formats), or after the
-    `FAT32 BIOS Parameter Block`_ (in FAT-32 formats).
+    A :func:`~collections.namedtuple` representing the `Extended BIOS Parameter
+    Block`_ found either immediately after the `BIOS Parameter Block`_ (in
+    FAT-12 and FAT-16 formats), or after the `FAT32 BIOS Parameter Block`_ (in
+    FAT-32 formats).
 
-    It provides several (effectively unused) legacy fields, but also provides
+    This provides several (effectively unused) legacy fields, but also provides
     the "file_system" field which is used as the primary means of
     distinguishing the different FAT types (see :func:`nobodd.fs.fat_type`),
     and the self-explanatory "volume_label" field.
@@ -89,10 +89,18 @@ class ExtendedBIOSParameterBlock(
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`ExtendedBIOSParameterBlock` from the byte-string
+        *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`ExtendedBIOSParameterBlock` from the specified
+        *offset* (which defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
@@ -110,11 +118,11 @@ class FAT32BIOSParameterBlock(
         namedtuple('FAT32BIOSParameterBlock',
                    labels(FAT32_BIOS_PARAMETER_BLOCK))):
     """
-    The `FAT32 BIOS Parameter Block`_ is found immediately after the `BIOS
-    Parameter Block`_ in FAT-32 formats. In FAT-12 and FAT-16 formats it should
-    not occur.
+    A :func:`~collections.namedtuple` representing the `FAT32 BIOS Parameter
+    Block`_ found immediately after the `BIOS Parameter Block`_ in FAT-32
+    formats. In FAT-12 and FAT-16 formats it should not occur.
 
-    It crucially provides the cluster containing the root directory (which is
+    This crucially provides the cluster containing the root directory (which is
     structured as a normal sub-directory in FAT-32) as well as the number of
     sectors per FAT, specifically for FAT-32. All other fields are ignored by
     this implementation.
@@ -126,10 +134,17 @@ class FAT32BIOSParameterBlock(
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`FAT32BIOSParameterBlock` from the byte-string *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`FAT32BIOSParameterBlock` from the specified
+        *offset* (which defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
@@ -151,8 +166,9 @@ I     size
 
 class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
     """
-    A FAT `directory entry`_ is a fixed-size structure which repeats up to the
-    size of a cluster within a FAT root or sub-directory.
+    A :func:`~collections.namedtuple` representing a FAT `directory entry`_.
+    This is a fixed-size structure which repeats up to the size of a cluster
+    within a FAT root or sub-directory.
 
     It contains the (8.3 sized) filename of an entry, the size in bytes, the
     cluster at which the entry's data starts, the entry's attributes (which
@@ -173,14 +189,31 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`DirectoryEntry` from the byte-string *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`DirectoryEntry` from the specified *offset* (which
+        defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
     @classmethod
     def iter_over(cls, buf):
+        """
+        Iteratively yields successive :class:`DirectoryEntry` instances from
+        the buffer protocol object, *buf*.
+
+        .. note::
+
+            This method is entirely dumb and does not check whether the yielded
+            instances are valid; it is up to the caller to determine the
+            validity of entries.
+        """
         return cls._FORMAT.iter_unpack(buf)
 
 
@@ -198,8 +231,8 @@ H     first_cluster
 class LongFilenameEntry(
         namedtuple('LongFilenameEntry', labels(LONG_FILENAME_ENTRY))):
     """
-    A FAT `long filename`_ is a variant of the FAT `directory entry`_ where the
-    *attr* field is 0x0F.
+    A :func:`~collections.namedtuple` representing a FAT `long filename`_. This
+    is a variant of the FAT `directory entry`_ where the *attr* field is 0x0F.
 
     Several of these entries will appear before their corresponding
     :class:`DirectoryEntry`, but will be in *reverse* order. A *checksum* is
@@ -215,12 +248,29 @@ class LongFilenameEntry(
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a :class:`LongFilenameEntry` from the byte-string *s*.
+        """
         return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`LongFilenameEntry` from the specified *offset*
+        (which defaults to 0) in the buffer protocol object, *buf*.
+        """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
     @classmethod
     def iter_over(cls, buf):
+        """
+        Iteratively yields successive :class:`LongFilenameEntry` instances from
+        the buffer protocol object, *buf*.
+
+        .. note::
+
+            This method is entirely dumb and does not check whether the yielded
+            instances are valid; it is up to the caller to determine the
+            validity of entries.
+        """
         return cls._FORMAT.iter_unpack(buf)

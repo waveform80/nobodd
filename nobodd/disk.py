@@ -81,10 +81,23 @@ class DiskImage:
         :class:`~collections.abc.Mapping` of partition number to
         :class:`DiskPartition` instances.
 
+        .. warning::
+
+            Disk partition numbers start from 1 and need not be contiguous, or
+            ordered.
+
+            For example, it is perfectly valid to have partition 1 occur later
+            on disk than partition 2, for partition 3 to be undefined, and
+            partition 4 to be defined between partition 1 and 2.
+
         .. note::
 
-            Disk partition numbers start from 1 and need not be contiguous,
-            especially in the case of MBR tables containing logical partitions.
+            In the case of MBR partition tables, it is particularly common to
+            have missing partition numbers as the primary layout only permits 4
+            partitions. Hence, the "extended partitions" scheme numbers
+            partitions from 5. However, if not all primary partitions are
+            defined, there will be a "jump" from, say, partition 2 to partition
+            5.
         """
         # This is a bit hacky, but reliable enough for our purposes. We check
         # for the "EFI PART" signature at the start of LBA1 and, if we find it,

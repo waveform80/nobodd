@@ -195,8 +195,20 @@ def size(s):
 
 
 class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
+    """
+    Represents a known board, recording its *serial* number, the *image*
+    (filename) that the board should boot, the *partition* number within the
+    *image* that contains the boot partition, and the IP address (if any) that
+    the board should have.
+    """
+
     @classmethod
     def from_section(cls, config, section):
+        """
+        Construct a new :class:`Board` from the specified *section* of the
+        *config* (a mapping, e.g. a :class:`~configparser.ConfigParser`
+        section).
+        """
         assert section.startswith('board:')
         values = config[section]
         serial = int(section[len('board:'):], base=16)
@@ -210,6 +222,12 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
 
     @classmethod
     def from_string(cls, s):
+        """
+        Construct a new :class:`Board` from the string *s* which is expected to
+        be a comma-separated list of serial number, filename, partition number,
+        and IP address. The last two parts (partition number and IP address)
+        are optional and default to 1 and :data:`None` respectively.
+        """
         serial, image, *extra = s.split(',')
         serial = int(serial, base=16)
         ip = part = None
