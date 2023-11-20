@@ -36,6 +36,6 @@ Conversion Functions
 
 .. autofunction:: boolean
 
-.. autofunction:: mac_address
+.. autofunction:: size
 
 .. autofunction:: duration
