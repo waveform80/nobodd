@@ -26,12 +26,15 @@ class DiskImage:
 
     If specified, *sector_size* is the size of sectors (in bytes) within the
     disk image. This defaults to 512 bytes, and should almost always be left
-    alone.
+    alone. The *access* parameter controls the access used when constructing
+    the memory mapping. This defaults to :data:`mmap.ACCESS_READ` for read-only
+    access. If you wish to write to file-systems within the disk image, change
+    this to :data:`mmap.ACCESS_WRITE`.
 
     .. _MBR: https://en.wikipedia.org/wiki/Master_boot_record
     .. _GPT: https://en.wikipedia.org/wiki/GUID_Partition_Table
     """
-    def __init__(self, filename_or_obj, sector_size=512):
+    def __init__(self, filename_or_obj, sector_size=512, access=mmap.ACCESS_READ):
         self._ss = sector_size
         if isinstance(filename_or_obj, os.PathLike):
             filename_or_obj = filename_or_obj.__fspath__()
@@ -40,7 +43,7 @@ class DiskImage:
             self._file = open(filename_or_obj, 'rb')
         else:
             self._file = filename_or_obj
-        self._map = mmap.mmap(self._file.fileno(), 0, access=mmap.ACCESS_READ)
+        self._map = mmap.mmap(self._file.fileno(), 0, access=access)
         self._mem = memoryview(self._map)
 
     def __repr__(self):
