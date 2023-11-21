@@ -255,7 +255,7 @@ class DiskPartitionsGPT(Mapping):
                     table, self._header.part_entry_size * index)
                 if entry.part_guid == b'\x00' * 16:
                     continue
-                yield index
+                yield index + 1
 
 
 class DiskPartitionsMBR(Mapping):
