@@ -56,7 +56,8 @@ class DiskImage:
         """
         Destroys the memory mapping used on the file provided. If the file was
         opened by this class, it will also be closed. This method is
-        idempotent.
+        idempotent and is implicitly called when the instance is used as a
+        context manager.
 
         .. note::
 
@@ -127,7 +128,8 @@ class DiskPartition:
     Represents an individual disk partition within a :class:`DiskImage`.
 
     Instances of this class are returned as the values of the mapping provided
-    by :attr:`DiskImage.partitions`.
+    by :attr:`DiskImage.partitions`. Instances can (and should) be used as a
+    context manager to implicitly close references upon exiting the context.
     """
     def __init__(self, mem, label, type):
         self._mem = mem
@@ -146,6 +148,11 @@ class DiskPartition:
         self.close()
 
     def close(self):
+        """
+        Release the internal :class:`memoryview` reference. This method is
+        idempotent and is implicitly called when the instance is used as a
+        context manager.
+        """
         self._mem.release()
 
     @property
