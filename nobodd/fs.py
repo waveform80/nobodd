@@ -60,7 +60,11 @@ class FatFileSystem:
         fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
         root_offset = fat_offset + (fat_size * bpb.fat_count)
         data_offset = root_offset + root_size
-        self._fat = mem[fat_offset:fat_offset + fat_size]
+        self._fat = {
+            'fat12': Fat12Clusters,
+            'fat16': Fat16Clusters,
+            'fat32': Fat32Clusters,
+        }[self._fat_type](mem[fat_offset:fat_offset + fat_size])
         self._data = mem[data_offset:]
         if self._fat_type == 'fat32':
             if ebpb_fat32 is None:
@@ -105,13 +109,13 @@ class FatFileSystem:
         constructed with. This method is idempotent.
         """
         if self._fat is not None:
-            self._fat.release()
+            self._fat.close()
             self._data.release()
             if self._fat_type != 'fat32':
                 self._root.release()
-        self._fat = None
-        self._data = None
-        self._root = None
+            self._fat = None
+            self._data = None
+            self._root = None
 
     def open_dir(self, cluster):
         """
@@ -152,6 +156,19 @@ class FatFileSystem:
         string up to 11 characters long.
         """
         return self._label
+
+    @property
+    def clusters(self):
+        """
+        Returns a mapping representing the clusters of the FAT. This maps
+        cluster offsets to their value in the FAT which may be any of: the next
+        cluster used by the file, an end marker, a bad cluster marker, or an ID
+        cluster (at the start).
+
+        If the underlying :class:`~mmap.mmap` is writable, then this mapping is
+        also mutable.
+        """
+        return self._clusters
 
     @property
     def root(self):
@@ -251,6 +268,118 @@ def fat_type_from_count(bpb, ebpb):
         'fat12' if data_clusters < 4085 else
         'fat16' if data_clusters < 65525 else
         'fat32')
+
+
+class FatClusters(abc.MutableSequence):
+    min_valid = None
+    max_valid = None
+    end_mark = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        if self._mem is not None:
+            self._mem.release()
+            self._mem = None
+
+    def insert(self, cluster, value):
+        raise TypeError('cannot change the size of the FAT')
+
+    def __len__(self):
+        return len(self._mem)
+
+    def __delitem__(self, cluster):
+        self[cluster] = 0
+
+    def mark_end(self, cluster):
+        self[cluster] = self.end_mark
+
+    def chain(self, start):
+        cluster = start
+        while self.min_valid <= cluster <= self.max_valid:
+            yield cluster
+            cluster = self[cluster]
+
+
+class Fat12Clusters(FatClusters):
+    min_valid = 0x002
+    max_valid = 0xFEF
+    end_mark = 0xFFF
+
+    def __init__(self, mem):
+        super().__init__()
+        self._mem = mem
+
+    def __len__(self):
+        return (super().__len__() * 2) // 3
+
+    def __getitem__(self, cluster):
+        try:
+            if cluster % 2:
+                offset = cluster + (cluster >> 1) + 1
+                return struct.unpack_from('<H', self._mem, offset)[0] >> 4
+            else:
+                offset = cluster + (cluster >> 1)
+                return struct.unpack_from('<H', self._mem, offset)[0] & 0x0FFF
+        except struct.error:
+            raise IndexError(f'{offset} out of bounds')
+
+    def __setitem__(self, cluster, value):
+        if not 0x000 <= value <= 0xFFF:
+            raise ValueError(f'{value} is outside range 0x000..0xFFF')
+        try:
+            if cluster % 2:
+                offset = cluster + (cluster >> 1) + 1
+                value <<= 4
+                value |= struct.unpack_from('<H', self._mem, offset)[0] & 0x000F
+            else:
+                offset = cluster + (cluster >> 1)
+                value |= struct.unpack_from('<H', self._mem, offset)[0] & 0xF000
+            struct.pack_into('<H', self._mem, offset, value)
+        except struct.error:
+            raise IndexError(f'{offset} out of bounds')
+
+
+class Fat16Clusters(FatClusters):
+    min_valid = 0x0002
+    max_valid = 0xFFEF
+    end_mark = 0xFFFF
+
+    def __init__(self, mem):
+        super().__init__()
+        self._mem = mem.cast('H')
+
+    def __getitem__(self, cluster):
+        return self._mem[cluster]
+
+    def __setitem__(self, cluster, value):
+        if not 0x0000 <= value <= 0xFFFF:
+            raise ValueError(f'{value} is outside range 0x0000..0xFFFF')
+        self._mem[cluster] = value
+
+
+class Fat32Clusters(FatClusters):
+    min_valid = 0x00000002
+    max_valid = 0x0FFFFFEF
+    end_mark = 0x0FFFFFFF
+
+    def __init__(self, mem):
+        super().__init__()
+        self._mem = mem.cast('I')
+
+    def __getitem__(self, cluster):
+        return self._mem[cluster] & 0x0FFFFFFF
+
+    def __setitem__(self, cluster, value):
+        if not 0x00000000 <= value <= 0x0FFFFFFF:
+            raise ValueError(f'{value} is outside range 0x00000000..0x0FFFFFFF')
+        self._mem[cluster] = (
+            (self._mem[cluster] & 0xF0000000) |
+            (value & 0x0FFFFFFF))
 
 
 class FatDirectory(abc.Iterable):
@@ -358,7 +487,7 @@ class FatFile(io.RawIOBase):
                 with path.open('r', encoding='utf-8') as f:
                     print(f.read())
 
-    Instancese can (and should) be used as context managers to implicitly close
+    Instances can (and should) be used as context managers to implicitly close
     references upon exiting the context. Instances are readable and seekable,
     but not writable (this is a read-only implementation), using all the
     methods derived from the base :class:`io.RawIOBase` class.
@@ -373,38 +502,13 @@ class FatFile(io.RawIOBase):
     def __init__(self, fs, start, size=None):
         self._fs = fs
         self._start = start
-        self._map = list(self._get_clusters())
+        self._map = list(fs._fat.chain(start))
         # size should only be "None" in the case of directory entries; in this
         # case, scan the FAT to determine # of clusters (and thus max. size)
         if size is None:
             size = len(self._map) * self._fs._cs
         self._size = size
         self._pos = 0
-
-    def _get_clusters(self):
-        cluster = self._start
-        if self._fs._fat_type == 'fat12':
-            fat = self._fs._fat
-            while 0x002 <= cluster <= 0xFEF:
-                yield cluster
-                if cluster % 2:
-                    offset = cluster + (cluster >> 1) + 1
-                    cluster = struct.unpack_from('<H', fat, offset) >> 4
-                else:
-                    offset = cluster + (cluster >> 1)
-                    cluster = struct.unpack_from('<H', fat, offset) & 0x0FFF
-        elif self._fs._fat_type == 'fat16':
-            fat = self._fs._fat.cast('H')
-            while 0x0002 <= cluster <= 0xFFEF:
-                yield cluster
-                cluster = fat[cluster]
-        elif self._fs._fat_type == 'fat32':
-            fat = self._fs._fat.cast('I')
-            while 0x0000002 <= cluster <= 0xFFFFFEF:
-                yield cluster
-                cluster = fat[cluster] & 0x0FFFFFFF
-        else:
-            assert False, 'unrecognized FAT type'
 
     def readable(self):
         return True
