@@ -110,9 +110,6 @@ class DiskImage:
         # Note that, *theoretically*, "EFI PART" could appear in the bootstrap
         # code at the start of the MBR. However, I'm treating that as
         # sufficiently weird that it's not worth guarding against.
-        head = GPTHeader.from_buffer(self._mem, 0)
-        if head.signature == b'EFI PART':
-            return DiskPartitionsGPT(self._mem, head, self._ss)
         head = GPTHeader.from_buffer(self._mem, self._ss)
         if head.signature == b'EFI PART':
             return DiskPartitionsGPT(self._mem, head, self._ss)
