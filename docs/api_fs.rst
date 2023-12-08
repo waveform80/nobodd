@@ -38,12 +38,28 @@ Internal Classes and Functions
 ==============================
 
 You should never need to interact with these classes directly; they exist to
-enumerate the different types of root directory under FAT-12, FAT-16, and
-FAT-32, and sub-directories (which are common across FAT types).
+enumerate the FAT and different types of root directory under FAT-12, FAT-16,
+and FAT-32, and sub-directories (which are common across FAT types).
+
+.. autoclass:: FatTable
+
+.. autoclass:: Fat12Table
+
+.. autoclass:: Fat16Table
+
+.. autoclass:: Fat32Table
+
+.. autoclass:: FatClusters
 
 .. autoclass:: FatDirectory
+   :private-members:
 
 .. autoclass:: FatSubDirectory
+
+.. class:: Fat12Root
+
+    This is a trivial alias of :class:`Fat16Root` because FAT-12 uses the same
+    structure as FAT-16 for the root directory.
 
 .. autoclass:: Fat16Root
 
@@ -52,11 +68,6 @@ FAT-32, and sub-directories (which are common across FAT types).
     This is a trivial alias of :class:`FatSubDirectory` because, in FAT-32, the
     root directory is represented by the same structure as a regular
     sub-directory.
-
-.. class:: Fat12Root
-
-    This is a trivial alias of :class:`Fat16Root` because FAT-12 uses the same
-    structure as FAT-16 for the root directory.
 
 .. autofunction:: fat_type
 

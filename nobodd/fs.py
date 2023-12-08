@@ -47,7 +47,6 @@ class FatFileSystem:
                     f'Unexpected sector-size in FAT, {bpb.bytes_per_sector}, '
                     f'differs from {sector_size}'))
         self._label = ebpb.volume_label.decode('ascii', 'replace').rstrip(' ')
-        self._cs = bpb.bytes_per_sector * bpb.sectors_per_cluster
 
         fat_size = (
             ebpb_fat32.sectors_per_fat if ebpb_fat32 is not None else
@@ -61,11 +60,12 @@ class FatFileSystem:
         root_offset = fat_offset + (fat_size * bpb.fat_count)
         data_offset = root_offset + root_size
         self._fat = {
-            'fat12': Fat12Clusters,
-            'fat16': Fat16Clusters,
-            'fat32': Fat32Clusters,
+            'fat12': Fat12Table,
+            'fat16': Fat16Table,
+            'fat32': Fat32Table,
         }[self._fat_type](mem[fat_offset:fat_offset + fat_size])
-        self._data = mem[data_offset:]
+        self._data = FatClusters(
+            mem[data_offset:], bpb.bytes_per_sector * bpb.sectors_per_cluster)
         if self._fat_type == 'fat32':
             if ebpb_fat32 is None:
                 raise ValueError(
@@ -110,7 +110,7 @@ class FatFileSystem:
         """
         if self._fat is not None:
             self._fat.close()
-            self._data.release()
+            self._data.close()
             if self._fat_type != 'fat32':
                 self._root.release()
             self._fat = None
@@ -142,6 +142,31 @@ class FatFileSystem:
         return FatFile(self, cluster, size)
 
     @property
+    def fat(self):
+        """
+        A sequence representing the FAT table itself.
+
+        .. warning::
+
+            This attribute is intended for internal use by the :class:`FatFile`
+            class.
+        """
+        return self._fat
+
+    @property
+    def clusters(self):
+        """
+        A sequence representing the clusters containing the data stored in the
+        file-system.
+
+        .. warning::
+
+            This attribute is intended for internal use by the :class:`FatFile`
+            class.
+        """
+        return self._data
+
+    @property
     def fat_type(self):
         """
         Returns a :class:`str` indicating the type of `FAT`_ file-system
@@ -156,19 +181,6 @@ class FatFileSystem:
         string up to 11 characters long.
         """
         return self._label
-
-    @property
-    def clusters(self):
-        """
-        Returns a mapping representing the clusters of the FAT. This maps
-        cluster offsets to their value in the FAT which may be any of: the next
-        cluster used by the file, an end marker, a bad cluster marker, or an ID
-        cluster (at the start).
-
-        If the underlying :class:`~mmap.mmap` is writable, then this mapping is
-        also mutable.
-        """
-        return self._clusters
 
     @property
     def root(self):
@@ -270,7 +282,25 @@ def fat_type_from_count(bpb, ebpb):
         'fat32')
 
 
-class FatClusters(abc.MutableSequence):
+class FatTable(abc.MutableSequence):
+    """
+    Abstract :class:`~collections.abc.MutableSequence` class representing the
+    FAT table itself.
+
+    This is the basis for :class:`Fat12Table`, :class:`Fat16Table`, and
+    :class:`Fat32Table`. While all the implementations are potentially mutable
+    (if the underlying memory mapping is writable), only direct replacement of
+    FAT entries is valid. Insertion and deletion will raise :exc:`TypeError`.
+
+    A concrete class is constructed by :class:`FatFileSystem` (based on the
+    type of FAT format found). The :meth:`chain` method is used by
+    :class:`FatFile` (and indirectly :class:`FatSubDirectory`) to discover the
+    chain of clusters that make up a file (or sub-directory). The :meth:`free`
+    method is used by writable :class:`FatFile` instances to find the next free
+    cluster to write to. The :meth:`mark_free` and :meth:`mark_end` methods are
+    used to mark a clusters as being free or as the terminal cluster of a
+    file.
+    """
     min_valid = None
     max_valid = None
     end_mark = None
@@ -286,26 +316,67 @@ class FatClusters(abc.MutableSequence):
             self._mem.release()
             self._mem = None
 
-    def insert(self, cluster, value):
-        raise TypeError('cannot change the size of the FAT')
-
     def __len__(self):
         return len(self._mem)
 
     def __delitem__(self, cluster):
+        raise TypeError('FAT length is immutable')
+
+    @property
+    def readonly(self):
+        return self._mem.readonly
+
+    def insert(self, cluster, value):
+        """
+        Raises :exc:`TypeError`; the FAT length is immutable.
+        """
+        raise TypeError('FAT length is immutable')
+
+    def mark_free(self, cluster):
+        """
+        Marks *cluster* as free (this simply sets *cluster* to 0 in the FAT).
+        """
         self[cluster] = 0
 
     def mark_end(self, cluster):
+        """
+        Marks *cluster* as the end of a chain. The value used to indicate the
+        end of a chain is specific to the FAT size.
+        """
         self[cluster] = self.end_mark
 
     def chain(self, start):
+        """
+        Generator method which yields all the clusters in the chain starting at
+        *start*.
+        """
         cluster = start
         while self.min_valid <= cluster <= self.max_valid:
             yield cluster
             cluster = self[cluster]
 
+    def free(self):
+        """
+        Generator that scans the FAT from the start for free clusters, yielding
+        each as it is found.
+        """
+        for cluster, value in enumerate(self):
+            if value == 0 and self.min_valid <= cluster:
+                yield cluster
+            if cluster > self.max_valid:
+                break
 
-class Fat12Clusters(FatClusters):
+
+class Fat12Table(FatTable):
+    """
+    Concrete child of :class:`FatTable` for FAT-12 file-systems.
+
+    .. autoattribute:: min_valid
+
+    .. autoattribute:: max_valid
+
+    .. autoattribute:: end_mark
+    """
     min_valid = 0x002
     max_valid = 0xFEF
     end_mark = 0xFFF
@@ -344,7 +415,16 @@ class Fat12Clusters(FatClusters):
             raise IndexError(f'{offset} out of bounds')
 
 
-class Fat16Clusters(FatClusters):
+class Fat16Table(FatTable):
+    """
+    Concrete child of :class:`FatTable` for FAT-16 file-systems.
+
+    .. autoattribute:: min_valid
+
+    .. autoattribute:: max_valid
+
+    .. autoattribute:: end_mark
+    """
     min_valid = 0x0002
     max_valid = 0xFFEF
     end_mark = 0xFFFF
@@ -362,10 +442,21 @@ class Fat16Clusters(FatClusters):
         self._mem[cluster] = value
 
 
-class Fat32Clusters(FatClusters):
+class Fat32Table(FatTable):
+    """
+    Concrete child of :class:`FatTable` for FAT-32 file-systems.
+
+    .. autoattribute:: min_valid
+
+    .. autoattribute:: max_valid
+
+    .. autoattribute:: end_mark
+    """
     min_valid = 0x00000002
     max_valid = 0x0FFFFFEF
     end_mark = 0x0FFFFFFF
+
+    # TODO: Override mark_free and mark_end to preserve top nibble
 
     def __init__(self, mem):
         super().__init__()
@@ -380,6 +471,69 @@ class Fat32Clusters(FatClusters):
         self._mem[cluster] = (
             (self._mem[cluster] & 0xF0000000) |
             (value & 0x0FFFFFFF))
+
+
+class FatClusters(abc.MutableSequence):
+    """
+    :class:`~collections.abc.MutableSequence` representing the clusters of
+    the file-system itself.
+
+    While the sequence is mutable, clusters cannot be deleted or inserted, only
+    read and (if the underlying :class:`~mmap.mmap` is writable) re-written.
+    """
+    def __init__(self, mem, cluster_size):
+        self._mem = mem
+        self._cs = cluster_size
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        if self._mem is not None:
+            self._mem.release()
+            self._mem = None
+
+    @property
+    def size(self):
+        """
+        Returns the size (in bytes) of clusters in the file-system.
+        """
+        return self._cs
+
+    @property
+    def readonly(self):
+        """
+        Returns :data:`True` if the underlying :class:`~mmap.mmap` is
+        read-only.
+        """
+        return self._mem.readonly
+
+    def __len__(self):
+        return len(self._mem) // self._cs
+
+    def __getitem__(self, cluster):
+        # The first data cluster is numbered 2, hence the offset below.
+        # Clusters 0 and 1 are special and don't exist in the data portion of
+        # the file-system
+        offset = (cluster - 2) * self._cs
+        return self._mem[offset:offset + self._cs]
+
+    def __setitem__(self, cluster, value):
+        # See above
+        offset = (cluster - 2) * self._cs
+        self._mem[offset:offset + self._cs] = value
+
+    def __delitem__(self, cluster):
+        raise TypeError('FS length is immutable')
+
+    def insert(self, cluster, value):
+        """
+        Raises :exc:`TypeError`; the FS length is immutable.
+        """
+        raise TypeError('FS length is immutable')
 
 
 class FatDirectory(abc.Iterable):
@@ -415,9 +569,9 @@ class FatDirectory(abc.Iterable):
 
 class Fat16Root(FatDirectory):
     """
-    A derivative of :class:`FatDirectory` representing the (fixed-size) root
-    directory of a FAT-16 file-system. Must be constructed with *mem*, which is
-    a buffer object covering the root directory clusters.
+    A concrete derivative of :class:`FatDirectory` representing the
+    (fixed-size) root directory of a FAT-16 file-system. Must be constructed
+    with *mem*, which is a buffer object covering the root directory clusters.
     """
     __slots__ = ('_mem',)
 
@@ -437,15 +591,15 @@ class Fat16Root(FatDirectory):
 
 class FatSubDirectory(FatDirectory):
     """
-    A derivative of :class:`FatDirectory` representing a sub-directory in a FAT
-    file-system (of any type). Must be constructed with *fs* (a
+    A concrete derivative of :class:`FatDirectory` representing a sub-directory
+    in a FAT file-system (of any type). Must be constructed with *fs* (a
     :class:`FatFileSystem` instance) and *start*, the first cluster of the
     sub-directory.
     """
     __slots__ = ('_cs', '_file')
 
     def __init__(self, fs, start):
-        self._cs = fs._cs
+        self._cs = fs.clusters.size
         self._file = FatFile(fs, start)
 
     def _get_cluster(self):
@@ -510,6 +664,17 @@ class FatFile(io.RawIOBase):
         self._size = size
         self._pos = 0
 
+    def _get_fs(self):
+        """
+        Check the weak reference to the FatFileSystem. If it's still live,
+        return the strong reference result. If it's disappeared, raise an
+        :exc:`OSError` exception indicating the file-system has been closed.
+        """
+        fs = self._fs()
+        if fs is None:
+            raise OSError(f'FatFileSystem containing {self._name} is closed')
+        return fs
+
     def readable(self):
         return True
 
@@ -525,7 +690,8 @@ class FatFile(io.RawIOBase):
         return bytes(buf)
 
     def readinto(self, buf):
-        cs = self._fs._cs # cluster size
+        fs = self._get_fs()
+        cs = fs.clusters.size
         # index is which cluster of the file we wish to read; i.e. index 0
         # represents the first cluster of the file; left and right are the byte
         # offsets within the cluster to return; read is the number of bytes to
@@ -535,11 +701,7 @@ class FatFile(io.RawIOBase):
         right = min(cs, left + len(buf), self._size - (index * cs))
         read = max(right - left, 0)
         if read > 0:
-            # cluster is then the actual cluster number to read from the data
-            # portion (offset by 2 because the first data cluster is #2)
-            cluster = self._map[index] - 2
-            buf[:read] = self._fs._data[
-                cluster * cs:(cluster + 1) * cs][left:right]
+            buf[:read] = fs.clusters[self._map[index]][left:right]
             self._pos += read
         return read
 
