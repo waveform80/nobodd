@@ -80,12 +80,14 @@ class FatPath:
         return self
 
     @classmethod
-    def _from_entries(cls, fs, entries, prefix=sep):
+    def _from_entries(cls, fs, index, entries, prefix=sep):
         """
         Internal class method for constructing an instance from *fs* (a
-        :class:`~nobodd.fs.FatFileSystem` instance), *entries* (a sequence of
+        :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
+        :class:`~nobodd.fs.FatDirectory instance), *entries* (a sequence of
         associated :class:`~nobodd.fat.LongFilenameEntry` and
-        :class:`~nobodd.fat.DirectoryEntry` instances), and a *prefix* path.
+        :class:`~nobodd.fat.DirectoryEntry` instances which must exist within
+        *index*), and a *prefix* path.
         """
         filename, entry = get_filename_entry(entries)
         if not prefix.endswith(cls.sep):
@@ -96,6 +98,7 @@ class FatPath:
                 fs, fs.open_dir(cluster), prefix + filename + cls.sep)
         else:
             self = cls(fs, prefix + filename)
+            self._index = index
         self._entry = entry
         self._resolved = True
         return self
@@ -153,6 +156,7 @@ class FatPath:
             This implementation is read-only, so any modes other than "r" and
             "rb" will fail with :exc:`PermissionError`.
         """
+        fs = self._get_fs()
         self._must_exist()
         if self.is_dir():
             raise IsADirectoryError(f'Is a directory: {self}')
@@ -176,9 +180,7 @@ class FatPath:
         else:
             if buffering == 0:
                 raise ValueError("can't have unbuffered text I/O")
-        fs = self._get_fs()
-        f = fs.open_file(
-            get_cluster(self._entry, fs.fat_type), self._entry.size)
+        f = fs.open_entry(self._index, self._entry)
         if buffering:
             if buffering in (-1, 1):
                 buffering = io.DEFAULT_BUFFER_SIZE
@@ -209,10 +211,10 @@ class FatPath:
         in the file-system), and the special entries ``'.'`` and ``'..'`` are
         not included.
         """
+        fs = self._get_fs()
         self._must_exist()
         if not self.is_dir():
             raise NotADirectoryError(f'Not a directory: {self}')
-        fs = self._get_fs()
         for entries in self._index:
             if not entries:
                 raise ValueError('empty dir entries')
@@ -385,19 +387,7 @@ class FatPath:
         """
         fs = self._get_fs()
         self._must_exist()
-        if self._index is not None:
-            return os.stat_result((
-                stat.S_IFDIR | 0o555,  # mode
-                self._index.cluster,   # inode
-                id(fs),                # dev
-                0,                     # nlink
-                0,                     # uid
-                0,                     # gid
-                0,                     # size
-                0,                     # atime
-                0,                     # mtime
-                0))                    # ctime
-        elif self._entry is not None:
+        if self._entry is not None:
             return os.stat_result((
                 0o444,                                               # mode
                 get_cluster(self._entry, fs.fat_type),               # inode
@@ -411,7 +401,18 @@ class FatPath:
                 get_timestamp(                                       # ctime
                     self._entry.cdate, self._entry.ctime,
                     self._entry.ctime_ms * 10)))
-        assert False, 'internal error'
+        else: # self._index is not None is guaranteed by _must_exist
+            return os.stat_result((
+                stat.S_IFDIR | 0o555,  # mode
+                self._index.cluster,   # inode
+                id(fs),                # dev
+                0,                     # nlink
+                0,                     # uid
+                0,                     # gid
+                0,                     # size
+                0,                     # atime
+                0,                     # mtime
+                0))                    # ctime
 
     @property
     def fs(self):
@@ -595,7 +596,7 @@ class FatPath:
             False
         """
         self._resolve()
-        return self._index is not None or self._entry is not None
+        return self._index is not None
 
     def is_dir(self):
         """
@@ -603,7 +604,7 @@ class FatPath:
         directory. :data:`False` is also returned if the path doesn't exist.
         """
         self._resolve()
-        return self._index is not None
+        return self._index is not None and self._entry is None
 
     def is_file(self):
         """
@@ -611,7 +612,7 @@ class FatPath:
         file. :data:`False` is also returned if the path doesn't exist.
         """
         self._resolve()
-        return self._index is None and self._entry is not None
+        return self._index is not None and self._entry is not None
 
     def is_mount(self):
         """
