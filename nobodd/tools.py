@@ -1,6 +1,7 @@
 import io
 import codecs
 import socket
+from itertools import tee
 from collections.abc import Mapping
 
 
@@ -101,3 +102,9 @@ class FrozenDict(Mapping):
         if self._hash is None:
             self._hash = hash((frozenset(self), frozenset(self.values())))
         return self._hash
+
+
+def pairwise(it):
+    a, b = tee(it)
+    next(b, None)
+    return zip(a, b)

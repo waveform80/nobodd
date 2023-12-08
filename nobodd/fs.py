@@ -1,6 +1,10 @@
 import io
+import os
+import errno
 import struct
+import weakref
 from collections import abc
+from itertools import islice
 
 from .fat import (
     BIOSParameterBlock,
@@ -10,6 +14,7 @@ from .fat import (
     LongFilenameEntry,
 )
 from .path import FatPath
+from .tools import pairwise
 
 
 # The following references were invaluable in constructing this implementation;
@@ -675,17 +680,32 @@ class FatFile(io.RawIOBase):
             raise OSError(f'FatFileSystem containing {self._name} is closed')
         return fs
 
+    def _get_size(self):
+        fs = self._get_fs()
+        if self._entry is None:
+            return fs.clusters.size * len(self._map)
+        else:
+            return self._entry.size
+
+    def _set_size(self, new_size):
+        # TODO
+        pass
+
     def readable(self):
         return True
 
     def seekable(self):
         return True
 
+    def writable(self):
+        return not self._get_fs().fat.readonly
+
     def readall(self):
-        buf = bytearray(self._size - self._pos)
+        size = self._get_size()
+        buf = bytearray(max(0, size - self._pos))
         mem = memoryview(buf)
         pos = 0
-        while self._pos < self._size:
+        while self._pos < size:
             pos += self.readinto(mem[pos:])
         return bytes(buf)
 
@@ -705,6 +725,61 @@ class FatFile(io.RawIOBase):
             self._pos += read
         return read
 
+    def write(self, buf):
+        mem = memoryview(buf)
+        fs = self._get_fs()
+        if self._pos > self._size:
+            # Pad the file to the current position. Note that this does *not*
+            # count towards written
+            self.truncate()
+        written = 0
+        while mem:
+            # Alternate between filling a cluster with _write1, and allocating
+            # a new cluster. This is far from the most efficient method (we're
+            # not taking account of whether any clusters are actually
+            # contiguous), but it is simple!
+            w = self._write1(mem, fs)
+            if w:
+                written += w
+                mem = mem[w:]
+            else:
+                for cluster in fs.fat.free():
+                    fs.fat.mark_end(cluster)
+                    fs.fat[self._map[-1]] = cluster
+                    self._map.append(cluster)
+                    break
+                else:
+                    # Unlike truncate, we don't pre-allocate the space we're
+                    # going to write to. It is possible to wind up running out
+                    # of space part-way through the write
+                    # XXX raise or return written?
+                    raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        if self._pos > self._size:
+            self._set_size(self._pos)
+        return written
+
+    def _write1(self, buf, fs=None):
+        """
+        Write as much of *buf* to the file at the current position as will fit
+        in the current cluster, returning the number of bytes written, and
+        advancing the position of the file-pointer. If the current position is
+        beyond the end of the file, this method writes nothing and return 0.
+        """
+        if fs is None:
+            fs = self._get_fs()
+        cs = fs.clusters.size
+        index = self._pos // cs
+        left = self._pos - (index * cs)
+        right = min(cs, left + len(mem))
+        written = max(right - left, 0)
+        if written > 0:
+            try:
+                fs.clusters[self._map[index]][left:right] = buf[:written]
+            except IndexError:
+                return 0
+            self._pos += written
+        return written
+
     def seek(self, pos, whence=io.SEEK_SET):
         if whence == io.SEEK_SET:
             pos = pos
@@ -718,3 +793,49 @@ class FatFile(io.RawIOBase):
             raise IOError('invalid argument')
         self._pos = pos
         return self._pos
+
+    def truncate(self, size=None):
+        fs = self._get_fs()
+        cs = fs.clusters.size
+        if size is None:
+            size = self._pos
+        if size == self._size:
+            return size
+        clusters = max(1, (size + cs - 1) // cs)
+        if size > self._size:
+            # If we're expanding the size of the file, zero the tail of the
+            # current final cluster; this is necessary whether or not we're
+            # expanding the actual number of clusters in the file. Note we
+            # don't bother calculating exactly how many bytes to zero; we just
+            # zero everything from the current size up to the end of the
+            # cluster because that's fine in either case
+            tail = len(self._map) * cs - self._size
+            if tail:
+                fs.clusters[self._map[-1]][-tail:] = b'\0' * tail
+        if clusters > len(self._map):
+            # Pre-calculate the clusters we're going to append. We don't want
+            # to add any if we can't add them all. We then mark the clusters
+            # in the FAT in reverse order, zeroing new blocks as we go so that
+            # the final extension of the file is effectively atomic (from a
+            # concurrent reader's perspective)
+            to_append = list(islice(fs.fat.free(), clusters - len(self._map)))
+            if len(to_append) + len(self._map) < clusters:
+                raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+            fs.fat.mark_end(to_append[-1])
+            zeros = b'\0' * cs
+            for next_c, this_c in pairwise(reversed([self._map[-1]] + to_append)):
+                fs.clusters[next_c] = zeros
+                fs.fat[this_c] = next_c
+            self._map.extend(to_append)
+        elif clusters < len(self._map):
+            # We start by marking the new end cluster, which atomically
+            # shortens the FAT chain for the file, then proceed to mark all the
+            # removed clusters as free
+            to_remove = self._map[len(self._map) - clusters:]
+            fs.fat.mark_end(self._map[clusters - 1])
+            del self._map[clusters:]
+            for cluster in to_remove:
+                fs.fat.mark_free(cluster)
+        # Finally, correct the directory entry to reflect the new size
+        self._set_size(size)
+        return self._size
