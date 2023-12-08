@@ -3,6 +3,7 @@ import os
 import re
 import stat
 import fnmatch
+import weakref
 import datetime as dt
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
@@ -40,20 +41,31 @@ class FatPath:
     sep = '/'
 
     def __init__(self, fs, *pathsegments):
-        self._fs = fs
+        self._fs = weakref.ref(fs)
         self._index = None
         self._entry = None
         self._parts = get_parts(*pathsegments)
         self._resolved = False
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self._fs!r}, {self.__str__()!r})'
+        return f'{self.__class__.__name__}(<fs>, {self.__str__()!r})'
 
     def __str__(self):
         if self._parts == ('',):
             return self.sep
         else:
             return self.sep.join(self._parts)
+
+    def _get_fs(self):
+        """
+        Check the weak reference to the FatFileSystem. If it's still live,
+        return the strong reference result. If it's disappeared, raise an
+        :exc:`OSError` exception indicating the file-system has been closed.
+        """
+        fs = self._fs()
+        if fs is None:
+            raise OSError(f'FatFileSystem containing {self!s} is closed')
+        return fs
 
     @classmethod
     def _from_index(cls, fs, index, prefix=sep):
@@ -103,7 +115,8 @@ class FatPath:
             if parts[0] != self.sep:
                 raise ValueError('relative FatPath cannot be resolved')
             parts = parts[1:]
-            parent = self._fs.root
+            fs = self._get_fs()
+            parent = fs.root
             while parts:
                 for child in parent.iterdir():
                     if child.name.lower() == parts[0].lower():
@@ -164,8 +177,9 @@ class FatPath:
         else:
             if buffering == 0:
                 raise ValueError("can't have unbuffered text I/O")
-        f = self._fs.open_file(
-            get_cluster(self._entry, self._fs.fat_type), self._entry.size)
+        fs = self._get_fs()
+        f = fs.open_file(
+            get_cluster(self._entry, fs.fat_type), self._entry.size)
         if buffering:
             if buffering in (-1, 1):
                 buffering = io.DEFAULT_BUFFER_SIZE
@@ -199,6 +213,7 @@ class FatPath:
         self._must_exist()
         if not self.is_dir():
             raise NotADirectoryError(f'Not a directory: {self}')
+        fs = self._get_fs()
         for entries in self._index:
             if not entries:
                 raise ValueError('empty dir entries')
@@ -215,7 +230,7 @@ class FatPath:
                 name = (entries[-1].filename + entries[-1].ext).rstrip(b' ')
                 if name in (b'.', b'..'):
                     continue # skip "." and ".." directories
-            yield FatPath._from_entries(self._fs, entries, prefix=str(self))
+            yield FatPath._from_entries(fs, entries, prefix=str(self))
 
     def match(self, pattern):
         """
@@ -369,12 +384,13 @@ class FatPath:
         with :meth:`pathlib.Path.stat`; it is ignored as symlinks are not
         supported.
         """
+        fs = self._get_fs()
         self._must_exist()
         if self._index is not None:
             return os.stat_result((
                 stat.S_IFDIR | 0o555,  # mode
                 self._index.cluster,   # inode
-                id(self._fs),          # dev
+                id(fs),                # dev
                 0,                     # nlink
                 0,                     # uid
                 0,                     # gid
@@ -385,8 +401,8 @@ class FatPath:
         elif self._entry is not None:
             return os.stat_result((
                 0o444,                                               # mode
-                get_cluster(self._entry, self._fs.fat_type),         # inode
-                id(self._fs),                                        # dev
+                get_cluster(self._entry, fs.fat_type),               # inode
+                id(fs),                                              # dev
                 1,                                                   # nlink
                 0,                                                   # uid
                 0,                                                   # gid
@@ -404,7 +420,7 @@ class FatPath:
         Returns the :class:`~nobodd.fs.FatFileSystem` instance that this
         instance was constructed with.
         """
-        return self._fs
+        return self._get_fs()
 
     @property
     def root(self):
@@ -516,12 +532,13 @@ class FatPath:
             >>> p.parent.parent.parent
             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/')
         """
+        fs = self._get_fs()
         if len(self._parts) > 1:
-            return type(self)(self._fs, *self._parts[:-1])
+            return type(self)(fs, *self._parts[:-1])
         elif self._parts == ('',) or self._parts == ('.',):
             return self
         else:
-            return type(self)(self._fs, '.')
+            return type(self)(fs, '.')
 
     @property
     def parents(self):
@@ -629,13 +646,14 @@ class FatPath:
         """
         if not other:
             raise TypeError('need at least one argument')
-        to = type(self)(self._fs, *other)
+        fs = self._get_fs()
+        to = type(self)(fs, *other)
         n = len(to._parts)
         if self._parts[:n] != to._parts:
             raise ValueError(
                 f'{self!r} is not in the subpath of {to!r} OR one path is '
                 f'relative and the other is absolute')
-        return type(self)(self._fs, *self._parts[n:])
+        return type(self)(fs, *self._parts[n:])
 
     def joinpath(self, *other):
         """
@@ -651,22 +669,24 @@ class FatPath:
             >>> fs.root.joinpath('nobodd', 'main.py')
             FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/nobodd/main.py')
         """
+        fs = self._get_fs()
         other = get_parts(*other)
         if other[:1] == ('',):
-            return type(self)(self._fs, *other)
+            return type(self)(fs, *other)
         else:
-            return type(self)(self._fs, *self._parts, *other)
+            return type(self)(fs, *self._parts, *other)
 
     def with_name(self, name):
         """
         Return a new path with the :attr:`name` changed. If the original path
         doesn't have a name, :exc:`ValueError` is raised.
         """
+        fs = self._get_fs()
         if not self.name:
             raise ValueError(f'{self!r} has an empty name')
         if not name or name[-1] == self.sep:
             raise ValueError(f'invalid name {name!r}')
-        return type(self)(self._fs, *self._parts[:-1], name)
+        return type(self)(fs, *self._parts[:-1], name)
 
     def with_stem(self, stem):
         """
@@ -698,7 +718,9 @@ class FatPath:
     def __eq__(self, other):
         if not isinstance(other, FatPath):
             return NotImplemented
-        if self._fs is not other._fs:
+        self_fs = self._get_fs()
+        other_fs = other._get_fs()
+        if self_fs is not other_fs:
             raise TypeError(
                 f'comparison is not supported between instances of '
                 f'{self.__class__.__name__} with different file-systems')
@@ -709,7 +731,9 @@ class FatPath:
     def __le__(self, other):
         if not isinstance(other, FatPath):
             return NotImplemented
-        if self._fs is not other._fs:
+        self_fs = self._get_fs()
+        other_fs = other._get_fs()
+        if self_fs is not other_fs:
             raise TypeError(
                 f'comparison is not supported between instances of '
                 f'{self.__class__.__name__} with different file-systems')
