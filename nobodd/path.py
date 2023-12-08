@@ -91,8 +91,7 @@ class FatPath:
         if not prefix.endswith(cls.sep):
             prefix += cls.sep
         if entry.attr & 0x10: # directory
-            cluster = entry.first_cluster_lo | (
-                entry.first_cluster_hi << 16 if fs.fat_type == 'fat32' else 0)
+            cluster = get_cluster(entry, fs.fat_type)
             self = cls._from_index(
                 fs, fs.open_dir(cluster), prefix + filename + cls.sep)
         else:
