@@ -31,6 +31,9 @@ class MBRHeader(namedtuple('MBRHeader', labels(MBR_HEADER))):
     __slots__ = ()
     _FORMAT = struct.Struct(formats(MBR_HEADER))
 
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
+
     @classmethod
     def from_bytes(cls, s):
         """
@@ -75,11 +78,14 @@ class MBRPartition(namedtuple('MBRPartition', labels(MBR_PARTITION))):
     A :func:`~collections.namedtuple` representing the fields of an `MBR
     partition entry`_.
 
-    .. _MBR header:
-        https://en.wikipedia.org/wiki/Master_boot_record#Sector_layout
+    .. _MBR partition entry:
+        https://en.wikipedia.org/wiki/Master_boot_record#Partition_table_entries
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(MBR_PARTITION))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
 
     @classmethod
     def from_bytes(cls, s):

@@ -36,6 +36,9 @@ class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
     __slots__ = ()
     _FORMAT = struct.Struct(formats(GPT_HEADER))
 
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
+
     @classmethod
     def from_bytes(cls, s):
         """
@@ -72,6 +75,9 @@ class GPTPartition(namedtuple('GPTPartition', labels(GPT_PARTITION))):
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(GPT_PARTITION))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
 
     @classmethod
     def from_bytes(cls, s):

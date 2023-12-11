@@ -41,6 +41,9 @@ class BIOSParameterBlock(
     __slots__ = ()
     _FORMAT = struct.Struct(formats(BIOS_PARAMETER_BLOCK))
 
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
+
     @classmethod
     def from_bytes(cls, s):
         """
@@ -87,6 +90,9 @@ class ExtendedBIOSParameterBlock(
     __slots__ = ()
     _FORMAT = struct.Struct(formats(EXTENDED_BIOS_PARAMETER_BLOCK))
 
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
+
     @classmethod
     def from_bytes(cls, s):
         """
@@ -131,6 +137,9 @@ class FAT32BIOSParameterBlock(
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(FAT32_BIOS_PARAMETER_BLOCK))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
 
     @classmethod
     def from_bytes(cls, s):
@@ -186,6 +195,9 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(DIRECTORY_ENTRY))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
 
     @classmethod
     def from_bytes(cls, s):
@@ -245,6 +257,9 @@ class LongFilenameEntry(
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(LONG_FILENAME_ENTRY))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
 
     @classmethod
     def from_bytes(cls, s):
