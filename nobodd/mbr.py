@@ -32,7 +32,7 @@ class MBRHeader(namedtuple('MBRHeader', labels(MBR_HEADER))):
     _FORMAT = struct.Struct(formats(MBR_HEADER))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`MBRHeader` from the byte-string *s*.
         """
@@ -82,7 +82,7 @@ class MBRPartition(namedtuple('MBRPartition', labels(MBR_PARTITION))):
     _FORMAT = struct.Struct(formats(MBR_PARTITION))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`MBRPartition` from the byte-string *s*.
         """

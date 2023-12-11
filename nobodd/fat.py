@@ -42,7 +42,7 @@ class BIOSParameterBlock(
     _FORMAT = struct.Struct(formats(BIOS_PARAMETER_BLOCK))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`BIOSParameterBlock` from the byte-string *s*.
         """
@@ -88,7 +88,7 @@ class ExtendedBIOSParameterBlock(
     _FORMAT = struct.Struct(formats(EXTENDED_BIOS_PARAMETER_BLOCK))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`ExtendedBIOSParameterBlock` from the byte-string
         *s*.
@@ -133,7 +133,7 @@ class FAT32BIOSParameterBlock(
     _FORMAT = struct.Struct(formats(FAT32_BIOS_PARAMETER_BLOCK))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`FAT32BIOSParameterBlock` from the byte-string *s*.
         """
@@ -188,7 +188,7 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
     _FORMAT = struct.Struct(formats(DIRECTORY_ENTRY))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`DirectoryEntry` from the byte-string *s*.
         """
@@ -247,7 +247,7 @@ class LongFilenameEntry(
     _FORMAT = struct.Struct(formats(LONG_FILENAME_ENTRY))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`LongFilenameEntry` from the byte-string *s*.
         """

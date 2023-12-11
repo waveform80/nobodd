@@ -291,10 +291,10 @@ class DiskPartitionsMBR(Mapping):
             if ebr.boot_sig != 0xAA55:
                 raise ValueError('Bad EBR signature')
             # Yield the logical partition
-            part = MBRPartition.from_string(ebr.partition_1)
+            part = MBRPartition.from_bytes(ebr.partition_1)
             part = part._replace(first_lba=part.first_lba + logical_offset)
             yield part
-            part = MBRPartition.from_string(ebr.partition_2)
+            part = MBRPartition.from_bytes(ebr.partition_2)
             if part.part_type == 0x00 and part.first_lba == 0:
                 break
             elif part.part_type not in (0x05, 0x0F):
@@ -307,7 +307,7 @@ class DiskPartitionsMBR(Mapping):
         mbr = self._header
         ebr = None
         for num, buf in enumerate(mbr.partitions, start=1):
-            part = MBRPartition.from_string(buf)
+            part = MBRPartition.from_bytes(buf)
             if part.part_type in (0x05, 0x0F):
                 if ebr is not None:
                     warnings.warn(

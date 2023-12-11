@@ -37,7 +37,7 @@ class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
     _FORMAT = struct.Struct(formats(GPT_HEADER))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`GPTHeader` from the byte-string *s*.
         """
@@ -74,7 +74,7 @@ class GPTPartition(namedtuple('GPTPartition', labels(GPT_PARTITION))):
     _FORMAT = struct.Struct(formats(GPT_PARTITION))
 
     @classmethod
-    def from_string(cls, s):
+    def from_bytes(cls, s):
         """
         Construct a :class:`GPTPartition` from the byte-string *s*.
         """
