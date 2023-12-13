@@ -219,7 +219,7 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
         Write this :class:`DirectoryEntry` to *buf*, a buffer protocol object,
         at the specified *offset* (which defaults to 0).
         """
-        cls._FORMAT.pack_into(buf, offset, *self)
+        self._FORMAT.pack_into(buf, offset, *self)
 
     @classmethod
     def iter_over(cls, buf):
