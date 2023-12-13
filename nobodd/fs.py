@@ -376,7 +376,7 @@ class FatTable(abc.MutableSequence):
         each as it is found.
         """
         for cluster, value in enumerate(self):
-            if value == 0 and self.min_valid <= cluster:
+            if value == 0 and self.min_valid < cluster:
                 yield cluster
             if cluster > self.max_valid:
                 break
