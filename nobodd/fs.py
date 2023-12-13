@@ -3,6 +3,7 @@ import os
 import errno
 import struct
 import weakref
+from abc import abstractmethod
 from collections import abc
 from itertools import islice
 
@@ -13,7 +14,7 @@ from .fat import (
     DirectoryEntry,
     LongFilenameEntry,
 )
-from .path import FatPath
+from .path import FatPath, get_cluster
 from .tools import pairwise
 
 
@@ -570,12 +571,48 @@ class FatDirectory(abc.Iterable):
     """
     __slots__ = ()
 
+    @abstractmethod
     def _iter_entries(self):
+        """
+        Abstract generator that is expected to yield successive offsets and the
+        entries at those offsets as :class:`~nobodd.fat.DirectoryEntry`
+        instances or :class:`~nobodd.fat.LongFilenameEntry` instances, as
+        appropriate. All instances must be yielded, in the order they appear on
+        disk, regardless of whether they represent deleted entries or
+        otherwise.
+        """
         raise NotImplementedError
+
+    @abstractmethod
+    def _update_entry(self, offset, entry):
+        """
+        Abstract method which is expected to re-write *entry* (a
+        :class:`~nobodd.fat.DirectoryEntry` instance) at the specified *offset*
+        in the directory.
+        """
+        raise NotImplementedError
+
+    def update(self, entry):
+        """
+        Find *entry* (a :class:`~nobodd.fat.DirectoryEntry` instance) within
+        the directory, by matching on the starting cluster, and update it with
+        the current contents of *entry*.
+
+        If *entry* cannot be found in the directory, :exc:`FileNotFoundError`
+        is raised.
+        """
+        cluster = get_cluster(entry, self.fat_type)
+        for offset, old_entry in self._iter_entries():
+            if isinstance(old_entry, DirectoryEntry):
+                if get_cluster(old_entry, self.fat_type) == cluster:
+                    self._update_entry(offset, entry)
+                    return
+        raise FileNotFoundError(
+            f'No directory entry corresponding to cluster {cluster} found')
 
     def __iter__(self):
         entries = []
-        for entry in self._iter_entries():
+        for offset, entry in self._iter_entries():
             entries.append(entry)
             if isinstance(entry, DirectoryEntry):
                 if entry.filename[0] == 0:
@@ -603,12 +640,15 @@ class FatRoot(FatDirectory):
     def _get_cluster(self):
         return 0
 
+    def _update_entry(self, offset, entry):
+        entry.to_buffer(self._mem, offset)
+
     def _iter_entries(self):
         for offset in range(0, len(self._mem), DirectoryEntry._FORMAT.size):
             entry = DirectoryEntry.from_buffer(self._mem, offset)
             if entry.attr == 0x0F:
                 entry = LongFilenameEntry.from_buffer(self._mem, offset)
-            yield entry
+            yield offset, entry
 
 
 class FatSubDirectory(FatDirectory):
@@ -618,14 +658,23 @@ class FatSubDirectory(FatDirectory):
     :class:`FatFileSystem` instance) and *start*, the first cluster of the
     sub-directory.
     """
-    __slots__ = ('_cs', '_file')
+    __slots__ = ('_cs', '_file', 'fat_type')
 
     def __init__(self, fs, start):
         self._cs = fs.clusters.size
         self._file = FatFile(fs, start)
+        self.fat_type = fs.fat_type
 
     def _get_cluster(self):
         return self._file._start
+
+    def _update_entry(self, offset, entry):
+        pos = self._file.tell()
+        try:
+            self._file.seek(offset)
+            self._file.write(bytes(entry))
+        finally:
+            self._file.seek(pos)
 
     def _iter_entries(self):
         buf = bytearray(self._cs)
@@ -635,7 +684,7 @@ class FatSubDirectory(FatDirectory):
                 entry = DirectoryEntry.from_buffer(buf, offset)
                 if entry.attr == 0x0F:
                     entry = LongFilenameEntry.from_buffer(buf, offset)
-                yield entry
+                yield offset, entry
 
 
 class Fat12Root(FatRoot):
