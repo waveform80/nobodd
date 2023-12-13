@@ -161,7 +161,7 @@ DIRECTORY_ENTRY = """
 8s    filename
 3s    ext
 B     attr
-1x    reserved
+B     attr2
 B     ctime_ms
 H     ctime
 H     cdate
