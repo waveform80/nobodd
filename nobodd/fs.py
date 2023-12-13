@@ -123,6 +123,14 @@ class FatFileSystem:
             self._data = None
             self._root = None
 
+    @property
+    def readonly(self):
+        """
+        Returns :data:`True` if the underlying :class:`~mmap.mmap` is
+        read-only.
+        """
+        return self._data.readonly
+
     def open_dir(self, cluster):
         """
         Opens the sub-directory in the specified *cluster*, returning a
