@@ -143,17 +143,37 @@ class FatFileSystem:
         """
         return FatSubDirectory(self, cluster)
 
-    def open_file(self, cluster, size):
+    def open_file(self, cluster, mode='rb'):
         """
-        Opens the file at the specified *cluster* with the specified *size* in
-        bytes, returning a :class:`FatFile` instance representing it.
+        Opens the file at the specified *cluster*, returning a :class:`FatFile`
+        instance representing it. Note that the :class:`FatFile` instance
+        returned by this method has no directory entry associated with it. This
+        is typically used for "files" underlying the sub-directory structure
+        which do not have an associated size (other than that dictated by their
+        FAT chain of clusters).
 
         .. warning::
 
             This method is intended for internal use by the
             :class:`~nobodd.path.FatPath` class.
         """
-        return FatFile(self, cluster, size)
+        return FatFile.from_cluster(self, cluster, mode)
+
+    def open_entry(self, index, entry, mode='rb'):
+        """
+        Opens the specified *entry*, which must be a
+        :class:`~nobodd.fat.DirectoryEntry` instance, which must be a member of
+        *index*, an instance of :class:`FatDirectory`. Returns a
+        :class:`FatFile` instance associated with the specified *entry*. This
+        permits writes to the file to be properly recorded in the corresponding
+        directory entry.
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class.
+        """
+        return FatFile.from_entry(self, index, entry, mode)
 
     @property
     def fat(self):
@@ -674,11 +694,14 @@ class FatSubDirectory(FatDirectory):
 
     def __init__(self, fs, start):
         self._cs = fs.clusters.size
-        self._file = FatFile(fs, start)
+        # NOTE: We always open sub-directories with a writable mode when
+        # possible; this simply parallels the state in FAT-12/16 root
+        # directories which are always writable (if the underlying mapping is)
+        self._file = fs.open_file(start, mode='rb' if fs.readonly else 'r+b')
         self.fat_type = fs.fat_type
 
     def _get_cluster(self):
-        return self._file._start
+        return self._file._map[0]
 
     def _update_entry(self, offset, entry):
         pos = self._file.tell()
@@ -746,26 +769,62 @@ class FatFile(io.RawIOBase):
 
     Instances can (and should) be used as context managers to implicitly close
     references upon exiting the context. Instances are readable and seekable,
-    but not writable (this is a read-only implementation), using all the
-    methods derived from the base :class:`io.RawIOBase` class.
-
-    If constructed manually, *fs* is the associated :class:`FatFileSystem`
-    instance, *start* is the first cluster of the file, and *size* is
-    (optionally) the size in bytes of the file. If unspecified, the file is
-    assumed to fill all its clusters.
+    and optionally writable, using all the methods derived from the base
+    :class:`io.RawIOBase` class.
     """
-    __slots__ = ('_fs', '_start', '_map', '_size', '_pos')
+    __slots__ = ('_fs', '_map', '_index', '_entry', '_pos', '_mode')
 
-    def __init__(self, fs, start, size=None):
-        self._fs = fs
-        self._start = start
-        self._map = list(fs._fat.chain(start))
-        # size should only be "None" in the case of directory entries; in this
-        # case, scan the FAT to determine # of clusters (and thus max. size)
-        if size is None:
-            size = len(self._map) * self._fs._cs
-        self._size = size
+    def __init__(self, fs, start, mode='rb', index=None, entry=None):
+        super().__init__()
+        if set(mode) > set('rwab+'):
+            raise ValueError(f'invalid file mode {mode!r}')
+        if 'b' not in mode:
+            raise ValueError(f'non-binary mode {mode!r} not supported')
+        if len(set(mode) & set('rwa')) != 1:
+            raise ValueError('must have exactly one of read/write/append mode')
+        if fs.readonly and set(mode) & set('wa+'):
+            raise PermissionError('fs is read-only')
+        self._fs = weakref.ref(fs)
+        self._map = list(fs.fat.chain(start))
+        self._index = index
+        self._entry = entry
         self._pos = 0
+        if 'w' in mode:
+            self._mode = '+' if '+' in mode else 'w'
+            self.truncate()
+        elif 'a' in mode:
+            self._mode = '+' if '+' in mode else 'w'
+            self.seek(0, os.SEEK_END)
+        else:
+            self._mode = '+' if '+' in mode else 'r'
+
+    @classmethod
+    def from_cluster(cls, fs, start, mode='rb'):
+        """
+        Construct a :class:`FatFile` from a :class:`FatFileSystem`, *fs*, and
+        a *start* cluster. The optional *mode* is equivalent to the built-in
+        :func:`open` function.
+
+        Files constructed via this method do not have an associated directory
+        entry. As a result, their size is assumed to be the full size of their
+        cluster chain. This is typically used for the "file" backing a
+        :class:`FatSubDirectory`.
+        """
+        return cls(fs, start, mode)
+
+    @classmethod
+    def from_entry(cls, fs, index, entry, mode='rb'):
+        """
+        Construct a :class:`FatFile` from a :class:`FatFileSystem`, *fs*, a
+        :class:`FatDirectory`, *index*, and a
+        :class:`~nobodd.fat.DirectoryEntry`, *entry*. The optional *mode* is
+        equivalent to the built-in :func:`open` function.
+
+        Files constructed via this method have an associated directory entry
+        which will be updated if/when a write to the file changes its size
+        (extension or truncation).
+        """
+        return cls(fs, get_cluster(entry, fs.fat_type), mode, index, entry)
 
     def _get_fs(self):
         """
@@ -779,6 +838,11 @@ class FatFile(io.RawIOBase):
         return fs
 
     def _get_size(self):
+        """
+        Returns the current size of the file. If the file has an associated
+        directory entry, we simply return the size recorded there. Otherwise,
+        the size is full size of all clusters in the file's chain.
+        """
         fs = self._get_fs()
         if self._entry is None:
             return fs.clusters.size * len(self._map)
@@ -786,19 +850,26 @@ class FatFile(io.RawIOBase):
             return self._entry.size
 
     def _set_size(self, new_size):
-        # TODO
-        pass
+        """
+        Update the size of the file in the associated directory entry, if any.
+        If the file has no associated directory entry, this is a no-op.
+        """
+        if self._entry is not None:
+            self._entry = self._entry._replace(size=new_size)
+            self._index.update(self._entry)
 
     def readable(self):
-        return True
+        return self._mode in 'r+'
 
     def seekable(self):
         return True
 
     def writable(self):
-        return not self._get_fs().fat.readonly
+        return self._mode in 'w+'
 
     def readall(self):
+        if not self.readable:
+            raise io.UnsupportedOperation()
         size = self._get_size()
         buf = bytearray(max(0, size - self._pos))
         mem = memoryview(buf)
@@ -808,15 +879,18 @@ class FatFile(io.RawIOBase):
         return bytes(buf)
 
     def readinto(self, buf):
+        if not self.readable:
+            raise io.UnsupportedOperation()
         fs = self._get_fs()
         cs = fs.clusters.size
+        size = self._get_size()
         # index is which cluster of the file we wish to read; i.e. index 0
         # represents the first cluster of the file; left and right are the byte
         # offsets within the cluster to return; read is the number of bytes to
         # return
         index = self._pos // cs
         left = self._pos - (index * cs)
-        right = min(cs, left + len(buf), self._size - (index * cs))
+        right = min(cs, left + len(buf), size - (index * cs))
         read = max(right - left, 0)
         if read > 0:
             buf[:read] = fs.clusters[self._map[index]][left:right]
@@ -824,9 +898,12 @@ class FatFile(io.RawIOBase):
         return read
 
     def write(self, buf):
+        if not self.writable:
+            raise io.UnsupportedOperation()
         mem = memoryview(buf)
         fs = self._get_fs()
-        if self._pos > self._size:
+        size = self._get_size()
+        if self._pos > size:
             # Pad the file to the current position. Note that this does *not*
             # count towards written
             self.truncate()
@@ -852,7 +929,7 @@ class FatFile(io.RawIOBase):
                     # of space part-way through the write
                     # XXX raise or return written?
                     raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
-        if self._pos > self._size:
+        if self._pos > size:
             self._set_size(self._pos)
         return written
 
@@ -865,6 +942,7 @@ class FatFile(io.RawIOBase):
         """
         if fs is None:
             fs = self._get_fs()
+        mem = memoryview(buf)
         cs = fs.clusters.size
         index = self._pos // cs
         left = self._pos - (index * cs)
@@ -872,7 +950,7 @@ class FatFile(io.RawIOBase):
         written = max(right - left, 0)
         if written > 0:
             try:
-                fs.clusters[self._map[index]][left:right] = buf[:written]
+                fs.clusters[self._map[index]][left:right] = mem[:written]
             except IndexError:
                 return 0
             self._pos += written
@@ -884,7 +962,7 @@ class FatFile(io.RawIOBase):
         elif whence == io.SEEK_CUR:
             pos = self._pos + pos
         elif whence == io.SEEK_END:
-            pos = self._size + pos
+            pos = self._get_size() + pos
         else:
             raise ValueError(f'invalid whence: {whence}')
         if pos < 0:
@@ -893,21 +971,24 @@ class FatFile(io.RawIOBase):
         return self._pos
 
     def truncate(self, size=None):
+        if not self.writable:
+            raise io.UnsupportedOperation()
         fs = self._get_fs()
         cs = fs.clusters.size
+        old_size = self._get_size()
         if size is None:
             size = self._pos
-        if size == self._size:
+        if size == old_size:
             return size
         clusters = max(1, (size + cs - 1) // cs)
-        if size > self._size:
+        if size > old_size:
             # If we're expanding the size of the file, zero the tail of the
             # current final cluster; this is necessary whether or not we're
             # expanding the actual number of clusters in the file. Note we
             # don't bother calculating exactly how many bytes to zero; we just
             # zero everything from the current size up to the end of the
             # cluster because that's fine in either case
-            tail = len(self._map) * cs - self._size
+            tail = len(self._map) * cs - old_size
             if tail:
                 fs.clusters[self._map[-1]][-tail:] = b'\0' * tail
         if clusters > len(self._map):
@@ -936,4 +1017,4 @@ class FatFile(io.RawIOBase):
                 fs.fat.mark_free(cluster)
         # Finally, correct the directory entry to reflect the new size
         self._set_size(size)
-        return self._size
+        return size
