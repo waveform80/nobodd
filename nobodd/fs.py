@@ -68,7 +68,7 @@ class FatFileSystem:
             'fat12': Fat12Table,
             'fat16': Fat16Table,
             'fat32': Fat32Table,
-        }[self._fat_type](mem[fat_offset:fat_offset + fat_size])
+        }[self._fat_type](mem[fat_offset:root_offset], fat_size)
         self._data = FatClusters(
             mem[data_offset:], bpb.bytes_per_sector * bpb.sectors_per_cluster)
         if self._fat_type == 'fat32':
@@ -317,19 +317,20 @@ class FatTable(abc.MutableSequence):
         self.close()
 
     def close(self):
-        if self._mem is not None:
-            self._mem.release()
-            self._mem = None
+        if self._tables:
+            for table in self._tables:
+                table.release()
+            self._tables = ()
 
     def __len__(self):
-        return len(self._mem)
+        return len(self._tables[0])
 
     def __delitem__(self, cluster):
         raise TypeError('FAT length is immutable')
 
     @property
     def readonly(self):
-        return self._mem.readonly
+        return self._tables[0].readonly
 
     def insert(self, cluster, value):
         """
@@ -386,9 +387,12 @@ class Fat12Table(FatTable):
     max_valid = 0xFEF
     end_mark = 0xFFF
 
-    def __init__(self, mem):
+    def __init__(self, mem, fat_size):
         super().__init__()
-        self._mem = mem
+        self._tables = tuple(
+            mem[offset:offset + fat_size]
+            for offset in range(0, len(mem), fat_size)
+        )
 
     def __len__(self):
         return (super().__len__() * 2) // 3
@@ -397,10 +401,12 @@ class Fat12Table(FatTable):
         try:
             if cluster % 2:
                 offset = cluster + (cluster >> 1) + 1
-                return struct.unpack_from('<H', self._mem, offset)[0] >> 4
+                return struct.unpack_from(
+                    '<H', self._tables[0], offset)[0] >> 4
             else:
                 offset = cluster + (cluster >> 1)
-                return struct.unpack_from('<H', self._mem, offset)[0] & 0x0FFF
+                return struct.unpack_from(
+                    '<H', self._tables[0], offset)[0] & 0x0FFF
         except struct.error:
             raise IndexError(f'{offset} out of bounds')
 
@@ -415,7 +421,8 @@ class Fat12Table(FatTable):
             else:
                 offset = cluster + (cluster >> 1)
                 value |= struct.unpack_from('<H', self._mem, offset)[0] & 0xF000
-            struct.pack_into('<H', self._mem, offset, value)
+            for table in self._tables:
+                struct.pack_into('<H', table, offset, value)
         except struct.error:
             raise IndexError(f'{offset} out of bounds')
 
@@ -434,17 +441,21 @@ class Fat16Table(FatTable):
     max_valid = 0xFFEF
     end_mark = 0xFFFF
 
-    def __init__(self, mem):
+    def __init__(self, mem, fat_size):
         super().__init__()
-        self._mem = mem.cast('H')
+        self._tables = tuple(
+            mem[offset:offset + fat_size].cast('H')
+            for offset in range(0, len(mem), fat_size)
+        )
 
     def __getitem__(self, cluster):
-        return self._mem[cluster]
+        return self._tables[0][cluster]
 
     def __setitem__(self, cluster, value):
         if not 0x0000 <= value <= 0xFFFF:
             raise ValueError(f'{value} is outside range 0x0000..0xFFFF')
-        self._mem[cluster] = value
+        for table in self._tables:
+            table[cluster] = value
 
 
 class Fat32Table(FatTable):
@@ -463,19 +474,23 @@ class Fat32Table(FatTable):
 
     # TODO: Override mark_free and mark_end to preserve top nibble
 
-    def __init__(self, mem):
+    def __init__(self, mem, fat_size):
         super().__init__()
-        self._mem = mem.cast('I')
+        self._tables = tuple(
+            mem[offset:offset + fat_size].cast('I')
+            for offset in range(0, len(mem), fat_size)
+        )
 
     def __getitem__(self, cluster):
-        return self._mem[cluster] & 0x0FFFFFFF
+        return self._tables[0][cluster] & 0x0FFFFFFF
 
     def __setitem__(self, cluster, value):
         if not 0x00000000 <= value <= 0x0FFFFFFF:
             raise ValueError(f'{value} is outside range 0x00000000..0x0FFFFFFF')
-        self._mem[cluster] = (
-            (self._mem[cluster] & 0xF0000000) |
-            (value & 0x0FFFFFFF))
+        for table in self._tables:
+            table[cluster] = (
+                (table[cluster] & 0xF0000000) |
+                (value & 0x0FFFFFFF))
 
 
 class FatClusters(abc.MutableSequence):
