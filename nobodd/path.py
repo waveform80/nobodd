@@ -160,10 +160,6 @@ class FatPath:
         self._must_exist()
         if self.is_dir():
             raise IsADirectoryError(f'Is a directory: {self}')
-        if set(mode) & {'+', 'w'}:
-            raise PermissionError(f'Permission denied: {self}')
-        if set(mode) > {'r', 'b'}:
-            raise ValueError(f'invalid mode: {mode}')
         if 'b' in mode:
             if buffering == 1:
                 warnings.warn(
@@ -177,14 +173,19 @@ class FatPath:
                 raise ValueError("binary mode doesn't take an errors argument")
             if newline is not None:
                 raise ValueError("binary mode doesn't take a newline argument")
+            f = fs.open_entry(self._index, self._entry, mode)
         else:
             if buffering == 0:
                 raise ValueError("can't have unbuffered text I/O")
-        f = fs.open_entry(self._index, self._entry)
+            f = fs.open_entry(self._index, self._entry, mode + 'b')
         if buffering:
             if buffering in (-1, 1):
                 buffering = io.DEFAULT_BUFFER_SIZE
-            f = io.BufferedReader(f, buffering)
+            f = {
+                (True, False): io.BufferedReader,
+                (False, True): io.BufferedWriter,
+                (True, True):  io.BufferedRandom,
+            }[(f.readable(), f.writable())](f, buffering)
         if 'b' not in mode:
             f = io.TextIOWrapper(
                 f, encoding=encoding, errors=errors, newline=newline,
@@ -231,7 +232,7 @@ class FatPath:
                 name = (entries[-1].filename + entries[-1].ext).rstrip(b' ')
                 if name in (b'.', b'..'):
                     continue # skip "." and ".." directories
-            yield FatPath._from_entries(fs, entries, prefix=str(self))
+            yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
 
     def match(self, pattern):
         """
