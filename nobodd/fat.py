@@ -214,6 +214,13 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`DirectoryEntry` to *buf*, a buffer protocol object,
+        at the specified *offset* (which defaults to 0).
+        """
+        cls._FORMAT.pack_into(buf, offset, *self)
+
     @classmethod
     def iter_over(cls, buf):
         """
@@ -275,6 +282,13 @@ class LongFilenameEntry(
         (which defaults to 0) in the buffer protocol object, *buf*.
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`LongFilenameEntry` to *buf*, a buffer protocol
+        object, at the specified *offset* (which defaults to 0).
+        """
+        self._FORMAT.pack_into(buf, offset, *self)
 
     @classmethod
     def iter_over(cls, buf):
