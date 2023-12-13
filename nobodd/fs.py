@@ -580,6 +580,10 @@ class FatDirectory(abc.Iterable):
     __slots__ = ()
 
     @abstractmethod
+    def _get_cluster(self):
+        raise NotImplementedError
+
+    @abstractmethod
     def _iter_entries(self):
         """
         Abstract generator that is expected to yield successive offsets and the
