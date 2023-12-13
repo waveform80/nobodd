@@ -45,7 +45,8 @@ class DiskImage:
             filename_or_obj = filename_or_obj.__fspath__()
         self._opened = isinstance(filename_or_obj, str)
         if self._opened:
-            self._file = open(filename_or_obj, 'rb')
+            self._file = open(
+                filename_or_obj, 'r+b' if access == mmap.ACCESS_WRITE else 'rb')
         else:
             self._file = filename_or_obj
         self._map = mmap.mmap(self._file.fileno(), 0, access=access)
