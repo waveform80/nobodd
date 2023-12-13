@@ -18,11 +18,11 @@ class DiskImage:
     returns a valid file-descriptor number (the class uses :class:`~mmap.mmap`
     internally which requires a "real" file).
 
-    The disk image is expected to be partitioned with either an `MBR`_ or a
-    `GPT`_. The partitions within the image can be enumerated with the
-    :attr:`partitions` attribute. The instance can (and should) be used as
-    a context manager; exiting the context will call the :meth:`close` method
-    implicitly.
+    The disk image is expected to be partitioned with either an `MBR`_
+    partition table or a `GPT`_. The partitions within the image can be
+    enumerated with the :attr:`partitions` attribute. The instance can (and
+    should) be used as a context manager; exiting the context will call the
+    :meth:`close` method implicitly.
 
     If specified, *sector_size* is the size of sectors (in bytes) within the
     disk image. This defaults to 512 bytes, and should almost always be left
@@ -30,6 +30,11 @@ class DiskImage:
     the memory mapping. This defaults to :data:`mmap.ACCESS_READ` for read-only
     access. If you wish to write to file-systems within the disk image, change
     this to :data:`mmap.ACCESS_WRITE`.
+
+    .. note::
+
+        Please note that this library provides no means to re-partition disk
+        images, just the ability to re-write files within FAT partitions.
 
     .. _MBR: https://en.wikipedia.org/wiki/Master_boot_record
     .. _GPT: https://en.wikipedia.org/wiki/GUID_Partition_Table

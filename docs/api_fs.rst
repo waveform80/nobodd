@@ -22,6 +22,14 @@ the root directory of the file-system.
     >>> fs.root
     FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/')
 
+.. warning::
+
+    At the time of writing, the implementation is strictly *not thread-safe*.
+    Attempting to write to the file-system from multiple threads (whether in
+    separate instances or not) is likely to result in corruption. Attempting to
+    write to the file-system from one thread, while reading from another will
+    result in undefined behaviour including incorrect reads.
+
 
 FatFileSystem
 =============
@@ -54,20 +62,15 @@ and FAT-32, and sub-directories (which are common across FAT types).
 .. autoclass:: FatDirectory
    :private-members:
 
+.. autoclass:: FatRoot
+
 .. autoclass:: FatSubDirectory
 
-.. class:: Fat12Root
-
-    This is a trivial alias of :class:`Fat16Root` because FAT-12 uses the same
-    structure as FAT-16 for the root directory.
+.. autoclass:: Fat12Root
 
 .. autoclass:: Fat16Root
 
-.. class:: Fat32Root
-
-    This is a trivial alias of :class:`FatSubDirectory` because, in FAT-32, the
-    root directory is represented by the same structure as a regular
-    sub-directory.
+.. autoclass:: Fat32Root
 
 .. autofunction:: fat_type
 

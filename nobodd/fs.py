@@ -149,7 +149,7 @@ class FatFileSystem:
     @property
     def fat(self):
         """
-        A sequence representing the FAT table itself.
+        A :class:`FatTable` sequence representing the FAT table itself.
 
         .. warning::
 
@@ -161,8 +161,8 @@ class FatFileSystem:
     @property
     def clusters(self):
         """
-        A sequence representing the clusters containing the data stored in the
-        file-system.
+        A :class:`FatClusters` sequence representing the clusters containing
+        the data stored in the file-system.
 
         .. warning::
 
@@ -572,11 +572,13 @@ class FatDirectory(abc.Iterable):
     cluster = property(lambda self: self._get_cluster())
 
 
-class Fat16Root(FatDirectory):
+class FatRoot(FatDirectory):
     """
-    A concrete derivative of :class:`FatDirectory` representing the
-    (fixed-size) root directory of a FAT-16 file-system. Must be constructed
-    with *mem*, which is a buffer object covering the root directory clusters.
+    An abstract derivative of :class:`FatDirectory` representing the
+    (fixed-size) root directory of a FAT-12 or FAT-16 file-system. Must be
+    constructed with *mem*, which is a buffer object covering the root
+    directory clusters. The :class:`Fat12Root` and :class:`Fat16Root` classes
+    are (trivial) concrete derivatives of this.
     """
     __slots__ = ('_mem',)
 
@@ -621,12 +623,32 @@ class FatSubDirectory(FatDirectory):
                 yield entry
 
 
-# The root directory in FAT32 is simply a regular sub-directory with the
-# starting cluster recorded in the BPB
-Fat32Root = FatSubDirectory
+class Fat12Root(FatRoot):
+    """
+    This is a trivial derivative of :class:`FatRoot` which simply declares the
+    root as belonging to a FAT-12 file-system.
 
-# The root directory in FAT12 is structured the same as FAT16
-Fat12Root = Fat16Root
+    .. autoattribute:: fat_type
+    """
+    fat_type = 'fat12'
+
+
+class Fat16Root(FatRoot):
+    """
+    This is a trivial derivative of :class:`FatRoot` which simply declares the
+    root as belonging to a FAT-16 file-system.
+
+    .. autoattribute:: fat_type
+    """
+    fat_type = 'fat16'
+
+
+class Fat32Root(FatSubDirectory):
+    """
+    This is a trivial derivative of :class:`FatSubDirectory` because, in
+    FAT-32, the root directory is represented by the same structure as a
+    regular sub-directory.
+    """
 
 
 class FatFile(io.RawIOBase):
