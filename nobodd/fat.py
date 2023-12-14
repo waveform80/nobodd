@@ -134,6 +134,7 @@ class FAT32BIOSParameterBlock(
     this implementation.
 
     .. _FAT32 BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FAT32_Extended_BIOS_Parameter_Block
+    .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
     """
     __slots__ = ()
     _FORMAT = struct.Struct(formats(FAT32_BIOS_PARAMETER_BLOCK))
@@ -155,6 +156,61 @@ class FAT32BIOSParameterBlock(
         *offset* (which defaults to 0) in the buffer protocol object, *buf*.
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+
+FAT32_INFO_SECTOR = """
+4s    sig1
+480s  reserved1
+4s    sig2
+I     free_clusters
+I     last_alloc
+12s   reserved2
+4s    sig3
+"""
+
+class FAT32InfoSector(namedtuple('FAT32InfoSector', labels(FAT32_INFO_SECTOR))):
+    """
+    A :func:`~collections.namedtuple` representing the `FAT32 Info Sector`_
+    typically found in the sector after the `BIOS Parameter Block`_ in FAT-32
+    formats. In FAT-12 and FAT-16 formats it is not present.
+
+    This records the number of free clusters available, and the last allocated
+    cluster, which can speed up the search for free clusters during allocation.
+    Because this implementation is capable of writing, and thus allocating
+    clusters, and because the reserved fields must be ignored but not
+    re-written, they are represented as strings here (rather than "x" NULs) to
+    ensure they are preserved when writing.
+
+    .. _FAT32 Info Sector: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FS_Information_Sector
+    .. _BIOS Parameter Block: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BIOS_Parameter_Block
+    """
+    __slots__ = ()
+    _FORMAT = struct.Struct(formats(FAT32_INFO_SECTOR))
+
+    def __bytes__(self):
+        return self._FORMAT.pack(*self)
+
+    @classmethod
+    def from_bytes(cls, s):
+        """
+        Construct a :class:`FAT32InfoSector` from the byte-string *s*.
+        """
+        return cls(*cls._FORMAT.unpack(s))
+
+    @classmethod
+    def from_buffer(cls, buf, offset=0):
+        """
+        Construct a :class:`FAT32InfoSector` from the specified *offset* (which
+        defaults to 0) in the buffer protocol object, *buf*.
+        """
+        return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`FAT32InfoSector` to *buf*, a buffer protocol object,
+        at the specified *offset* (which defaults to 0).
+        """
+        self._FORMAT.pack_into(buf, offset, *self)
 
 
 DIRECTORY_ENTRY = """

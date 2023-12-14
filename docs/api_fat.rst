@@ -17,6 +17,8 @@ Data Structures
 
 .. autoclass:: FAT32BIOSParameterBlock
 
+.. autoclass:: FAT32InfoSector
+
 .. autoclass:: DirectoryEntry
 
 .. autoclass:: LongFilenameEntry

@@ -62,6 +62,11 @@ class FatFileSystem:
         root_size = (
             (root_size + (bpb.bytes_per_sector - 1)) //
             bpb.bytes_per_sector) * bpb.bytes_per_sector
+        info_offset = (
+            ebpb_fat32.info_sector * bpb.bytes_per_sector
+            if ebpb_fat32 is not None
+            and ebpb_fat32.info_sector not in (0, 0xFFFF)
+            else None)
         fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
         root_offset = fat_offset + (fat_size * bpb.fat_count)
         data_offset = root_offset + root_size
@@ -69,7 +74,10 @@ class FatFileSystem:
             'fat12': Fat12Table,
             'fat16': Fat16Table,
             'fat32': Fat32Table,
-        }[self._fat_type](mem[fat_offset:root_offset], fat_size)
+        }[self._fat_type](
+            mem[fat_offset:root_offset], fat_size,
+            mem[info_offset:info_offset + bpb.bytes_per_sector]
+            if info_offset is not None else None)
         self._data = FatClusters(
             mem[data_offset:], bpb.bytes_per_sector * bpb.sectors_per_cluster)
         if self._fat_type == 'fat32':
@@ -398,7 +406,7 @@ class FatTable(abc.MutableSequence):
         for cluster, value in enumerate(self):
             if value == 0 and self.min_valid < cluster:
                 yield cluster
-            if cluster > self.max_valid:
+            if cluster >= self.max_valid:
                 break
 
 
@@ -416,8 +424,11 @@ class Fat12Table(FatTable):
     max_valid = 0xFEF
     end_mark = 0xFFF
 
-    def __init__(self, mem, fat_size):
+    def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
+        if info_mem is not None:
+            warnings.warn(Warning(
+                'info-sector should not be present in fat-12'))
         self._tables = tuple(
             mem[offset:offset + fat_size]
             for offset in range(0, len(mem), fat_size)
@@ -470,8 +481,11 @@ class Fat16Table(FatTable):
     max_valid = 0xFFEF
     end_mark = 0xFFFF
 
-    def __init__(self, mem, fat_size):
+    def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
+        if info_mem is not None:
+            warnings.warn(Warning(
+                'info-sector should not be present in fat-16'))
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('H')
             for offset in range(0, len(mem), fat_size)
@@ -501,14 +515,66 @@ class Fat32Table(FatTable):
     max_valid = 0x0FFFFFEF
     end_mark = 0x0FFFFFFF
 
-    # TODO: Override mark_free and mark_end to preserve top nibble
-
-    def __init__(self, mem, fat_size):
+    def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
+        self._info_mem = info_mem
+        if info_mem is None:
+            self._info = None
+        else:
+            self._info = FAT32InfoSector.from_buffer(self._info_mem)
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('I')
             for offset in range(0, len(mem), fat_size)
         )
+
+    def close(self):
+        super().close()
+        if self._info is not None:
+            self._info.release()
+            self._info = None
+
+    def _alloc(self, cluster):
+        if self._info is not None:
+            self._info = self._info._replace(
+                free_clusters=self._info.free_clusters - 1,
+                last_alloc=cluster)
+            self._info.to_buffer(self._info_mem)
+
+    def _dealloc(self, cluster):
+        if self._info is not None:
+            self._info = self._info._replace(
+                free_clusters=self._info.free_clusters + 1)
+            self._info.to_buffer(self._info_mem)
+
+    def mark_end(self, cluster):
+        if not self[cluster]:
+            self._alloc(cluster)
+        super().mark_end(cluster)
+
+    def mark_free(self, cluster):
+        if self[cluster]:
+            self._dealloc(cluster)
+        super().mark_free(cluster)
+
+    def free(self):
+        if self._info is not None:
+            last_alloc = self._info.last_alloc
+            # If we have a valid info-sector, start scanning from the last
+            # allocated cluster plus one
+            for cluster in range(last_alloc + 1, len(self)):
+                if self[cluster] == 0 and self.min_valid < cluster:
+                    yield cluster
+                if cluster >= self.max_valid:
+                    break
+            # Once the above is exhausted, start from the beginning, but stop
+            # as soon as we reach the last_alloc point
+            for cluster, value in enumerate(self):
+                if value == 0 and self.min_valid < cluster:
+                    yield cluster
+                if cluster >= last_alloc:
+                    break
+        else:
+            yield from super().free()
 
     def __getitem__(self, cluster):
         return self._tables[0][cluster] & 0x0FFFFFFF
@@ -516,10 +582,13 @@ class Fat32Table(FatTable):
     def __setitem__(self, cluster, value):
         if not 0x00000000 <= value <= 0x0FFFFFFF:
             raise ValueError(f'{value} is outside range 0x00000000..0x0FFFFFFF')
+        old_value = self._tables[0][cluster]
+        if not old_value and value:
+            self._alloc(cluster)
+        elif old_value and not value:
+            self._dealloc(cluster)
         for table in self._tables:
-            table[cluster] = (
-                (table[cluster] & 0xF0000000) |
-                (value & 0x0FFFFFFF))
+            table[cluster] = (old_value & 0xF0000000) | (value & 0x0FFFFFFF)
 
 
 class FatClusters(abc.MutableSequence):
