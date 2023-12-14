@@ -3,6 +3,7 @@ import os
 import errno
 import struct
 import weakref
+import warnings
 from abc import abstractmethod
 from collections import abc
 from itertools import islice
@@ -11,11 +12,30 @@ from .fat import (
     BIOSParameterBlock,
     ExtendedBIOSParameterBlock,
     FAT32BIOSParameterBlock,
+    FAT32InfoSector,
     DirectoryEntry,
     LongFilenameEntry,
 )
 from .path import FatPath, get_cluster
 from .tools import pairwise
+
+
+class FatWarning(Warning):
+    """
+    Base class for warnings issued by :class:`FatFileSystem`.
+    """
+
+class DirtyFileSystem(FatWarning):
+    """
+    Raised when opening a FAT file-system that has the "dirty" flag set in the
+    second entry of the FAT.
+    """
+
+class DamagedFileSystem(FatWarning):
+    """
+    Raised when opening a FAT file-system that has the I/O errors flag set in
+    the second entry of the FAT.
+    """
 
 
 # The following references were invaluable in constructing this implementation;
@@ -105,6 +125,18 @@ class FatFileSystem:
                 f'Max. root entries, {bpb.max_root_entries} creates a root '
                 f'directory region that is not a multiple of sector size, '
                 f'{bpb.bytes_per_sector}')
+        clean = (
+            (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
+            (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
+        errors = not (
+            (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
+            (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
+        if not clean:
+            warnings.warn(DirtyFileSystem(
+                'File-system has the dirty bit set'))
+        if errors:
+            warnings.warn(DamagedFileSystem(
+                'File-system has the I/O errors bit set'))
 
     def __repr__(self):
         return (
@@ -369,6 +401,14 @@ class FatTable(abc.MutableSequence):
     def readonly(self):
         return self._tables[0].readonly
 
+    @abstractmethod
+    def get_all(self, cluster):
+        """
+        Returns the value of *cluster* in all copies of the FAT, as a
+        :class:`tuple`.
+        """
+        raise NotImplementedError
+
     def insert(self, cluster, value):
         """
         Raises :exc:`TypeError`; the FAT length is immutable.
@@ -437,6 +477,23 @@ class Fat12Table(FatTable):
     def __len__(self):
         return (super().__len__() * 2) // 3
 
+    def get_all(self, cluster):
+        try:
+            if cluster % 2:
+                offset = cluster + (cluster >> 1) + 1
+                return tuple(
+                    struct.unpack_from('<H', t, offset)[0] >> 4
+                    for t in self._tables
+                )
+            else:
+                offset = cluster + (cluster >> 1)
+                return tuple(
+                    struct.unpack_from('<H', t, offset)[0] & 0x0FFF
+                    for t in self._tables
+                )
+        except struct.error:
+            raise IndexError(f'{offset} out of bounds')
+
     def __getitem__(self, cluster):
         try:
             if cluster % 2:
@@ -491,6 +548,9 @@ class Fat16Table(FatTable):
             for offset in range(0, len(mem), fat_size)
         )
 
+    def get_all(self, cluster):
+        return tuple(t[cluster] for t in self._tables)
+
     def __getitem__(self, cluster):
         return self._tables[0][cluster]
 
@@ -524,7 +584,7 @@ class Fat32Table(FatTable):
         self._info = None
         self._info_mem = None
         if info_mem is not None:
-            info = FAT32InfoSector.from_buffer(self._info_mem)
+            info = FAT32InfoSector.from_buffer(info_mem)
             if (
                     info.sig1 == b'RRaA' and
                     info.sig2 == b'rrAa' and
@@ -583,6 +643,9 @@ class Fat32Table(FatTable):
                         break
                 return
         yield from super().free()
+
+    def get_all(self, cluster):
+        return tuple(t[cluster] & 0x0FFFFFFF for t in self._tables)
 
     def __getitem__(self, cluster):
         return self._tables[0][cluster] & 0x0FFFFFFF
