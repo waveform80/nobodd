@@ -177,10 +177,12 @@ class FatPath:
         else:
             if buffering == 0:
                 raise ValueError("can't have unbuffered text I/O")
+            else:
+                line_buffering = buffering == 1
             f = fs.open_entry(self._index, self._entry, mode + 'b')
         if buffering:
             if buffering in (-1, 1):
-                buffering = io.DEFAULT_BUFFER_SIZE
+                buffering = fs.clusters.size
             f = {
                 (True, False): io.BufferedReader,
                 (False, True): io.BufferedWriter,
@@ -189,7 +191,7 @@ class FatPath:
         if 'b' not in mode:
             f = io.TextIOWrapper(
                 f, encoding=encoding, errors=errors, newline=newline,
-                line_buffering=buffering == 1)
+                line_buffering=line_buffering)
         return f
 
     def unlink(self, missing_ok=False):
