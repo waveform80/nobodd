@@ -192,6 +192,31 @@ class FatPath:
                 line_buffering=buffering == 1)
         return f
 
+    def unlink(self, missing_ok=False):
+        """
+        Remove this file. If the path points to a directory, use :meth:`rmdir`
+        instead.
+
+        If *missing_ok* is :data:`False` (the default),
+        :exc:`FileNotFoundError` is raised if the path does not exist. If
+        *missing_ok* is :data:`True`, :exc:`FileNotFoundError` exceptions will
+        be ignored (same behaviour as the POSIX ``rm -f`` command).
+        """
+        fs = self._get_fs()
+        try:
+            self._must_exist()
+        except FileNotFoundError:
+            if missing_ok:
+                return
+            else:
+                raise
+        if self._entry is None:
+            raise IsADirectoryError(f'Is a directory: {self}')
+        self._index.remove(self._entry)
+        for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
+            fs.fat.mark_free(cluster)
+        self._entry = None
+
     def iterdir(self):
         """
         When the path points to a directory, yield path objects of the
