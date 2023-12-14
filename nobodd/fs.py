@@ -517,15 +517,20 @@ class Fat32Table(FatTable):
 
     def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
-        self._info_mem = info_mem
-        if info_mem is None:
-            self._info = None
-        else:
-            self._info = FAT32InfoSector.from_buffer(self._info_mem)
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('I')
             for offset in range(0, len(mem), fat_size)
         )
+        self._info = None
+        self._info_mem = None
+        if info_mem is not None:
+            info = FAT32InfoSector.from_buffer(self._info_mem)
+            if (
+                    info.sig1 == b'RRaA' and
+                    info.sig2 == b'rrAa' and
+                    info.sig3 == (0x00, 0x00, 0x55, 0xAA)):
+                self._info = info
+                self._info_mem = info_mem
 
     def close(self):
         super().close()
@@ -535,15 +540,17 @@ class Fat32Table(FatTable):
 
     def _alloc(self, cluster):
         if self._info is not None:
-            self._info = self._info._replace(
-                free_clusters=self._info.free_clusters - 1,
-                last_alloc=cluster)
+            if 0 < self._info.free_clusters <= len(self):
+                self._info = self._info._replace(
+                    free_clusters=self._info.free_clusters - 1,
+                    last_alloc=cluster)
             self._info.to_buffer(self._info_mem)
 
     def _dealloc(self, cluster):
         if self._info is not None:
-            self._info = self._info._replace(
-                free_clusters=self._info.free_clusters + 1)
+            if 0 <= self._info.free_clusters < len(self):
+                self._info = self._info._replace(
+                    free_clusters=self._info.free_clusters + 1)
             self._info.to_buffer(self._info_mem)
 
     def mark_end(self, cluster):
@@ -559,22 +566,23 @@ class Fat32Table(FatTable):
     def free(self):
         if self._info is not None:
             last_alloc = self._info.last_alloc
-            # If we have a valid info-sector, start scanning from the last
-            # allocated cluster plus one
-            for cluster in range(last_alloc + 1, len(self)):
-                if self[cluster] == 0 and self.min_valid < cluster:
-                    yield cluster
-                if cluster >= self.max_valid:
-                    break
-            # Once the above is exhausted, start from the beginning, but stop
-            # as soon as we reach the last_alloc point
-            for cluster, value in enumerate(self):
-                if value == 0 and self.min_valid < cluster:
-                    yield cluster
-                if cluster >= last_alloc:
-                    break
-        else:
-            yield from super().free()
+            if min_valid <= last_alloc < len(self):
+                # If we have a valid info-sector, start scanning from the last
+                # allocated cluster plus one
+                for cluster in range(last_alloc + 1, len(self)):
+                    if self[cluster] == 0 and self.min_valid < cluster:
+                        yield cluster
+                    if cluster >= self.max_valid:
+                        break
+                # Once the above is exhausted, start from the beginning, but
+                # stop as soon as we reach the last_alloc point
+                for cluster, value in enumerate(self):
+                    if value == 0 and self.min_valid < cluster:
+                        yield cluster
+                    if cluster >= last_alloc:
+                        break
+                return
+        yield from super().free()
 
     def __getitem__(self, cluster):
         return self._tables[0][cluster] & 0x0FFFFFFF
