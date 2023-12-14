@@ -645,11 +645,15 @@ class FatClusters(abc.MutableSequence):
         # Clusters 0 and 1 are special and don't exist in the data portion of
         # the file-system
         offset = (cluster - 2) * self._cs
+        if offset < 0:
+            raise IndexError(cluster)
         return self._mem[offset:offset + self._cs]
 
     def __setitem__(self, cluster, value):
         # See above
         offset = (cluster - 2) * self._cs
+        if offset < 0:
+            raise IndexError(cluster)
         self._mem[offset:offset + self._cs] = value
 
     def __delitem__(self, cluster):
