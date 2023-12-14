@@ -789,13 +789,16 @@ class FatDirectory(abc.Iterable):
     def __iter__(self):
         entries = []
         for offset, entry in self._iter_entries():
+            if isinstance(entry, LongFilenameEntry):
+                if entry.sequence == 0xE5: # deleted entry
+                    continue
             entries.append(entry)
             if isinstance(entry, DirectoryEntry):
-                if entry.filename[0] == 0:
+                if entry.filename[0] == 0: # end of valid entries
                     break
-                else:
+                elif entry.filename[0] != b'\xe5': # deleted entry
                     yield entries
-                    entries = []
+                entries = []
 
     cluster = property(lambda self: self._get_cluster())
 

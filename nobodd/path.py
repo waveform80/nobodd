@@ -219,18 +219,11 @@ class FatPath:
         for entries in self._index:
             if not entries:
                 raise ValueError('empty dir entries')
-            if entries[-1].filename.startswith(b'\xe5'): # deleted
-                continue # skip deleted entry
-            elif (
-                isinstance(entries[0], LongFilenameEntry) and
-                entries[0].name_1.startswith(b'\xe5\x00')
-            ):
-                continue # skip deleted entry
-            elif entries[-1].attr & 0x8:
+            if entries[-1].attr & 0x8:
                 continue # skip volume label
             elif entries[-1].attr & 0x10:
-                name = (entries[-1].filename + entries[-1].ext).rstrip(b' ')
-                if name in (b'.', b'..'):
+                name = entries[-1].filename + entries[-1].ext
+                if name in (b'.          ', b'..         '):
                     continue # skip "." and ".." directories
             yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
 
@@ -388,7 +381,7 @@ class FatPath:
         """
         fs = self._get_fs()
         self._must_exist()
-        if self._entry is not None:
+        if self._entry is not None and not (self._entry.attr & 0x10):
             return os.stat_result((
                 0o444,                                               # mode
                 get_cluster(self._entry, fs.fat_type),               # inode
@@ -597,7 +590,8 @@ class FatPath:
             False
         """
         self._resolve()
-        return self._index is not None
+        return self._index is not None and (
+            self._entry is not None or self._parts == ('',))
 
     def is_dir(self):
         """
@@ -605,7 +599,8 @@ class FatPath:
         directory. :data:`False` is also returned if the path doesn't exist.
         """
         self._resolve()
-        return self._index is not None and self._entry is None
+        return self._index is not None and (
+            self._entry is None or bool(self._entry.attr & 0x10))
 
     def is_file(self):
         """
@@ -613,7 +608,7 @@ class FatPath:
         file. :data:`False` is also returned if the path doesn't exist.
         """
         self._resolve()
-        return self._index is not None and self._entry is not None
+        return self._entry is not None and not (self._entry.attr & 0x10)
 
     def is_mount(self):
         """
