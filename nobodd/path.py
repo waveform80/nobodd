@@ -120,7 +120,7 @@ class FatPath:
             fs = self._get_fs()
             parent = fs.root
             while parts:
-                for child in parent.iterdir():
+                for child in parent._listdir():
                     if child.name.lower() == parts[0].lower():
                         parent = child
                         parts = parts[1:]
@@ -219,6 +219,18 @@ class FatPath:
             fs.fat.mark_free(cluster)
         self._entry = None
 
+    def _listdir(self):
+        fs = self._get_fs()
+        self._must_exist()
+        if not self.is_dir():
+            raise NotADirectoryError(f'Not a directory: {self}')
+        for entries in self._index:
+            if not entries:
+                raise ValueError('empty dir entries')
+            if entries[-1].attr & 0x8:
+                continue # skip volume label
+            yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
+
     def iterdir(self):
         """
         When the path points to a directory, yield path objects of the
@@ -239,20 +251,9 @@ class FatPath:
         in the file-system), and the special entries ``'.'`` and ``'..'`` are
         not included.
         """
-        fs = self._get_fs()
-        self._must_exist()
-        if not self.is_dir():
-            raise NotADirectoryError(f'Not a directory: {self}')
-        for entries in self._index:
-            if not entries:
-                raise ValueError('empty dir entries')
-            if entries[-1].attr & 0x8:
-                continue # skip volume label
-            elif entries[-1].attr & 0x10:
-                name = entries[-1].filename + entries[-1].ext
-                if name in (b'.          ', b'..         '):
-                    continue # skip "." and ".." directories
-            yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
+        for path in self._listdir():
+            if path.name not in ('.', '..'):
+                yield path
 
     def match(self, pattern):
         """
