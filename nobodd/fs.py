@@ -181,7 +181,15 @@ class FatFileSystem:
             This method is intended for internal use by the
             :class:`~nobodd.path.FatPath` class.
         """
-        return FatSubDirectory(self, cluster)
+        if cluster == 0:
+            if self._fat_type == 'fat32':
+                return Fat32Root(self, self._root)
+            elif self._fat_type == 'fat16':
+                return Fat16Root(self._root)
+            else:
+                return Fat12Root(self._root)
+        else:
+            return FatSubDirectory(self, cluster)
 
     def open_file(self, cluster, mode='rb'):
         """
@@ -272,12 +280,7 @@ class FatFileSystem:
                     for p in fs.root.iterdir():
                         print(p.name)
         """
-        if self._fat_type == 'fat32':
-            return FatPath._from_index(self, Fat32Root(self, self._root))
-        elif self._fat_type == 'fat16':
-            return FatPath._from_index(self, Fat16Root(self._root))
-        else:
-            return FatPath._from_index(self, Fat12Root(self._root))
+        return FatPath._from_index(self, self.open_dir(0))
 
 
 def fat_type(mem):
