@@ -850,9 +850,14 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
         if not filename:
             raise ValueError('empty long filename')
     else:
-        filename = entry.filename.rstrip(b' ').decode(dos_encoding)
+        filename = entry.filename.rstrip(b' ')
         if entry.ext != b'   ':
-            filename += '.' + entry.ext.rstrip(b' ').decode(dos_encoding)
+            filename += b'.' + entry.ext.rstrip(b' ')
+        # If initial char was 0xE5 (which indicates a deleted entry) then it's
+        # encoded as 0x05 (since DOS 3.0)
+        if filename[0] == 0x05:
+            filename = b'\xE5' + filename[1:]
+        filename = filename.decode(dos_encoding)
     return filename, entry
 
 
