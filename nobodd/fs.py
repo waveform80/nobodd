@@ -990,7 +990,10 @@ class FatFile(io.RawIOBase):
         if fs.readonly and set(mode) & set('wa+'):
             raise PermissionError('fs is read-only')
         self._fs = weakref.ref(fs)
-        self._map = list(fs.fat.chain(start))
+        if start:
+            self._map = list(fs.fat.chain(start))
+        else:
+            self._map = []
         self._index = index
         self._entry = entry
         self._pos = 0
