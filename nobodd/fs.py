@@ -737,9 +737,11 @@ class FatDirectory(abc.Iterable):
     An abstract :class:`~collections.abc.Iterable` representing a `FAT
     directory`_.
 
-    When iterated, yields :class:`~nobodd.fat.DirectoryEntry` or
-    :class:`~nobodd.fat.LongFilenameEntry` instances until the end of the
-    directory is encountered.
+    When iterated, yields sequences ending with a single
+    :class:`~nobodd.fat.DirectoryEntry` and preceded by zero or more
+    :class:`~nobodd.fat.LongFilenameEntry` instances. Stops when the end of
+    directory marker (an entry with NUL as the first filename byte) is
+    encountered.
 
     .. _FAT directory:
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table

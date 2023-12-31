@@ -73,6 +73,9 @@ class FatPath:
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
         :class:`~nobodd.fs.FatDirectory` instance), and a *prefix* path.
+
+        This is only used for construction of root directory instances where
+        there is no associated :class:`~nobodd.fat.DirectoryEntry`.
         """
         self = cls(fs, prefix)
         self._index = index
@@ -157,6 +160,7 @@ class FatPath:
             "rb" will fail with :exc:`PermissionError`.
         """
         fs = self._get_fs()
+        # TODO Need to get rid of next line for mode w (and a and x?)
         self._must_exist()
         if self.is_dir():
             raise IsADirectoryError(f'Is a directory: {self}')
