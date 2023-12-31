@@ -1060,12 +1060,31 @@ class FatFile(io.RawIOBase):
         If the file has no associated directory entry, this is a no-op.
         """
         if self._entry is not None:
-            first_cluster = 0 if not self._map else self._map[0]
+            try:
+                first_cluster = self._map[0]
+            except IndexError:
+                # Only set first_cluster to 0 if the map is actually empty;
+                # we ignore size here because we allow size to be 0 with a
+                # cluster allocated while the file is open so that the file
+                # doesn't "move cluster" while it's opened, even if it's
+                # truncated. Only on close() do we remove the last cluster
+                first_cluster = 0
             self._entry = self._entry.replace(
                 size=new_size,
                 first_cluster_hi=first_cluster >> 16,
                 first_cluster_lo=first_cluster & 0xFF)
             self._index.update(self._entry)
+
+    def close(self):
+        if not f.closed:
+            if self._entry is not None and self._entry.size == 0 and self._map:
+                # See note in _set_size
+                assert len(self._map) == 1
+                fs = self._get_fs()
+                fs.fat.mark_free(self._map[0])
+                self._map = []
+                self._set_size(0)
+            super().close()
 
     def readable(self):
         return self._mode in 'r+'
@@ -1189,7 +1208,7 @@ class FatFile(io.RawIOBase):
             size = self._pos
         if size == old_size:
             return size
-        clusters = (size + cs - 1) // cs
+        clusters = max(1, (size + cs - 1) // cs)
         if size > old_size:
             # If we're expanding the size of the file, zero the tail of the
             # current final cluster; this is necessary whether or not we're
