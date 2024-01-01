@@ -28,11 +28,11 @@ from argparse import ArgumentParser, Namespace
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 
-PROJECT_ROOT = Path(__file__).parent / '..'
-SETUP_SECTION = str(Path(__file__).name) + ':settings'
+PROJECT_ROOT: Path = Path(__file__).parent / '..'
+SETUP_SECTION: str = str(Path(__file__).name) + ':settings'
 
 
-def main(args: t.List[str] = None):
+def main(args: t.Optional[t.List[str]]=None):
     if args is None:
         args = sys.argv[1:]
     config = get_config(args)
@@ -117,7 +117,7 @@ class DevServer(ThreadingHTTPServer):
     base_path = None
 
 
-def get_best_family(host: t.Union[str, None], port: t.Union[str, int, None])\
+def get_best_family(host: t.Optional[str], port: t.Union[str, int, None])\
         -> t.Tuple[
             socket.AddressFamily,
             t.Union[t.Tuple[str, int], t.Tuple[str, int, int, int]]
@@ -128,9 +128,10 @@ def get_best_family(host: t.Union[str, None], port: t.Union[str, int, None])\
         flags=socket.AI_PASSIVE)
     for family, type, proto, canonname, sockaddr in infos:
         return family, sockaddr
+    raise ValueError(f'No family found for {host}:{port}')
 
 
-def server(config: Namespace, queue: mp.Queue = None):
+def server(config: Namespace, queue: t.Optional[mp.Queue]=None):
     try:
         DevServer.address_family, addr = get_best_family(config.bind, config.port)
         handler = partial(DevRequestHandler, directory=str(config.html))
@@ -179,7 +180,7 @@ def rebuild(config: Namespace) -> t.Dict[Path, os.stat_result]:
     return get_stats(config)
 
 
-def builder(config: Namespace, queue: mp.Queue = None):
+def builder(config: Namespace, queue: t.Optional[mp.Queue]=None):
     try:
         old_stats = rebuild(config)
         print('Watching for changes in:')
