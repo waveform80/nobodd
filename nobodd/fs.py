@@ -4,6 +4,7 @@ import errno
 import struct
 import weakref
 import warnings
+import datetime as dt
 from abc import abstractmethod
 from collections import abc
 from itertools import islice
@@ -51,7 +52,10 @@ class DamagedFileSystem(FatWarning):
 class FatFileSystem:
     """
     Represents a `FAT`_ file-system, contained at the start of the buffer
-    object *mem* with a *sector_size* defaulting to 512 bytes.
+    object *mem* with a *sector_size* defaulting to 512 bytes. If *atime* is
+    :data:`False`, the default, then accesses to files will *not* update the
+    atime field in file meta-data (when the underlying *mem* mapping is
+    writable).
 
     This class supports the FAT-12, FAT-16, and FAT-32 formats, and will
     automatically determine which to use from the headers found at the start of
@@ -65,13 +69,14 @@ class FatFileSystem:
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
-    def __init__(self, mem, sector_size=512):
+    def __init__(self, mem, sector_size=512, atime=False):
         self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
         if bpb.bytes_per_sector != sector_size:
             warnings.warn(
                 UserWarning(
                     f'Unexpected sector-size in FAT, {bpb.bytes_per_sector}, '
                     f'differs from {sector_size}'))
+        self._atime = atime
         self._label = ebpb.volume_label.decode('ascii', 'replace').rstrip(' ')
 
         fat_size = (
@@ -263,6 +268,15 @@ class FatFileSystem:
         string up to 11 characters long.
         """
         return self._label
+
+    @property
+    def atime(self):
+        """
+        If the underlying mapping is writable, then atime (last access time)
+        will be updated upon reading the content of files, when this property
+        is :data:`True` (the default is :data:`False`).
+        """
+        return self._atime
 
     @property
     def root(self):
@@ -1078,6 +1092,32 @@ class FatFile(io.RawIOBase):
                 first_cluster_lo=first_cluster & 0xFF)
             self._index.update(self._entry)
 
+    def _set_atime(self, ts=None):
+        """
+        Update the access timestamp of the file in the associated directory
+        entry, if any, to the :class:`~datetime.datetime` *ts*. If the file has
+        no associated directory entry, this is a no-op.
+        """
+        if self._entry is not None:
+            if ts is None:
+                ts = dt.datetime.now()
+            adate, _, _ = encode_timestamp(ts)
+            self._entry = self._entry.replace(adate=adate)
+            self._index.update(self._entry)
+
+    def _set_mtime(self, ts=None):
+        """
+        Update the last-modified timestamp of the file in the associated
+        directory entry, if any, to the :class:`~datetime.datetime` *ts*. If
+        the file has no associated directory entry, this is a no-op.
+        """
+        if self._entry is not None:
+            if ts is None:
+                ts = dt.datetime.now()
+            mdate, mtime, _ = encode_timestamp(ts)
+            self._entry = self._entry.replace(mdate=mdate, mtime=mtime)
+            self._index.update(self._entry)
+
     def close(self):
         if not f.closed:
             if self._entry is not None and self._entry.size == 0 and self._map:
@@ -1126,6 +1166,8 @@ class FatFile(io.RawIOBase):
         if read > 0:
             buf[:read] = fs.clusters[self._map[index]][left:right]
             self._pos += read
+        if fs.atime and not fs.readonly:
+            self._set_atime()
         return read
 
     def write(self, buf):
@@ -1139,29 +1181,33 @@ class FatFile(io.RawIOBase):
             # count towards written
             self.truncate()
         written = 0
-        while mem:
-            # Alternate between filling a cluster with _write1, and allocating
-            # a new cluster. This is far from the most efficient method (we're
-            # not taking account of whether any clusters are actually
-            # contiguous), but it is simple!
-            w = self._write1(mem, fs)
-            if w:
-                written += w
-                mem = mem[w:]
-            else:
-                for cluster in fs.fat.free():
-                    fs.fat.mark_end(cluster)
-                    fs.fat[self._map[-1]] = cluster
-                    self._map.append(cluster)
-                    break
+        try:
+            while mem:
+                # Alternate between filling a cluster with _write1, and
+                # allocating a new cluster. This is far from the most efficient
+                # method (we're not taking account of whether any clusters are
+                # actually contiguous), but it is simple!
+                w = self._write1(mem, fs)
+                if w:
+                    written += w
+                    mem = mem[w:]
                 else:
-                    # Unlike truncate, we don't pre-allocate the space we're
-                    # going to write to. It is possible to wind up running out
-                    # of space part-way through the write
-                    # XXX raise or return written?
-                    raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
-        if self._pos > size:
-            self._set_size(self._pos)
+                    for cluster in fs.fat.free():
+                        fs.fat.mark_end(cluster)
+                        fs.fat[self._map[-1]] = cluster
+                        self._map.append(cluster)
+                        break
+                    else:
+                        # Unlike truncate, we don't pre-allocate the space
+                        # we're going to write to. It is possible to wind up
+                        # running out of space part-way through the write
+                        # TODO raise or return written?
+                        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        finally:
+            if self._pos > size:
+                self._set_size(self._pos)
+            if not fs.readonly:
+                self._set_mtime()
         return written
 
     def _write1(self, buf, fs=None):
@@ -1248,4 +1294,6 @@ class FatFile(io.RawIOBase):
                 fs.fat.mark_free(cluster)
         # Finally, correct the directory entry to reflect the new size
         self._set_size(size)
+        if not fs.readonly:
+            self._set_mtime()
         return size
