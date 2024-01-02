@@ -5,6 +5,12 @@ import datetime as dt
 from itertools import tee
 from collections.abc import Mapping
 
+# TODO Remove except when compatibility moves beyond Python 3.10
+try:
+    from itertools import pairwise
+except ImportError:
+    pairwise = None
+
 
 def labels(desc):
     return tuple(
@@ -105,10 +111,19 @@ class FrozenDict(Mapping):
         return self._hash
 
 
-def pairwise(it):
-    a, b = tee(it)
-    next(b, None)
-    return zip(a, b)
+# TODO Remove except when compatibility moves beyond Python 3.10
+if pairwise is None:
+    def pairwise(it):
+        """
+        Return successive overlapping pairs taken from the input iterable.
+
+        The number of 2-tuples in the output iterator will be one fewer than
+        the number of inputs. It will be empty if the input iterable has fewer
+        than two values.
+        """
+        a, b = tee(it)
+        next(b, None)
+        return zip(a, b)
 
 
 def decode_timestamp(date, time, ms=0):
