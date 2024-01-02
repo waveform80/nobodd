@@ -18,6 +18,10 @@ library, but are documented in case they aare useful.
 
 .. autofunction:: format_address
 
+.. autofunction:: decode_timestamp
+
+.. autofunction:: encode_timestamp
+
 .. autoclass:: BufferedTranscoder
 
 .. autoclass:: FrozenDict

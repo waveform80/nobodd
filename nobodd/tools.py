@@ -1,6 +1,7 @@
 import io
 import codecs
 import socket
+import datetime as dt
 from itertools import tee
 from collections.abc import Mapping
 
@@ -108,3 +109,34 @@ def pairwise(it):
     a, b = tee(it)
     next(b, None)
     return zip(a, b)
+
+
+def decode_timestamp(date, time, ms=0):
+    """
+    Given the integers *date*,  *time*, and optionally *ms* (from various
+    fields in :class:`~nobodd.fat.DirectoryEntry`), return a
+    :class:`~datetime.datetime` with the decoded timestamp.
+    """
+    return dt.datetime(
+        year=1980 + ((date & 0xFE00) >> 9),
+        month=(date & 0x1E0) >> 5,
+        day=(date & 0x1F),
+        hour=(time & 0xF800) >> 11,
+        minute=(time & 0x7E0) >> 5,
+        second=(time & 0x1F) * 2 + (ms // 1000),
+        microsecond=(ms % 100) * 1000
+    )
+
+
+def encode_timestamp(ts):
+    """
+    Given a :class:`~datetime.datetime`, encode it as a FAT-compatible triple
+    of three 16-bit integers representing (date, time, 1/100th seconds).
+    """
+    if not dt.datetime(1980, 1, 1) <= ts < dt.datetime(2100, 1, 1):
+        raise ValueError(f'{ts} is outside the valid range for FAT timestamps')
+    return (
+        ((ts.year - 1980) << 9) | (ts.month << 5) | ts.day,
+        (ts.hour << 1) | (ts.minute << 5) | (ts.second // 2),
+        ((ts.second % 2) * 1000 + (ts.microsecond // 1000)) // 10
+    )

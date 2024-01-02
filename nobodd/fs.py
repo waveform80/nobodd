@@ -17,7 +17,7 @@ from .fat import (
     LongFilenameEntry,
 )
 from .path import FatPath, get_cluster
-from .tools import pairwise
+from .tools import pairwise, encode_timestamp
 
 
 class FatWarning(Warning):

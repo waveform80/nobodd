@@ -9,6 +9,7 @@ from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
 from .fat import DirectoryEntry, LongFilenameEntry
+from .tools import decode_timestamp
 
 
 class FatPath:
@@ -415,18 +416,20 @@ class FatPath:
         self._must_exist()
         if self._entry is not None and not (self._entry.attr & 0x10):
             return os.stat_result((
-                0o444,                                               # mode
-                get_cluster(self._entry, fs.fat_type),               # inode
-                id(fs),                                              # dev
-                1,                                                   # nlink
-                0,                                                   # uid
-                0,                                                   # gid
-                self._entry.size,                                    # size
-                get_timestamp(self._entry.adate, 0),                 # atime
-                get_timestamp(self._entry.mdate, self._entry.mtime), # mtime
-                get_timestamp(                                       # ctime
+                0o444,                                      # mode
+                get_cluster(self._entry, fs.fat_type),      # inode
+                id(fs),                                     # dev
+                1,                                          # nlink
+                0,                                          # uid
+                0,                                          # gid
+                self._entry.size,                           # size
+                decode_timestamp(                           # atime
+                    self._entry.adate, 0).timestamp(),
+                decode_timestamp(                           # mtime
+                    self._entry.mdate, self._entry.mtime).timestamp(),
+                decode_timestamp(                           # ctime
                     self._entry.cdate, self._entry.ctime,
-                    self._entry.ctime_ms * 10)))
+                    self._entry.ctime_ms * 10).timestamp()))
         else: # self._index is not None is guaranteed by _must_exist
             return os.stat_result((
                 stat.S_IFDIR | 0o555,  # mode
@@ -859,23 +862,6 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
             filename = b'\xE5' + filename[1:]
         filename = filename.decode(dos_encoding)
     return filename, entry
-
-
-def get_timestamp(date, time, ms=0):
-    """
-    Given the integers *date*,  *time*, and optionally *ms* (from various
-    fields in :class:`~nobodd.fat.DirectoryEntry`), return a
-    :class:`~datetime.datetime` with the decoded timestamp.
-    """
-    return dt.datetime(
-        year=1980 + ((date & 0xFE00) >> 9),
-        month=(date & 0x1E0) >> 5,
-        day=(date & 0x1F),
-        hour=(time & 0xF800) >> 11,
-        minute=(time & 0x7E0) >> 5,
-        second=(time & 0x1F) * 2 + (ms // 1000),
-        microsecond=(ms % 100) * 1000
-    ).timestamp()
 
 
 def get_cluster(entry, fat_type):

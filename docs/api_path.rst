@@ -32,11 +32,10 @@ FatPath
 
 .. autoclass:: FatPath
 
+
 Internal Functions
 ==================
 
 .. autofunction:: get_filename_entry
-
-.. autofunction:: get_timestamp
 
 .. autofunction:: get_cluster
