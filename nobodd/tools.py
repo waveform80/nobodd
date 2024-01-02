@@ -13,6 +13,33 @@ except ImportError:
 
 
 def labels(desc):
+    """
+    Given the description of a C structure in *desc*, returns a tuple of the
+    labels.
+
+    The :class:`str` *desc* must contain one entry per line (blank lines are
+    ignored) where each entry consists of whitespace separated type (in Python
+    :mod:`struct` format) and label. For example::
+
+        >>> EBPB = '''
+        B     drive_number
+        1x    reserved
+        B     extended_boot_sig
+        4s    volume_id
+        11s   volume_label
+        8s    file_system
+        '''
+        >>> labels(EBPB)
+        ('drive_number', 'extended_boot_sig', 'volume_id', 'volume_label',
+        'file_system')
+
+    Note the amount of whitespace is arbitrary, and further that any entries
+    with the type "x" (which is used to indicate padding) will be excluded from
+    the result ("reserved" is missing from the result tuple above).
+
+    The corresponding function :func:`formats` can be used to obtain a tuple
+    of the types.
+    """
     return tuple(
         label
         for line in desc.splitlines()
@@ -23,6 +50,32 @@ def labels(desc):
 
 
 def formats(desc, prefix='<'):
+    """
+    Given the description of a C structure in *desc*, returns a concatenated
+    :class:`str` of the types with an optional *prefix* (for endianness).
+
+    The :class:`str` *desc* must contain one entry per line (blank lines are
+    ignored) where each entry consists of whitespace separated type (in Python
+    :mod:`struct` format) and label. For example::
+
+        >>> EBPB = '''
+        B     drive_number
+        1x    reserved
+        B     extended_boot_sig
+        4s    volume_id
+        11s   volume_label
+        8s    file_system
+        '''
+        >>> formats(EBPB)
+        '<B1xB4s11s8s'
+
+    Note the amount of whitespace is arbitrary, and further that any entries
+    with the type "x" (which is used to indicate padding) are *not* excluded
+    (unlike in :func:`labels`).
+
+    The corresponding function :func:`labels` can be used to obtain a tuple
+    of the labels.
+    """
     return prefix + ''.join(
         fmt
         for line in desc.splitlines()
@@ -47,6 +100,14 @@ def get_best_family(host, port):
 
 
 def format_address(address):
+    """
+    Given a socket *address*, return a suitable :class:`str` representation of
+    it.
+
+    Specifically, for IP4 addresses a simple "host:port" representation is
+    used. For IP6 addresses (which typically incorporate ":" in the host
+    portion), a "[host]:port" variant is used.
+    """
     host, port, *extra = address
     if ':' in host:
         return f'[{host}]:{port}'
@@ -55,6 +116,58 @@ def format_address(address):
 
 
 class BufferedTranscoder(io.RawIOBase):
+    """
+    A read-only transcoder, somewhat similar to :class:`codecs.StreamRecoder`,
+    but which strictly obeys the definition of the ``read`` method (with
+    internal buffering).
+
+    This class is primarily intended for use in :mod:`~nobodd.netascii` encoded
+    transfers where it is used to transcode the underlying file stream into
+    netascii encoding for the TFTP server.
+
+    The built-in :class:`codecs.StreamRecoder` class would seem ideal for this
+    but for one issue: under certain circumstances (including those involved in
+    netascii encoding), it violates the contract of the ``read`` method by
+    returning *more* bytes than requested. For example::
+
+        >>> import io, codecs
+        >>> latin1_stream = io.BytesIO('abcdé'.encode('latin-1'))
+        >>> utf8_stream = codecs.StreamRecoder(latin1_stream,
+        ... codecs.getencoder('utf-8'), codecs.getdecoder('utf-8'),
+        ... codecs.getreader('latin-1'), codecs.getwriter('latin-1'))
+        >>> utf8_stream.read(3)
+        b'abc'
+        >>> utf8_stream.read(1)
+        b'd'
+        >>> utf8_stream.read(1)
+        b'\\xc3\\xa9'
+
+    This is alluded to in the documentation of :class:`StreamReader.read` so it
+    probably isn't a bug, but it is rather inconvenient when the caller is
+    looking to fill a network packet of a specific size, and thus expects not
+    to over-run.
+
+    This class implements a rather simpler recoder, which is read-only, does
+    not permit seeking, but by use of an internal buffer, guarantees that the
+    :meth:`read` method (and associated methods like :meth:`readinto`) will
+    not return more bytes than requested.
+
+    It is constructed with the underlying *stream*, the name of the
+    *output_encoding*, the name of the *input_encoding* (which defaults to the
+    *output_encoding* when not specified), and the *errors* mode to use with
+    the codecs. For example::
+
+        >>> import io
+        >>> from nobodd.tools import BufferedTranscoder
+        >>> latin1_stream = io.BytesIO('abcdé'.encode('latin-1'))
+        >>> utf8_stream = BufferedTranscoder(latin1_stream, 'utf-8', 'latin-1')
+        >>> utf8_stream.read(4)
+        b'abcd'
+        >>> utf8_stream.read(1)
+        b'\\xc3'
+        >>> utf8_stream.read(1)
+        b'\\xa9'
+    """
     def __init__(self, stream, output_encoding, input_encoding=None,
                  errors='strict'):
         if input_encoding is None:
@@ -87,7 +200,8 @@ class FrozenDict(Mapping):
     """
     A hashable, immutable mapping type.
 
-    The arguments to ``FrozenDict`` are processed just like those to ``dict``.
+    The arguments to :class:`FrozenDict` are processed just like those to
+    :class:`dict`.
     """
     def __init__(self, *args):
         self._d = dict(*args)

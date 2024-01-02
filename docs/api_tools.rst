@@ -18,6 +18,8 @@ library, but are documented in case they aare useful.
 
 .. autofunction:: format_address
 
+.. autofunction:: pairwise
+
 .. autofunction:: decode_timestamp
 
 .. autofunction:: encode_timestamp

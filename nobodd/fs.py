@@ -457,8 +457,8 @@ class FatTable(abc.MutableSequence):
 
     def free(self):
         """
-        Generator that scans the FAT from the start for free clusters, yielding
-        each as it is found.
+        Generator that scans the FAT for free clusters, yielding each as it is
+        found.
         """
         for cluster, value in enumerate(self):
             if value == 0 and self.min_valid < cluster:
@@ -1031,6 +1031,11 @@ class FatFile(io.RawIOBase):
         entry. As a result, their size is assumed to be the full size of their
         cluster chain. This is typically used for the "file" backing a
         :class:`FatSubDirectory`.
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class.
         """
         return cls(fs, start, mode)
 
@@ -1045,6 +1050,11 @@ class FatFile(io.RawIOBase):
         Files constructed via this method have an associated directory entry
         which will be updated if/when a write to the file changes its size
         (extension or truncation).
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class.
         """
         return cls(fs, get_cluster(entry, fs.fat_type), mode, index, entry)
 
