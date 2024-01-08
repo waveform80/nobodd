@@ -23,4 +23,12 @@ Data Structures
 
 .. autoclass:: LongFilenameEntry
 
+.. autofunction:: lfn_checksum
+
+.. autofunction:: lfn_valid
+
+.. autofunction:: sfn_valid
+
+.. autofunction:: sfn_safe
+
 .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system

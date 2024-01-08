@@ -61,7 +61,8 @@ and FAT-32, and sub-directories (which are common across FAT types).
 .. autoclass:: FatClusters
 
 .. autoclass:: FatDirectory
-   :private-members:
+   :members:
+   :private-members: _iter_entries, _update_entry
 
 .. autoclass:: FatRoot
 

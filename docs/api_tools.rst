@@ -20,9 +20,15 @@ library, but are documented in case they aare useful.
 
 .. autofunction:: pairwise
 
+.. autofunction:: on_first
+
 .. autofunction:: decode_timestamp
 
 .. autofunction:: encode_timestamp
+
+.. autofunction:: any_match
+
+.. autofunction:: exclude
 
 .. autoclass:: BufferedTranscoder
 

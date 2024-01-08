@@ -1,3 +1,4 @@
+import re
 import struct
 from collections import namedtuple
 
@@ -359,3 +360,49 @@ class LongFilenameEntry(
             validity of entries.
         """
         return cls._FORMAT.iter_unpack(buf)
+
+
+def lfn_checksum(filename, ext):
+    """
+    Calculate the expected long-filename checksum given the *filename* and
+    *ext* byte-strings of the short filename (from the corresponding
+    :class:`Directoryentry`).
+    """
+    result = 0
+    for char in filename + ext:
+        result = (((result & 1) << 7) + (result >> 1) + char) & 0xFF
+    return result
+
+
+def lfn_valid(s):
+    """
+    Returns :data:`True` if :class:`str` *s* only contains characters valid in
+    a VFAT long filename. Almost every Unicode character is permitted with a
+    few exceptions (angle brackets, wildcards, etc).
+    """
+    return bool(lfn_valid.regex.match(s))
+lfn_valid.regex = re.compile("[^\\w !#$%&'()-@^_`{}~+,;=[\\]]")
+
+
+def sfn_valid(s):
+    """
+    Returns :data:`True` if :class:`bytes` string *s* only contains characters
+    valid in a FAT short filename. Note that spaces *are* permitted characters
+    within short filenames. This function will only return :data:`False` on
+    *leading* spaces.
+    """
+    return not s.startswith(b' ') and bool(sfn_valid.regex.match(s))
+sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()-@^_`{}~\x80-\xFF]")
+
+
+def sfn_safe(s, replace=b'_'):
+    """
+    Return the :class:`bytes` string *s* with all characters that are not
+    permitted in a short DOS filename replaced with the :class:`bytes` str
+    *replace*.
+
+    Additionally, this strips all spaces from the filename; these are
+    technically valid characters, but were disallowed by convention (and lack
+    of a suitable escaping mechanism in DOS).
+    """
+    return sfn_valid.regex.sub(replace, s.replace(b' ', b''))

@@ -8,7 +8,7 @@ import datetime as dt
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
-from .fat import DirectoryEntry, LongFilenameEntry
+from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum
 from .tools import decode_timestamp
 
 
@@ -38,14 +38,15 @@ class FatPath:
     As the implementation is read-only, any methods associated with file-system
     modification (``mkdir``, ``chmod``, etc.) are not included.
     """
-    __slots__ = ('_fs', '_index', '_entry', '_parts', '_resolved')
+    __slots__ = ('_fs', '_index', '_entry', '_parts', '_sfn', '_resolved')
     sep = '/'
 
-    def __init__(self, fs, *pathsegments):
+    def __init__(self, fs, *pathsegments, sfn=None):
         self._fs = weakref.ref(fs)
         self._index = None
         self._entry = None
         self._parts = get_parts(*pathsegments)
+        self._sfn = sfn
         self._resolved = False
 
     def __repr__(self):
@@ -69,7 +70,7 @@ class FatPath:
         return fs
 
     @classmethod
-    def _from_index(cls, fs, index, prefix=sep):
+    def _from_index(cls, fs, index, prefix=sep, sfn=None):
         """
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
@@ -78,7 +79,7 @@ class FatPath:
         This is only used for construction of root directory instances where
         there is no associated :class:`~nobodd.fat.DirectoryEntry`.
         """
-        self = cls(fs, prefix)
+        self = cls(fs, prefix, sfn=sfn)
         self._index = index
         self._resolved = True
         return self
@@ -93,15 +94,16 @@ class FatPath:
         :class:`~nobodd.fat.DirectoryEntry` instances which must exist within
         *index*), and a *prefix* path.
         """
-        filename, entry = get_filename_entry(entries)
+        lfn, sfn, entry = split_filename_entry(entries)
         if not prefix.endswith(cls.sep):
             prefix += cls.sep
         if entry.attr & 0x10: # directory
             cluster = get_cluster(entry, fs.fat_type)
             self = cls._from_index(
-                fs, fs.open_dir(cluster), prefix + filename + cls.sep)
+                fs, fs.open_dir(cluster),
+                prefix=prefix + lfn + cls.sep, sfn=sfn)
         else:
-            self = cls(fs, prefix + filename)
+            self = cls(fs, prefix + lfn, sfn=sfn)
             self._index = index
         self._entry = entry
         self._resolved = True
@@ -125,7 +127,13 @@ class FatPath:
             parent = fs.root
             while parts:
                 for child in parent._listdir():
-                    if child.name.lower() == parts[0].lower():
+                    if (
+                        (child.name.lower() == parts[0].lower()) or
+                        (
+                            child.shortname is not None and
+                            child.shortname == parts[0].upper()
+                        )
+                    ):
                         parent = child
                         parts = parts[1:]
                         break
@@ -133,6 +141,7 @@ class FatPath:
                     return
             self._index = parent._index
             self._entry = parent._entry
+            self._sfn = parent._sfn
         finally:
             self._resolved = True
 
@@ -161,10 +170,39 @@ class FatPath:
             "rb" will fail with :exc:`PermissionError`.
         """
         fs = self._get_fs()
-        # TODO Need to get rid of next line for mode w (and a and x?)
-        self._must_exist()
+        # Check the mode is valid and matches our expectations (can't open a
+        # directory, can't read a non-existent file, etc.)
+        if set(mode) > set('rwaxb+'):
+            raise ValueError(f'invalid file mode {mode!r}')
+        if len(set(mode) & set('rwax')) != 1:
+            raise ValueError('must have exactly one of read, write, append, '
+                             'exclusive creation mode')
+        if fs.readonly and set(mode) & set('wax+'):
+            raise PermissionError('fs is read-only')
+        try:
+            self._must_exist()
+        except FileNotFoundError:
+            if 'r' in mode:
+                raise
+        else:
+            if 'x' in mode:
+                raise FileExistsError(f'File exists: {self}')
+            mode = mode.replace('x', 'w')
         if self.is_dir():
             raise IsADirectoryError(f'Is a directory: {self}')
+
+        # If self._entry is None at this point, we must be creating a file
+        # so get the containing index and make an appropriate DirectoryEntry
+        if self._entry is None:
+            parent = self.parent
+            parent._must_exist()
+            lfn, self._sfn, self._entry = split_filename_entry(
+                parent._index.create(self.name))
+            assert lfn == self._name
+            self._index = parent._index
+
+        # Sanity check the buffering parameter and create the underlying
+        # FatFile instance with an appropriate mode
         if 'b' in mode:
             if buffering == 1:
                 warnings.warn(
@@ -185,6 +223,9 @@ class FatPath:
             else:
                 line_buffering = buffering == 1
             f = fs.open_entry(self._index, self._entry, mode + 'b')
+
+        # Wrap the underlying FatFile instance in whatever's necessary to make
+        # it text-mode / buffered
         if buffering:
             if buffering in (-1, 1):
                 buffering = fs.clusters.size
@@ -477,6 +518,23 @@ class FatPath:
             'main.py'
         """
         return self._parts[-1]
+
+    @property
+    def shortname(self):
+        """
+        A string representing the shortened version of the final path
+        component, excluding the root::
+
+            >>> fs
+            <FatFileSystem label='TEST' fat_type='fat16'>
+            >>> p = (fs.root / 'nobodd' / 'main.py')
+            >>> p.name
+            'MAIN.PY'
+
+        Short names are always upper-case and limited to a length of 8.3 (8
+        characters for the filename, 3 for the extension).
+        """
+        return self._sfn
 
     @property
     def suffix(self):
@@ -785,15 +843,15 @@ class FatPath:
         return self.__eq__(other) or self.__gt__(other)
 
 
-def get_filename_entry(entries, dos_encoding='iso-8859-1'):
+def split_filename_entry(entries, dos_encoding='iso-8859-1'):
     """
     Given a sequence of :class:`~nobodd.fat.LongFilenameEntry` instances,
     ending with a single :class:`~nobodd.fat.DirectoryEntry` (as would
-    typically be found in a FAT directory index), return the decoded filename,
-    and the directory entry record.
+    typically be found in a FAT directory index), return the decoded long
+    filename, short filename, and the directory entry record as a 3-tuple.
 
-    If no long filename entries are present, the filename will be derived from
-    the directory entry record.
+    If no long filename entries are present, the long filename will be
+    equal to the short filename (but may have lower-case parts).
 
     .. note::
 
@@ -811,13 +869,16 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
         raise ValueError(
             f'last entry of entries must be a DirectoryEntry, not {entry!r}')
 
+    # TODO The following should only be warning of all the ValueError stuff
+    # as LFN entries can be "orphaned". In the event of orphaned/invalid LFN
+    # entries, skip to the next terminal LFN entry (if any) and retry
     if isinstance(entries[0], LongFilenameEntry):
         checksum = entries[0].checksum
         sequence = entries[0].sequence
-        if not sequence & 0b1000000:
+        if not sequence & 0x40:
             raise ValueError('first LongFilenameEntry is not marked as terminal')
         sequence = sequence & 0b11111
-        filename = entries[0].name_1 + entries[0].name_2 + entries[0].name_3
+        lfn = entries[0].name_1 + entries[0].name_2 + entries[0].name_3
         for part in entries[1:-1]:
             if part.first_cluster != 0:
                 raise ValueError(
@@ -832,36 +893,43 @@ def get_filename_entry(entries, dos_encoding='iso-8859-1'):
                 raise ValueError(
                     f'incorrect LongFilenameEntry.sequence: {sequence} != '
                     f'{part.sequence}')
-            filename = part.name_1 + part.name_2 + part.name_3 + filename
+            lfn = part.name_1 + part.name_2 + part.name_3 + lfn
         if sequence > 1:
             raise ValueError(f'missing {sequence} LongFilenameEntry items')
-
-        sum_ = 0
-        for char in entry.filename + entry.ext:
-            sum_ = (((sum_ & 1) << 7) + (sum_ >> 1) + char) & 0xFF
-        if sum_ != checksum:
+        if lfn_checksum(entry.lfn, entry.ext) != checksum:
             raise ValueError(
                 f'checksum mismatch in long filename: {sum_} != {checksum}')
-        filename = filename.decode('utf-16le').rstrip('\uffff')
+        lfn = lfn.decode('utf-16le').rstrip('\uffff')
         # There may be one trailing NUL char, but there may not if the filename
         # fits perfectly in a LFN structure
-        if filename[-1:] == '\x00':
-            filename = filename[:-1]
+        if lfn[-1:] == '\x00':
+            lfn = lfn[:-1]
         # But there shouldn't be more than one!
-        if filename[-1:] == '\x00':
-            raise ValueError(f'excess NUL chars in long filename: {filename!r}')
-        if not filename:
+        if lfn[-1:] == '\x00':
+            raise ValueError(f'excess NUL chars in long filename: {lfn!r}')
+        if not lfn:
             raise ValueError('empty long filename')
     else:
-        filename = entry.filename.rstrip(b' ')
-        if entry.ext != b'   ':
-            filename += b'.' + entry.ext.rstrip(b' ')
-        # If initial char was 0xE5 (which indicates a deleted entry) then it's
-        # encoded as 0x05 (since DOS 3.0)
-        if filename[0] == 0x05:
-            filename = b'\xE5' + filename[1:]
-        filename = filename.decode(dos_encoding)
-    return filename, entry
+        lfn = None
+
+    sfn = entry.filename.rstrip(b' ')
+    # If initial char of the filename is 0xE5 (which is reserved to indicate a
+    # deleted entry) then it's encoded as 0x05 (since DOS 3.0)
+    if sfn[0] == 0x05:
+        sfn = b'\xE5' + sfn[1:]
+    sfn = sfn.decode(dos_encoding)
+    ext = entry.ext.rstrip(b' ').decode(dos_encoding)
+    # Bits 3 & 4 of attr2 are used by Windows NT (basically any modern Windows)
+    # to indicate if the short filename (in the absence of long filename
+    # entries) has upper / lower-case portions
+    if lfn is None:
+        lfn = sfn.lower() if entry.attr2 & 0b1000 else sfn
+        if ext:
+            lfn = lfn + '.' + (ext.lower() if entry.attr2 & 0b10000 else ext)
+    if ext:
+        sfn = sfn + '.' + ext
+
+    return lfn, sfn, entry
 
 
 def get_cluster(entry, fat_type):

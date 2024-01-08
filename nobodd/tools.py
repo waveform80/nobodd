@@ -240,6 +240,24 @@ if pairwise is None:
         return zip(a, b)
 
 
+def on_first(it):
+    """
+    Return the tuple (True, value) for the first value in *it* and the tuple
+    (False, value) for all subsequent entries.
+
+    This is particularly useful in comprehensions when something different
+    must be done for the first value of the input iterable::
+
+        >>> title = lambda s: ''.join(
+        ... c.upper() if first else c
+        ... for first, c in on_first(s))
+        >>> title('capital')
+        'Capital'
+    """
+    for i, value in enumerate(it):
+        yield (i == 0, value)
+
+
 def decode_timestamp(date, time, ms=0):
     """
     Given the integers *date*,  *time*, and optionally *ms* (from various
@@ -269,3 +287,31 @@ def encode_timestamp(ts):
         (ts.hour << 1) | (ts.minute << 5) | (ts.second // 2),
         ((ts.second % 2) * 1000 + (ts.microsecond // 1000)) // 10
     )
+
+
+def exclude(ranges, value):
+    """
+    Given a list non-overlapping of *ranges*, sorted in ascending order, this
+    function modifies the range containing *value* (an integer, which must
+    belong to one and only one range in the list) to exclude it.
+    """
+    for i, r in enumerate(ranges):
+        if value in r:
+            break
+    else:
+        raise ValueError(f'{i} not found in any range')
+    ranges[i:i + 1] = [
+        r for r in (range(r.start, value), range(value + 1, r.stop)) if r]
+
+
+def any_match(s, expressions):
+    """
+    Given a :class:`str` *s*, and *expressions*, a sequence of compiled
+    regexes, return the :class:`re.Match` object from the first regex that
+    matches *s*. If no regexes match, return :data:`None`.
+    """
+    for exp in expressions:
+        m = exp.match(s)
+        if m:
+            return m
+    return None
