@@ -1015,7 +1015,10 @@ class FatDirectory(abc.Iterable):
         ]
         for entries in self._group_entries():
             lfn, sfn, entry = split_filename_entry(entries)
-            m = any_match(sfn, regexes) or any_match(lfn, regexes)
+            m = any_match(sfn, regexes)
+            if m:
+                exclude(ranges, int(m.group(1)))
+            m = any_match(lfn, regexes)
             if m:
                 exclude(ranges, int(m.group(1)))
         for r in ranges:
