@@ -299,7 +299,7 @@ def exclude(ranges, value):
         if value in r:
             break
     else:
-        raise ValueError(f'{i} not found in any range')
+        return
     ranges[i:i + 1] = [
         r for r in (range(r.start, value), range(value + 1, r.stop)) if r]
 

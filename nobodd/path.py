@@ -198,7 +198,7 @@ class FatPath:
             parent._must_exist()
             lfn, self._sfn, self._entry = split_filename_entry(
                 parent._index.create(self.name))
-            assert lfn == self._name
+            assert lfn == self.name, f'{lfn!r} != {self.name!r}'
             self._index = parent._index
 
         # Sanity check the buffering parameter and create the underlying
@@ -896,7 +896,7 @@ def split_filename_entry(entries, dos_encoding='iso-8859-1'):
             lfn = part.name_1 + part.name_2 + part.name_3 + lfn
         if sequence > 1:
             raise ValueError(f'missing {sequence} LongFilenameEntry items')
-        if lfn_checksum(entry.lfn, entry.ext) != checksum:
+        if lfn_checksum(entry.filename, entry.ext) != checksum:
             raise ValueError(
                 f'checksum mismatch in long filename: {sum_} != {checksum}')
         lfn = lfn.decode('utf-16le').rstrip('\uffff')

@@ -380,8 +380,8 @@ def lfn_valid(s):
     a VFAT long filename. Almost every Unicode character is permitted with a
     few exceptions (angle brackets, wildcards, etc).
     """
-    return bool(lfn_valid.regex.match(s))
-lfn_valid.regex = re.compile("[^\\w !#$%&'()-@^_`{}~+,;=[\\]]")
+    return not lfn_valid.regex.match(s)
+lfn_valid.regex = re.compile(r"[^\w !#$%&'()-@^_`{}~+.,;=[\]]")
 
 
 def sfn_valid(s):
@@ -391,7 +391,7 @@ def sfn_valid(s):
     within short filenames. This function will only return :data:`False` on
     *leading* spaces.
     """
-    return not s.startswith(b' ') and bool(sfn_valid.regex.match(s))
+    return not (s.startswith(b' ') or sfn_valid.regex.match(s))
 sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()-@^_`{}~\x80-\xFF]")
 
 
