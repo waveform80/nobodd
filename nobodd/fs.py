@@ -1357,7 +1357,7 @@ class FatFile(io.RawIOBase):
             self._entry = self._entry._replace(
                 size=new_size,
                 first_cluster_hi=first_cluster >> 16,
-                first_cluster_lo=first_cluster & 0xFF)
+                first_cluster_lo=first_cluster & 0xFFFF)
             self._index.update(self._entry)
 
     def _set_atime(self, ts=None):
