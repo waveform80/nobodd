@@ -34,9 +34,6 @@ class FatPath:
     Instances are also comparable for the purposes of sorting, but only within
     the same :class:`~nobodd.fs.FatFileSystem` instance (comparisons across
     file-system instances raise :exc:`TypeError`).
-
-    As the implementation is read-only, any methods associated with file-system
-    modification (``mkdir``, ``chmod``, etc.) are not included.
     """
     __slots__ = ('_fs', '_index', '_entry', '_parts', '_sfn', '_resolved')
     sep = '/'
@@ -284,6 +281,7 @@ class FatPath:
         self._index.remove(self._entry)
         for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
             fs.fat.mark_free(cluster)
+        self._index = None
         self._entry = None
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -343,6 +341,31 @@ class FatPath:
                 filename=b'..      ', ext=b'   ', attr2=0)
         self._index.append(dot, dotdot, DirectoryEntry.eof())
 
+    def rmdir(self):
+        """
+        Remove this directory. The directory must be empty.
+        """
+        fs = self._get_fs()
+        self._must_exist()
+        self._must_be_dir()
+        if self._entry is not None:
+            cluster = get_cluster(self._entry, fs.fat_type)
+        else:
+            cluster = 0
+        if cluster == 0:
+            raise OSError(errno.EACCES, 'Cannot remove the root directory')
+        for item in self.iterdir():
+            raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
+
+        parent = self.resolve(strict=False).parent
+        # NOTE: We already know parent must exist and be a dir
+        parent._resolve()
+        parent._index.remove(self._entry)
+        for cluster in fs.fat.chain(cluster):
+            fs.fat.mark_free(cluster)
+        self._index = None
+        self._entry = None
+
     def _listdir(self):
         fs = self._get_fs()
         self._must_exist()
@@ -353,6 +376,36 @@ class FatPath:
             if entries[-1].attr & 0x8:
                 continue # skip volume label
             yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
+
+    def resolve(self, strict=False):
+        """
+        Make the path absolute, resolving any symlinks. A new :class:`FatPath`
+        object is returned.
+
+        ``".."`` components are also eliminated (this is the only method to do
+        so). If the path doesn't exist and *strict* is :data:`True`,
+        :exc:`FileNotFoundError` is raised. If *strict* is :data:`False`, the
+        path is resolved as far as possible and any remainder is appended
+        without checking whether it exists.
+
+        Note that as there is no concept of the "current" directory within
+        :class:`~nobodd.fs.FatFileSystem`, relative paths cannot be resolved
+        by this function, only absolute.
+        """
+        fs = self._get_fs()
+        if not self.is_absolute():
+            raise ValueError(f'Cannot resolve relative path {self!r}')
+        parts = [p for p in self._parts if p != '.']
+        while '..' in parts:
+            i = parts.index('..')
+            if i == 1:
+                del parts[1]
+            else:
+                del parts[i - 1:i]
+        result = FatPath(fs, *parts)
+        if strict:
+            result._must_exist()
+        return result
 
     def iterdir(self):
         """
