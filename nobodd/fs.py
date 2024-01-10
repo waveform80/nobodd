@@ -889,20 +889,24 @@ class FatDirectory(abc.Iterable):
         raise FileNotFoundError(
             f'No directory entry corresponding to cluster {cluster} found')
 
-    def _make_filename_entries(self, filename):
+    def _make_filename_entries(self, filename, attr=0x20, ctime=None):
         """
-        Given a :class:`str` *filename*, construct the
-        :class:`~nobodd.fat.LongFilenameEntry` instances (if any), and
-        :class:`~nobodd.fat.DirectoryEntry` required to represent it within
-        *index*, returning them as a sequence.
+        Given a :class:`str` *filename*, a bitmap of *attr* (which defaults to
+        the DOS "Archive" bit being set), and a :class:`~datetime.datetime`
+        *ctime*, construct the :class:`~nobodd.fat.LongFilenameEntry` instances
+        (if any), and :class:`~nobodd.fat.DirectoryEntry` required to represent
+        it within *index*, returning them as a sequence.
 
         This function merely constructs the instances, ensuring the (many,
         convoluted!) rules are followed, including that the short filename, if
         one is generated, is unique in this directory, and the long filename is
         encoded and check-summed appropriately.
         """
-        lfn, sfn, ext, attr2 = self._get_lfn_sfn_ext(filename)
+        if ctime is None:
+            ctime = dt.datetime.now()
+        cdate, ctime, ctime_ms = encode_timestamp(ctime)
 
+        lfn, sfn, ext, attr2 = self._get_lfn_sfn_ext(filename)
         if lfn:
             cksum = lfn_checksum(sfn, ext)
             entries = [
@@ -925,14 +929,14 @@ class FatDirectory(abc.Iterable):
             DirectoryEntry(
                 filename=sfn,
                 ext=ext,
-                attr=0x20, # assume we're creating a file and mark "Archive"
+                attr=attr,
                 attr2=attr2,
-                cdate=0,
-                ctime=0,
-                ctime_ms=0,
-                adate=0,
-                mdate=0,
-                mtime=0,
+                cdate=cdate,
+                ctime=ctime,
+                ctime_ms=ctime_ms,
+                adate=cdate,
+                mdate=cdate,
+                mtime=ctime,
                 first_cluster_hi=0,
                 first_cluster_lo=0,
                 size=0
@@ -1043,7 +1047,7 @@ class FatDirectory(abc.Iterable):
         # limit on entries in a dir (MAX_SFN_SUFFIX, roughly) report ENOSPC
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
-    def create(self, filename):
+    def create(self, filename, attr=0x20, ctime=None):
         """
         Create a :class:`~nobodd.fat.DirectoryEntry` instance, and all
         preceding :class:`~nobodd.fat.LongFilenameEntry` instances within the
@@ -1053,7 +1057,11 @@ class FatDirectory(abc.Iterable):
 
         The "long" filename will be set to *filename*. The "short" filename in
         the final directory entry will be derived from *filename*, and will be
-        unique within the directory.
+        unique within the directory. The *attr* parameter (which defaults to
+        0x20 or the DOS "Archive" bit) will be used for the attributes on the
+        directory entry. The *ctime* parameter which defaults to :data:`None`
+        meaning "now" is an optional :class:`~datetime.datetime` which will be
+        used to set the ctime, mtime, and atime entries of the directory entry.
 
         The new entries will be appended to the directory by default. If the
         directory structure runs out of space (which is more likely under
@@ -1064,7 +1072,7 @@ class FatDirectory(abc.Iterable):
         The return value is the sequence of new directory entries created.
         """
         empty = DirectoryEntry.from_bytes(b'\0' * DirectoryEntry._FORMAT.size)
-        entries = self._make_filename_entries(filename)
+        entries = self._make_filename_entries(filename, attr, ctime)
         entries.append(empty)
         eof_offset = 0
         for eof_offset, entry in self._iter_entries():
