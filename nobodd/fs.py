@@ -480,13 +480,17 @@ class FatTable(abc.MutableSequence):
     def free(self):
         """
         Generator that scans the FAT for free clusters, yielding each as it is
-        found.
+        found. Iterating to the end of this generator raises :exc:`OSError`
+        with the code ENOSPC (out of space).
         """
         for cluster, value in enumerate(self):
             if value == 0 and self.min_valid < cluster:
                 yield cluster
             if cluster >= self.max_valid:
                 break
+        # If we reach this point without the caller having broken out of their
+        # loop, we've run out of space so raise the appropriate exception
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
 
 class Fat12Table(FatTable):
@@ -673,18 +677,7 @@ class Fat32Table(FatTable):
                         yield cluster
                     if cluster >= self.max_valid:
                         break
-                # Once the above is exhausted, start from the beginning, but
-                # stop as soon as we reach the last_alloc point
-                for cluster, value in enumerate(self):
-                    if value == 0 and self.min_valid < cluster:
-                        yield cluster
-                    if cluster >= last_alloc:
-                        break
-                return
         yield from super().free()
-        # If we reach this point without the caller having broken out of their
-        # loop, we've run out of space so raise the appropriate exception
-        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
     def get_all(self, cluster):
         return tuple(t[cluster] & 0x0FFFFFFF for t in self._tables)
