@@ -93,7 +93,8 @@ class FatPath:
         :class:`~nobodd.fat.DirectoryEntry` instances which must exist within
         *index*), and a *prefix* path.
         """
-        lfn, sfn, entry = split_filename_entry(entries)
+        lfn, sfn, entry = split_filename_entry(
+            entries, encoding=fs.sfn_encoding)
         if not prefix.endswith(cls.sep):
             prefix += cls.sep
         if entry.attr & 0x10: # directory
@@ -218,8 +219,8 @@ class FatPath:
             parent._must_exist()
             parent._must_be_dir()
             lfn, self._sfn, self._entry = split_filename_entry(
-                parent._index.create(self.name))
-            assert lfn == self.name, f'{lfn!r} != {self.name!r}'
+                parent._index.create(self.name), encoding=fs.sfn_encoding)
+            assert lfn == self.name, f'{lfn=} {self.name=}'
             self._index = parent._index
 
         # Sanity check the buffering parameter and create the underlying
@@ -325,7 +326,8 @@ class FatPath:
         cluster = next(fs.fat.free())
         fs.fat.mark_end(cluster)
         lfn, self._sfn, self._entry = split_filename_entry(
-            parent._index.create(self.name, attr=0x10, cluster=cluster))
+            parent._index.create(self.name, attr=0x10, cluster=cluster),
+            encoding=fs.sfn_encoding)
         assert lfn == self.name, f'{lfn=} {self.name=}'
         self._index = fs.open_dir(get_cluster(self._entry, fs.fat_type))
 
@@ -918,7 +920,7 @@ class FatPath:
         return self.__eq__(other) or self.__gt__(other)
 
 
-def split_filename_entry(entries, dos_encoding='iso-8859-1'):
+def split_filename_entry(entries, encoding='iso-8859-1'):
     """
     Given a sequence of :class:`~nobodd.fat.LongFilenameEntry` instances,
     ending with a single :class:`~nobodd.fat.DirectoryEntry` (as would
@@ -992,8 +994,8 @@ def split_filename_entry(entries, dos_encoding='iso-8859-1'):
     # deleted entry) then it's encoded as 0x05 (since DOS 3.0)
     if sfn[0] == 0x05:
         sfn = b'\xE5' + sfn[1:]
-    sfn = sfn.decode(dos_encoding)
-    ext = entry.ext.rstrip(b' ').decode(dos_encoding)
+    sfn = sfn.decode(encoding)
+    ext = entry.ext.rstrip(b' ').decode(encoding)
     # Bits 3 & 4 of attr2 are used by Windows NT (basically any modern Windows)
     # to indicate if the short filename (in the absence of long filename
     # entries) has upper / lower-case portions

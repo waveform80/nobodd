@@ -65,7 +65,8 @@ class FatFileSystem:
     object *mem* with a *sector_size* defaulting to 512 bytes. If *atime* is
     :data:`False`, the default, then accesses to files will *not* update the
     atime field in file meta-data (when the underlying *mem* mapping is
-    writable).
+    writable). Finally, *encoding* specifies the character set used for
+    decoding and encoding DOS short filenames.
 
     This class supports the FAT-12, FAT-16, and FAT-32 formats, and will
     automatically determine which to use from the headers found at the start of
@@ -79,7 +80,8 @@ class FatFileSystem:
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
-    def __init__(self, mem, sector_size=512, atime=False):
+    def __init__(self, mem, sector_size=512, atime=False,
+                 encoding='iso-8859-1'):
         self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
         if bpb.bytes_per_sector != sector_size:
             warnings.warn(
@@ -87,7 +89,8 @@ class FatFileSystem:
                     f'Unexpected sector-size in FAT, {bpb.bytes_per_sector}, '
                     f'differs from {sector_size}'))
         self._atime = atime
-        self._label = ebpb.volume_label.decode('ascii', 'replace').rstrip(' ')
+        self._encoding = encoding
+        self._label = ebpb.volume_label.decode(encoding, 'replace').rstrip(' ')
 
         fat_size = (
             ebpb_fat32.sectors_per_fat if ebpb_fat32 is not None else
@@ -198,13 +201,13 @@ class FatFileSystem:
         """
         if cluster == 0:
             if self._fat_type == 'fat32':
-                return Fat32Root(self, self._root)
+                return Fat32Root(self, self._root, self._encoding)
             elif self._fat_type == 'fat16':
-                return Fat16Root(self._root)
+                return Fat16Root(self._root, self._encoding)
             else:
-                return Fat12Root(self._root)
+                return Fat12Root(self._root, self._encoding)
         else:
-            return FatSubDirectory(self, cluster)
+            return FatSubDirectory(self, cluster, self._encoding)
 
     def open_file(self, cluster, mode='rb'):
         """
@@ -278,6 +281,15 @@ class FatFileSystem:
         string up to 11 characters long.
         """
         return self._label
+
+    @property
+    def sfn_encoding(self):
+        """
+        The encoding used for short (8.3) filenames. This defaults to
+        "iso-8859-1" but unfortunately there's no way of determining the
+        correct codepage for these.
+        """
+        return self._encoding
 
     @property
     def atime(self):
@@ -774,7 +786,7 @@ class FatDirectory(abc.Iterable):
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table
     """
     MAX_SFN_SUFFIX = 0xFFFF
-    __slots__ = ()
+    __slots__ = ('_encoding',)
 
     @abstractmethod
     def _get_cluster(self):
@@ -947,11 +959,10 @@ class FatDirectory(abc.Iterable):
         )
         return entries
 
-    def _get_lfn_sfn_ext(self, filename, dos_encoding='iso-8859-1'):
+    def _get_lfn_sfn_ext(self, filename):
         """
         Given a *filename*, generate an appropriately encoded long filename
-        (encoded in little-endian UCS-2), a short filename (encoded in
-        *dos_encoding*), an extension (also encoded in *dos_encoding*), and
+        (encoded in little-endian UCS-2), a short filename, an extension, and
         the case attributes. The result is a 4-tuple: ``lfn, sfn, ext, attr``.
 
         ``lfn``, ``sfn``, and ``ext`` will be :class:`bytes` strings, and
@@ -973,7 +984,7 @@ class FatDirectory(abc.Iterable):
                 'e.g. \\/:*?"<>|')
         # sfn == short filename, lfn == long filename, ext == extension
         sfn = sfn_safe(
-            filename.lstrip('.').upper().encode(dos_encoding, 'replace'))
+            filename.lstrip('.').upper().encode(self._encoding, 'replace'))
         if b'.' in sfn:
             sfn, ext = sfn.rsplit(b'.', 1)
         else:
@@ -986,7 +997,7 @@ class FatDirectory(abc.Iterable):
             # can be equivalent in all cases and we want to prefer the case
             # where attr is 0.
             sfn_only = True
-            lfn = filename.encode(dos_encoding, 'replace')
+            lfn = filename.encode(self._encoding, 'replace')
             make_sfn = lambda s, e: (s + b'.' + e) if e else s
             if lfn == make_sfn(sfn, ext):
                 attr = 0
@@ -1018,7 +1029,8 @@ class FatDirectory(abc.Iterable):
                 lfn = lfn.ljust(pad, b'\xff')
             assert len(lfn) % 26 == 0
             ext = ext[:3]
-            sfn = self._get_unique_sfn(sfn, ext).encode(dos_encoding, 'replace')
+            sfn = self._get_unique_sfn(sfn, ext).encode(
+                self._encoding, 'replace')
         sfn = sfn.ljust(8, b' ')
         ext = ext.ljust(3, b' ')
         return lfn, sfn, ext, attr
@@ -1172,7 +1184,8 @@ class FatRoot(FatDirectory):
     """
     __slots__ = ('_mem',)
 
-    def __init__(self, mem):
+    def __init__(self, mem, encoding):
+        self._encoding = encoding
         self._mem = mem
 
     def _get_cluster(self):
@@ -1200,7 +1213,8 @@ class FatSubDirectory(FatDirectory):
     """
     __slots__ = ('_cs', '_file', 'fat_type')
 
-    def __init__(self, fs, start):
+    def __init__(self, fs, start, encoding):
+        self._encoding = encoding
         self._cs = fs.clusters.size
         # NOTE: We always open sub-directories with a writable mode when
         # possible; this simply parallels the state in FAT-12/16 root
