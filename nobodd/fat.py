@@ -257,6 +257,14 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
         return self._FORMAT.pack(*self)
 
     @classmethod
+    def eof(cls):
+        """
+        Make a directory entry from NUL bytes; this is used to signify the
+        end of the directory in indexes.
+        """
+        return cls.from_bytes(b'\0' * cls._FORMAT.size)
+
+    @classmethod
     def from_bytes(cls, s):
         """
         Construct a :class:`DirectoryEntry` from the byte-string *s*.

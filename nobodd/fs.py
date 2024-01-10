@@ -892,13 +892,13 @@ class FatDirectory(abc.Iterable):
         raise FileNotFoundError(
             f'No directory entry corresponding to cluster {cluster} found')
 
-    def _make_filename_entries(self, filename, attr=0x20, ctime=None):
+    def _make_filename_entries(self, filename, attr=0x20, ctime=None,
+                               cluster=0):
         """
-        Given a :class:`str` *filename*, a bitmap of *attr* (which defaults to
-        the DOS "Archive" bit being set), and a :class:`~datetime.datetime`
-        *ctime*, construct the :class:`~nobodd.fat.LongFilenameEntry` instances
-        (if any), and :class:`~nobodd.fat.DirectoryEntry` required to represent
-        it within *index*, returning them as a sequence.
+        Construct the :class:`~nobodd.fat.LongFilenameEntry` instances (if
+        any), and :class:`~nobodd.fat.DirectoryEntry` required to represent the
+        specified *filename* (with optional *attr*, *ctime*, and an initial
+        *cluster*).
 
         This function merely constructs the instances, ensuring the (many,
         convoluted!) rules are followed, including that the short filename, if
@@ -940,8 +940,8 @@ class FatDirectory(abc.Iterable):
                 adate=cdate,
                 mdate=cdate,
                 mtime=ctime,
-                first_cluster_hi=0,
-                first_cluster_lo=0,
+                first_cluster_hi=cluster >> 16,
+                first_cluster_lo=cluster & 0xFFFF,
                 size=0
             )
         )
@@ -964,6 +964,9 @@ class FatDirectory(abc.Iterable):
         if filename.strip(' ') != filename:
             raise ValueError(
                 f'Filename {filename!r} starts or ends with space')
+        if filename.endswith('.'):
+            raise ValueError(
+                f'Filename {filename!r} ends with dots')
         if not lfn_valid(filename):
             raise ValueError(
                 f'Filename {filename!r} contains invalid characters, '
@@ -977,18 +980,25 @@ class FatDirectory(abc.Iterable):
             sfn, ext = sfn, b''
 
         if len(sfn) <= 8 and len(ext) <= 3:
-            try:
-                attr = {
-                    sfn + b'.' + ext:                 0,
-                    sfn + b'.' + ext.lower():         0b10000,
-                    sfn.lower() + b'.' + ext:         0b01000,
-                    sfn.lower() + b'.' + ext.lower(): 0b11000,
-                }[filename.encode(dos_encoding, 'replace')]
-            except KeyError:
+            # NOTE: Huh, a place where match..case might actually be
+            # useful! Why isn't this a dict? It was originally, but in
+            # purely symbolic cases (e.g. "." and "..") the transformed SFN
+            # can be equivalent in all cases and we want to prefer the case
+            # where attr is 0.
+            sfn_only = True
+            lfn = filename.encode(dos_encoding, 'replace')
+            make_sfn = lambda s, e: (s + b'.' + e) if e else s
+            if lfn == make_sfn(sfn, ext):
                 attr = 0
-                sfn_only = False
+            elif lfn == make_sfn(sfn, ext.lower()):
+                attr = 0b10000
+            elif lfn == make_sfn(sfn.lower(), ext):
+                attr = 0b01000
+            elif lfn == make_sfn(sfn.lower(), ext.lower()):
+                attr = 0b11000
             else:
-                sfn_only = True
+                sfn_only = False
+                attr = 0
         else:
             attr = 0
             sfn_only = False
@@ -1050,7 +1060,7 @@ class FatDirectory(abc.Iterable):
         # limit on entries in a dir (MAX_SFN_SUFFIX, roughly) report ENOSPC
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
-    def create(self, filename, attr=0x20, ctime=None):
+    def create(self, filename, attr=0x20, ctime=None, cluster=0):
         """
         Create a :class:`~nobodd.fat.DirectoryEntry` instance, and all
         preceding :class:`~nobodd.fat.LongFilenameEntry` instances within the
@@ -1060,30 +1070,44 @@ class FatDirectory(abc.Iterable):
 
         The "long" filename will be set to *filename*. The "short" filename in
         the final directory entry will be derived from *filename*, and will be
-        unique within the directory. The *attr* parameter (which defaults to
-        0x20 or the DOS "Archive" bit) will be used for the attributes on the
-        directory entry. The *ctime* parameter which defaults to :data:`None`
-        meaning "now" is an optional :class:`~datetime.datetime` which will be
-        used to set the ctime, mtime, and atime entries of the directory entry.
+        unique within the directory.
 
-        The new entries will be appended to the directory by default. If the
-        directory structure runs out of space (which is more likely under
-        FAT-12 and FAT-16 where the root directory is fixed in size), then all
-        deleted entries will be expunged, and the method will attempt to append
-        the new entries once more.
+        The *attr* parameter (which defaults to 0x20 or the DOS "Archive" bit)
+        will be used for the attributes on the directory entry. The *ctime*
+        parameter which defaults to :data:`None` meaning "now" is an optional
+        :class:`~datetime.datetime` which will be used to set the ctime, mtime,
+        and atime entries of the directory entry.
+
+        If *cluster* is specified, it will be set as the first cluster of the
+        new entry. This defaults to 0 indicating that no storage is associated
+        with the entry.
 
         The return value is the sequence of new directory entries created.
         """
-        empty = DirectoryEntry.from_bytes(b'\0' * DirectoryEntry._FORMAT.size)
-        entries = self._make_filename_entries(filename, attr, ctime)
-        entries.append(empty)
+        entries = self._make_filename_entries(filename, attr, ctime, cluster)
+        self.append(*entries, DirectoryEntry.eof())
+        return entries
+
+    def append(self, *entries):
+        """
+        Append *entries*, one or more :class:`~nobodd.fat.DirectoryEntry` or
+        :class:`~nobodd.fat.LongFilenameEntry` instances, to the end of the
+        directory.
+
+        If the directory structure runs out of space (which is more likely
+        under FAT-12 and FAT-16 where the root directory is fixed in size),
+        then all deleted entries will be expunged, and the method will attempt
+        to append the new entries once more.
+        """
         eof_offset = 0
         for eof_offset, entry in self._iter_entries():
             if isinstance(entry, DirectoryEntry) and entry.filename[0] == 0:
                 break
+        # NOTE: We write the entries in reverse order to make it more likely
+        # that anything scanning the directory simultaneously sees the append
+        # as "atomic" (because the last item written overwrites the old EOF
+        # marker entry)
         for cleaned in (False, True):
-            # Append empty, then the new entries in reverse order so that the
-            # final update makes them all visible
             offsets = range(
                 eof_offset,
                 eof_offset + len(entries) * DirectoryEntry._FORMAT.size,
@@ -1098,8 +1122,6 @@ class FatDirectory(abc.Iterable):
                     raise
             else:
                 break
-        del entries[-1]
-        return entries
 
     def remove(self, entry):
         """

@@ -285,6 +285,62 @@ class FatPath:
             fs.fat.mark_free(cluster)
         self._entry = None
 
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path. The *mode* parameter exists
+        only for compatibility with :class:`pathlib.Path` and is otherwise
+        ignored. If the path already exists, :exc:`FileExistsError` is raised.
+
+        If *parents* is true, any missing parents of this path are created as
+        needed.
+
+        If *parents* is false (the default), a missing parent raises
+        :exc:`FileNotFoundError`.
+
+        If *exist_ok* is false (the default), :exc:`FileExistsError` is raised
+        if the target directory already exists.
+
+        If *exist_ok* is true, :exc:`FileExistsError` exceptions will be
+        ignored (same behavior as the POSIX ``mkdir -p`` command), but only if
+        the last path component is not an existing non-directory file.
+        """
+        fs = self._get_fs()
+        try:
+            self._must_not_exist()
+        except FileExistsError:
+            if exist_ok and self.is_dir():
+                return
+            else:
+                raise
+        parent = self.parent
+        try:
+            parent._must_exist()
+        except FileNotFoundError:
+            if parents:
+                parent.mkdir(mode, parents, exist_ok)
+            else:
+                raise
+        parent._must_be_dir()
+
+        cluster = next(fs.fat.free())
+        fs.fat.mark_end(cluster)
+        lfn, self._sfn, self._entry = split_filename_entry(
+            parent._index.create(self.name, attr=0x10, cluster=cluster))
+        assert lfn == self.name, f'{lfn=} {self.name=}'
+        self._index = fs.open_dir(get_cluster(self._entry, fs.fat_type))
+
+        # Write the minimum entries that all sub-dirs must have: the "." and
+        # ".." entries, and a terminal EOF entry
+        dot = self._entry._replace(filename=b'.       ', ext=b'   ', attr2=0)
+        if parent._entry is None:
+            # Parent is the root
+            dotdot = dot._replace(
+                filename=b'..      ', first_cluster_hi=0, first_cluster_lo=0)
+        else:
+            dotdot = parent._entry._replace(
+                filename=b'..      ', ext=b'   ', attr2=0)
+        self._index.append(dot, dotdot, DirectoryEntry.eof())
+
     def _listdir(self):
         fs = self._get_fs()
         self._must_exist()
