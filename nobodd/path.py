@@ -76,8 +76,7 @@ class FatPath:
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
         :class:`~nobodd.fs.FatDirectory` instance), and a *prefix* path.
 
-        This is only used for construction of root directory instances where
-        there is no associated :class:`~nobodd.fat.DirectoryEntry`.
+        This is only used for construction of directory instances.
         """
         self = cls(fs, prefix, sfn=sfn)
         self._index = index
@@ -148,12 +147,38 @@ class FatPath:
     def _must_exist(self):
         """
         Internal method which is called to check that a constructed path
-        actually exists in the file-system. Calls :meth:`_resolve` to find the
-        corresponding disk structures (if they exist).
+        actually exists in the file-system. Calls :meth:`_resolve` implicitly.
         """
         self._resolve()
         if not self.exists():
             raise FileNotFoundError(f'No such file or directory: {self}')
+
+    def _must_not_exist(self):
+        """
+        Internal method which is called to check that a constructed path
+        does not exist in the file-system. Calls :meth:`_resolve` implicitly.
+        """
+        self._resolve()
+        if self.exists():
+            raise FileExistsError(f'File exists: {self}')
+
+    def _must_be_dir(self):
+        """
+        Internal method which is called to check that a constructed path is a
+        directory. Calls :meth:`_resolve` implicitly.
+        """
+        self._resolve()
+        if not self.is_dir():
+            raise NotADirectoryError(f'Not a directory: {self}')
+
+    def _must_not_be_dir(self):
+        """
+        Internal method which is called to check that a constructed path is not
+        a directory. Calls :meth:`_resolve` implicitly.
+        """
+        self._resolve()
+        if self.is_dir():
+            raise IsADirectoryError(f'Is a directory: {self}')
 
     def open(self, mode='r', buffering=-1, encoding=None, errors=None,
              newline=None):
@@ -179,23 +204,19 @@ class FatPath:
                              'exclusive creation mode')
         if fs.readonly and set(mode) & set('wax+'):
             raise PermissionError('fs is read-only')
-        try:
+        if 'r' in mode:
             self._must_exist()
-        except FileNotFoundError:
-            if 'r' in mode:
-                raise
-        else:
-            if 'x' in mode:
-                raise FileExistsError(f'File exists: {self}')
+        elif 'x' in mode:
+            self._must_not_exist()
             mode = mode.replace('x', 'w')
-        if self.is_dir():
-            raise IsADirectoryError(f'Is a directory: {self}')
+        self._must_not_be_dir()
 
         # If self._entry is None at this point, we must be creating a file
         # so get the containing index and make an appropriate DirectoryEntry
         if self._entry is None:
             parent = self.parent
             parent._must_exist()
+            parent._must_be_dir()
             lfn, self._sfn, self._entry = split_filename_entry(
                 parent._index.create(self.name))
             assert lfn == self.name, f'{lfn!r} != {self.name!r}'
@@ -258,8 +279,7 @@ class FatPath:
                 return
             else:
                 raise
-        if self._entry is None:
-            raise IsADirectoryError(f'Is a directory: {self}')
+        self._must_not_be_dir()
         self._index.remove(self._entry)
         for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
             fs.fat.mark_free(cluster)
@@ -268,8 +288,7 @@ class FatPath:
     def _listdir(self):
         fs = self._get_fs()
         self._must_exist()
-        if not self.is_dir():
-            raise NotADirectoryError(f'Not a directory: {self}')
+        self._must_be_dir()
         for entries in self._index:
             if not entries:
                 raise ValueError('empty dir entries')
