@@ -284,7 +284,7 @@ def encode_timestamp(ts):
         raise ValueError(f'{ts} is outside the valid range for FAT timestamps')
     return (
         ((ts.year - 1980) << 9) | (ts.month << 5) | ts.day,
-        (ts.hour << 1) | (ts.minute << 5) | (ts.second // 2),
+        (ts.hour << 11) | (ts.minute << 5) | (ts.second // 2),
         ((ts.second % 2) * 1000 + (ts.microsecond // 1000)) // 10
     )
 
