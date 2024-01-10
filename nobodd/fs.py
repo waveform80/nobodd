@@ -670,6 +670,9 @@ class Fat32Table(FatTable):
                         break
                 return
         yield from super().free()
+        # If we reach this point without the caller having broken out of their
+        # loop, we've run out of space so raise the appropriate exception
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
     def get_all(self, cluster):
         return tuple(t[cluster] & 0x0FFFFFFF for t in self._tables)
@@ -1460,18 +1463,13 @@ class FatFile(io.RawIOBase):
                     written += w
                     mem = mem[w:]
                 else:
+                    # TODO In event of ENOSPC, raise or return written so far?
                     for cluster in fs.fat.free():
                         fs.fat.mark_end(cluster)
                         if self._map:
                             fs.fat[self._map[-1]] = cluster
                         self._map.append(cluster)
                         break
-                    else:
-                        # Unlike truncate, we don't pre-allocate the space
-                        # we're going to write to. It is possible to wind up
-                        # running out of space part-way through the write
-                        # TODO raise or return written?
-                        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
         finally:
             if self._pos > size:
                 self._set_size(self._pos)
@@ -1544,8 +1542,6 @@ class FatFile(io.RawIOBase):
             # the final extension of the file is effectively atomic (from a
             # concurrent reader's perspective)
             to_append = list(islice(fs.fat.free(), clusters - len(self._map)))
-            if len(to_append) + len(self._map) < clusters:
-                raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
             fs.fat.mark_end(to_append[-1])
             zeros = b'\0' * cs
             for next_c, this_c in pairwise(reversed([self._map[-1]] + to_append)):
