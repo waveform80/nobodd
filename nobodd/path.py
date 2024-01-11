@@ -142,6 +142,35 @@ class FatPath:
         finally:
             self._resolved = True
 
+    def _refresh(self):
+        """
+        Internal method which "refreshes" the _entry field to ensure that, if
+        the first cluster of the file has changed (because the file was emptied
+        and then re-filled) we have the correct value.
+
+        This method should be called before using the cluster of the _entry
+        field, unless you are certain the cluster cannot be wrong (e.g. the
+        file backing sub-directories can never be emptied due to the "." and
+        ".." entries so it never changes).
+
+        The entry will be refreshed by searching for an entry in the _index
+        with a matching SFN (short file-name), i.e. this is no good if the
+        calling method has renamed the entry.
+        """
+        if self._resolved:
+            assert self._index
+            assert self._entry
+            assert not self._entry.attr & 0x10, 'no need for _refresh on dirs'
+            find_sfn = self._entry.filename, self._entry.ext
+            for entries in self._index:
+                entry = entries[-1]
+                if find_sfn == (entry.filename, entry.ext):
+                    self._entry = entry
+                    return
+            raise FileNotFoundError(f'Directory entry for {self} disappeared')
+        else:
+            self._resolve()
+
     def _must_exist(self):
         """
         Internal method which is called to check that a constructed path
@@ -278,6 +307,8 @@ class FatPath:
             else:
                 raise
         self._must_not_be_dir()
+
+        self._refresh()
         self._index.remove(self._entry)
         for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
             fs.fat.mark_free(cluster)
@@ -586,6 +617,7 @@ class FatPath:
         fs = self._get_fs()
         self._must_exist()
         if self._entry is not None and not (self._entry.attr & 0x10):
+            self._refresh()
             return os.stat_result((
                 0o444,                                      # mode
                 get_cluster(self._entry, fs.fat_type),      # inode
@@ -602,6 +634,8 @@ class FatPath:
                     self._entry.cdate, self._entry.ctime,
                     self._entry.ctime_ms * 10).timestamp()))
         else: # self._index is not None is guaranteed by _must_exist
+            # NOTE: No need to _refresh as the cluster of a sub-directory can
+            # never change
             return os.stat_result((
                 stat.S_IFDIR | 0o555,  # mode
                 self._index.cluster,   # inode
