@@ -315,6 +315,59 @@ class FatPath:
         self._index = None
         self._entry = None
 
+    def rename(self, target):
+        """
+        Rename this file or directory to the given *target*, and return a new
+        :class:`FatPath` instance pointing to target. If *target* exists and is
+        a file, it will be replaced silently. *target* can be either a string
+        or another path object::
+
+            >>> p = fs.root / 'foo'
+            >>> p.open('w').write('some text')
+            9
+            >>> target = fs.root / 'bar'
+            >>> p.rename(target)
+            FatPath(<FatFileSystem label='TEST' fat_type='fat16'>, '/bar')
+            >>> target.read_text()
+            'some text'
+
+        The target path must be absolute. There are no guarantees of atomic
+        behaviour (in contrast to :func:`os.rename`).
+
+        .. note::
+
+            :meth:`pathlib.Path.rename` permits relative paths, but interprets
+            them relative to the working directory which is a concept
+            :class:`FatPath` does not support.
+        """
+        fs = self._get_fs()
+        if not isinstance(target, FatPath):
+            target = FatPath(fs, target)
+        target_fs = target._get_fs()
+        if fs is not target_fs:
+            raise ValueError('Cannot rename between FatFileSystem instances')
+
+        if target.exists():
+            target._must_not_be_dir()
+            target._refresh()
+            old_cluster = get_cluster(target._entry, fs.fat_type)
+        else:
+            target.touch()
+            old_cluster = 0
+        self._refresh()
+        target._entry = self._entry._replace(
+            filename=target._entry.filename,
+            ext=target._entry.ext)
+        target._index.update(target._entry)
+        self._index.remove(self._entry)
+        if old_cluster:
+            for cluster in fs.fat.chain(old_cluster):
+                fs.fat.mark_free(cluster)
+        self._index = None
+        self._entry = None
+        self._sfn = None
+        return target
+
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
         """
         Create a new directory at this given path. The *mode* parameter exists
