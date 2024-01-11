@@ -823,6 +823,24 @@ class FatPath:
         with self.open(encoding=encoding, errors=errors) as f:
             return f.read()
 
+    def write_text(self, data, encoding=None, errors=None, newline=None):
+        """
+        Open the file pointed to in text mode, write *data* to it, and close
+        the file:
+
+            >>> p = Path('my_text_file')
+            >>> p.write_text('Text file contents')
+            18
+            >>> p.read_text()
+            'Text file contents'
+
+        An existing file of the same name is overwritten. The optional
+        parameters have the same meaning as in :meth:`open`.
+        """
+        with self.open(mode='w', encoding=encoding, errors=errors,
+                       newline=newline) as f:
+            return r.write(data)
+
     def read_bytes(self):
         """
         Return the binary contents of the pointed-to file as a bytes object:
@@ -834,6 +852,37 @@ class FatPath:
         """
         with self.open(mode='rb') as f:
             return f.read()
+
+    def write_bytes(self, data):
+        """
+        Open the file pointed to in bytes mode, write *data* to it, and close
+        the file:
+
+            >>> p = Path('my_binary_file')
+            >>> p.write_bytes(b'Binary file contents')
+            20
+            >>> p.read_bytes()
+            b'Binary file contents'
+
+        An existing file of the same name is overwritten.
+        """
+        with self.open(mode='wb') as f:
+            return f.write(data)
+
+    def touch(self, mode=0o666, exist_ok=True):
+        """
+        Create a file at this given path. The *mode* parameter is only present
+        for compatibility with :class:`pathlib.Path` and is otherwise ignored.
+        If the file already exists, the function succeeds if *exist_ok* is
+        :data:`True` (and its modification time is updated to the current
+        time), otherwise :exc:`FileExistsError` is raised.
+        """
+        if exist_ok:
+            with self.open('ab') as f:
+                f._set_mtime()
+        else:
+            with self.open('xb') as f:
+                pass
 
     def exists(self):
         """
