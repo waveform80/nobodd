@@ -26,13 +26,13 @@ from pathlib import Path
 from fnmatch import fnmatch
 
 
-PROJECT_ROOT = (Path(__file__).parent / '..').resolve()
-SETUP_SECTION = str(Path(__file__).name) + ':settings'
-SPDX_PREFIX = 'SPDX-License-Identifier:'
-COPYRIGHT_PREFIX = 'Copyright (c)'
+PROJECT_ROOT: Path    = (Path(__file__).parent / '..').resolve()
+SETUP_SECTION: str    = str(Path(__file__).name) + ':settings'
+SPDX_PREFIX: str      = 'SPDX-License-Identifier:'
+COPYRIGHT_PREFIX: str = 'Copyright (c)'
 
 
-def main(args: t.List[str] = None):
+def main(args: t.Optional[t.List[str]]=None):
     if args is None:
         args = sys.argv[1:]
     config = get_config(args)
@@ -265,7 +265,7 @@ class CopyWriter:
     }
 
     def __init__(self, license: Path=Path('LICENSE.txt'),
-                 preamble: t.List[str]=None,
+                 preamble: t.Optional[t.List[str]]=None,
                  spdx_prefix: str=SPDX_PREFIX,
                  copy_prefix: str=COPYRIGHT_PREFIX):
         if preamble is None:
@@ -283,7 +283,7 @@ class CopyWriter:
 
     def transform(self, source: t.TextIO,
                   copyrights: t.List[Copyright], *,
-                  comment_prefix: str=None) -> t.Iterator[str]:
+                  comment_prefix: t.Optional[str]=None) -> t.Iterator[str]:
         if comment_prefix is None:
             comment_prefix = self.COMMENTS[Path(source.name).suffix]
         license_start = self.license.text[0]
@@ -374,7 +374,7 @@ class AtomicReplaceFile:
         If ``None`` (the default), the temporary file will be opened in binary
         mode. Otherwise, this specifies the encoding to use with text mode.
     """
-    def __init__(self, path: t.Union[str, Path], encoding: str = None):
+    def __init__(self, path: t.Union[str, Path], encoding: t.Optional[str]=None):
         if isinstance(path, str):
             path = Path(path)
         self._path = path
