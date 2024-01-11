@@ -30,6 +30,12 @@ the root directory of the file-system.
     write to the file-system from one thread, while reading from another will
     result in undefined behaviour including incorrect reads.
 
+.. warning::
+
+    The implementation will *not* handle certain "obscure" extensions to FAT,
+    such as sub-directory style roots on FAT-12/16. It will attempt to warn
+    about these and abort if they are found.
+
 
 FatFileSystem
 =============
@@ -41,6 +47,16 @@ FatFile
 =======
 
 .. autoclass:: FatFile
+
+
+Exceptions and Warnings
+=======================
+
+.. autoexception:: FatWarning
+
+.. autoexception:: DirtyFileSystem
+
+.. autoexception:: DamagedFileSystem
 
 
 Internal Classes and Functions

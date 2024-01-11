@@ -7,7 +7,7 @@ nobodd.tools
 This module houses a series of miscellaneous functions which did not fit
 particularly well anywhere else and are needed across a variety of modules.
 They should never be needed by developers using nobodd as an application or a
-library, but are documented in case they aare useful.
+library, but are documented in case they are useful.
 
 
 .. autofunction:: labels

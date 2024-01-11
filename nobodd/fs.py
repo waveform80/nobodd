@@ -76,7 +76,9 @@ class FatFileSystem:
     the file-system.
 
     Instances can (and should) be used as a context manager; exiting the
-    context will call the :meth:`close` method implicitly.
+    context will call the :meth:`close` method implicitly. If certain header
+    bits are set, :exc:`DamagedFileSystem` and :exc:`DirtyFileSystem` warnings
+    may be generated upon opening.
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
@@ -192,7 +194,7 @@ class FatFileSystem:
     def open_dir(self, cluster):
         """
         Opens the sub-directory in the specified *cluster*, returning a
-        :class:`FatSubDirectory` instance representing it.
+        :class:`FatDirectory` instance representing it.
 
         .. warning::
 
@@ -212,16 +214,17 @@ class FatFileSystem:
     def open_file(self, cluster, mode='rb'):
         """
         Opens the file at the specified *cluster*, returning a :class:`FatFile`
-        instance representing it. Note that the :class:`FatFile` instance
-        returned by this method has no directory entry associated with it. This
-        is typically used for "files" underlying the sub-directory structure
-        which do not have an associated size (other than that dictated by their
-        FAT chain of clusters).
+        instance representing it with the specified *mode*. Note that the
+        :class:`FatFile` instance returned by this method has no directory
+        entry associated with it.
 
         .. warning::
 
             This method is intended for internal use by the
-            :class:`~nobodd.path.FatPath` class.
+            :class:`~nobodd.path.FatPath` class, specifically for "files"
+            underlying the sub-directory structure which do not have an
+            associated size (other than that dictated by their FAT chain of
+            clusters).
         """
         return FatFile.from_cluster(self, cluster, mode)
 

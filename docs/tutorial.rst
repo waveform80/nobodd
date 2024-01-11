@@ -264,22 +264,22 @@ as you would with an SD card.
 
 If you hit any snags here, the following things are worth checking:
 
-* Pay attention to any errors shown on the Pi's bootloader screen. In
-  particular, you should be able to see the Pi obtaining an IP address via DHCP
-  and various TFTP request attempts.
+* Pay attention to any errors shown on the Pi's bootloader screen (only
+  available on the Pi 4 and 5). In particular, you should be able to see the Pi
+  obtaining an IP address via DHCP and various TFTP request attempts.
 
 * Run ``journalctl -f --unit nobodd.service`` on your server to follow the
-  dnsmasq log output. Again, if things are working, you should be seeing
+  nobodd log output. Again, if things are working, you should be seeing
   several TFTP requests here. If you see nothing, double check the network mask
   is specified correctly in the ``dnsmasq`` configuration, and that any
   firewall on the server is permitting inbound traffic to port 69 (the TFTP
   port).
 
-* You *will* see numerous "Early terminate" TFTP errors in the dnsmasq log
+* You *will* see numerous "Early terminate" TFTP errors in the nobodd log
   output. This is normal, and appears to be how the Pi's bootloader operates
   (my guess would be it's attempting to determine the size of a file with the
-  tsize extension, terminating the transfer, allocating RAM for the file, then
-  starting the transfer again).
+  ``tsize`` extension, terminating the transfer, allocating RAM for the file,
+  then starting the transfer again).
 
 * If cloud-init's final phase running ``apt update`` and ``apt install
   avahi-daemon linux-modules-extra-raspi nbd-client`` fails (which it appears

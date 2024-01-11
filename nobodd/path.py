@@ -756,7 +756,7 @@ class FatPath:
     @property
     def suffix(self):
         """
-        The file extension of the final component, if any:
+        The file extension of the final component, if any::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -773,7 +773,7 @@ class FatPath:
     @property
     def suffixes(self):
         """
-        A list of the path's file extensions:
+        A list of the path's file extensions::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -790,7 +790,7 @@ class FatPath:
     @property
     def stem(self):
         """
-        The final path component, without its suffix:
+        The final path component, without its suffix::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -807,7 +807,7 @@ class FatPath:
     @property
     def parts(self):
         """
-        A tuple giving access to the path's various components:
+        A tuple giving access to the path's various components::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -866,7 +866,7 @@ class FatPath:
 
     def read_text(self, encoding=None, errors=None):
         """
-        Return the decoded contents of the pointed-to file as a string:
+        Return the decoded contents of the pointed-to file as a string::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -879,9 +879,9 @@ class FatPath:
     def write_text(self, data, encoding=None, errors=None, newline=None):
         """
         Open the file pointed to in text mode, write *data* to it, and close
-        the file:
+        the file::
 
-            >>> p = Path('my_text_file')
+            >>> p = fs.root / 'my_text_file'
             >>> p.write_text('Text file contents')
             18
             >>> p.read_text()
@@ -896,7 +896,7 @@ class FatPath:
 
     def read_bytes(self):
         """
-        Return the binary contents of the pointed-to file as a bytes object:
+        Return the binary contents of the pointed-to file as a bytes object::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>
@@ -909,9 +909,9 @@ class FatPath:
     def write_bytes(self, data):
         """
         Open the file pointed to in bytes mode, write *data* to it, and close
-        the file:
+        the file::
 
-            >>> p = Path('my_binary_file')
+            >>> p = fs.root / 'my_binary_file'
             >>> p.write_bytes(b'Binary file contents')
             20
             >>> p.read_bytes()
@@ -931,15 +931,15 @@ class FatPath:
         time), otherwise :exc:`FileExistsError` is raised.
         """
         if exist_ok:
-            with self.open('ab') as f:
+            with self.open('ab', buffering=0) as f:
                 f._set_mtime()
         else:
-            with self.open('xb') as f:
+            with self.open('xb', buffering=0) as f:
                 pass
 
     def exists(self):
         """
-        Whether the path points to an existing file or directory:
+        Whether the path points to an existing file or directory::
 
             >>> fs
             <FatFileSystem label='TEST' fat_type='fat16'>

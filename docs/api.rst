@@ -4,9 +4,9 @@ API Reference
 
 In additional to being a service, nobodd can also be used as an API from Python
 to access disk images, determining their partitioning style, enumerating the
-available partitions, and reading FAT file-systems (either from within a disk
-image, or just standalone). It can also be used as the basis of a generic TFTP
-service.
+available partitions, and manipulating FAT file-systems (either from within a
+disk image, or just standalone). It can also be used as the basis of a generic
+TFTP service.
 
 The following sections list the modules by their topic.
 
@@ -71,4 +71,15 @@ configuration parsing and miscellaneous utilities respectively.
 
     api_main
     api_config
+
+
+Miscellaneous
+=============
+
+The :mod:`nobodd.tools` module contains a variety of utility functions that
+either cross boundaries in the system or are entirely generic.
+
+.. toctree::
+    :maxdepth: 1
+
     api_tools
