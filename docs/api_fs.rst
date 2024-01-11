@@ -62,9 +62,10 @@ Exceptions and Warnings
 Internal Classes and Functions
 ==============================
 
-You should never need to interact with these classes directly; they exist to
-enumerate the FAT and different types of root directory under FAT-12, FAT-16,
-and FAT-32, and sub-directories (which are common across FAT types).
+You should never need to interact with these classes directly; use
+:class:`FatFileSystem` instead. These classes exist to enumerate and manipulate
+the FAT, and different types of root directory under FAT-12, FAT-16, and
+FAT-32, and sub-directories (which are common across FAT types).
 
 .. autoclass:: FatTable
 
@@ -78,7 +79,7 @@ and FAT-32, and sub-directories (which are common across FAT types).
 
 .. autoclass:: FatDirectory
    :members:
-   :private-members: _iter_entries, _update_entry
+   :private-members:
 
 .. autoclass:: FatRoot
 

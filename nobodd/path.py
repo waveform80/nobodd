@@ -29,7 +29,9 @@ class FatPath:
     directories, :meth:`stat`, :meth:`is_dir`, and :meth:`is_file` for querying
     information about files, division for construction of new paths, and all
     the usual :attr:`name`, :attr:`parent`, :attr:`stem`, and :attr:`suffix`
-    attributes.
+    attributes. When the :class:`~nobodd.fs.FatFileSystem` is writable, then
+    :meth:`unlink`, :meth:`touch`, :meth:`mkdir`, :meth:`rmdir`, and
+    :meth:`rename` may also be used.
 
     Instances are also comparable for the purposes of sorting, but only within
     the same :class:`~nobodd.fs.FatFileSystem` instance (comparisons across

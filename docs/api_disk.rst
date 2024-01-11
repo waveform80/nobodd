@@ -52,9 +52,9 @@ partitions 1, 5, and 6:
     <DiskPartition size=1070596096 label='Partition 6' type=131>
 
 `GPT`_ partition tables may also have non-contiguous numbering, although this
-is less common in practice. The :attr:`DiskPartition.data` can be used to
-access the content of the partition as a memory-mapped array (see
-:class:`~mmap.mmap`).
+is less common in practice. The :attr:`DiskPartition.data` attribute can be
+used to access the content of the partition as a buffer object (see
+:class:`memoryview`).
 
 DiskImage
 =========

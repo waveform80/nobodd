@@ -14,9 +14,10 @@ class DiskImage:
     :class:`str` or :class:`~pathlib.Path` naming the file, or a file-like
     object.
 
-    If a file-like object is provided, it *must* have a ``fileno`` method which
-    returns a valid file-descriptor number (the class uses :class:`~mmap.mmap`
-    internally which requires a "real" file).
+    If a file-like object is provided, it *must* have a
+    :attr:`~io.IOBase.fileno` method which returns a valid file-descriptor
+    number (the class uses :class:`~mmap.mmap` internally which requires a
+    "real" file).
 
     The disk image is expected to be partitioned with either an `MBR`_
     partition table or a `GPT`_. The partitions within the image can be
@@ -29,7 +30,9 @@ class DiskImage:
     alone. The *access* parameter controls the access used when constructing
     the memory mapping. This defaults to :data:`mmap.ACCESS_READ` for read-only
     access. If you wish to write to file-systems within the disk image, change
-    this to :data:`mmap.ACCESS_WRITE`.
+    this to :data:`mmap.ACCESS_WRITE`. You may also use
+    :data:`mmap.ACCESS_COPY` for read-write mappings that don't actually affect
+    the underlying disk image.
 
     .. note::
 
@@ -98,9 +101,8 @@ class DiskImage:
 
             For example, it is perfectly valid to have partition 1 occur later
             on disk than partition 2, for partition 3 to be undefined, and
-            partition 4 to be defined between partition 1 and 2.
-
-        .. note::
+            partition 4 to be defined between partition 1 and 2. The partition
+            number is essentially little more than an arbitrary key.
 
             In the case of MBR partition tables, it is particularly common to
             have missing partition numbers as the primary layout only permits 4

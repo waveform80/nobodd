@@ -50,14 +50,26 @@ class DamagedFileSystem(FatWarning):
 
 
 # The following references were invaluable in constructing this implementation;
-# the wikipedia page on the Design of the FAT File system [1], and Jonathan
-# de Boyne Pollard's notes on determination of FAT widths [2].
+# the wikipedia page on the Design of the FAT File system [1], Jonathan
+# de Boyne Pollard's notes on determination of FAT widths [2], and the
+# Microsoft Extensible Firmware Initiative FAT32 File System Specification [3].
 #
 # [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 # [2]: http://homepage.ntlworld.com/jonathan.deboynepollard/FGA/determining-fat-widths.html
+# [3]: http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
 #
-# (please note [2] is a dead link at the time of writing; use archive.org to
-# retrieve)
+# Future maintainers, please note [2] is a dead link at the time of writing;
+# use archive.org to retrieve. [1] is the best starting point although it does
+# attempt to drown the casual reader in detail, a lot of which can be ignored
+# (I have no interest in supporting, for example, DR-DOS' DELWATCH mechanism,
+# or CP/M-86's user attributes).
+#
+# [3] is extremely useful in some places, though you have to put up with the
+# slighly condescending tone as the author argues that everyone else habitually
+# gets it wrong, and Microsoft's detection algorithms are The One True Way
+# (reading [2] provides a good antidote to this). Unfortunately, in other
+# places [3] is dreadfully vague for a spec (e.g. valid SFN / LFN characters).
+# Refer back to [1] for these.
 
 class FatFileSystem:
     """
@@ -186,8 +198,7 @@ class FatFileSystem:
     @property
     def readonly(self):
         """
-        Returns :data:`True` if the underlying :class:`~mmap.mmap` is
-        read-only.
+        Returns :data:`True` if the underlying buffer is read-only.
         """
         return self._data.readonly
 
@@ -318,6 +329,13 @@ class FatFileSystem:
                     print('ls /')
                     for p in fs.root.iterdir():
                         print(p.name)
+
+        .. note::
+
+            This is intended to be the primary entry-point for querying and
+            manipulating the file-system at the high level. Only use the
+            :attr:`fat` and :attr:`clusters` attributes if you want to explore
+            the file-system at a low level.
         """
         return FatPath._from_index(self, self.open_dir(0))
 
@@ -447,7 +465,8 @@ class FatTable(abc.MutableSequence):
     def get_all(self, cluster):
         """
         Returns the value of *cluster* in all copies of the FAT, as a
-        :class:`tuple`.
+        :class:`tuple` (naturally, under normal circumstances, these should all
+        be equal).
         """
         raise NotImplementedError
 
@@ -706,7 +725,7 @@ class FatClusters(abc.MutableSequence):
     the file-system itself.
 
     While the sequence is mutable, clusters cannot be deleted or inserted, only
-    read and (if the underlying :class:`~mmap.mmap` is writable) re-written.
+    read and (if the underlying buffer is writable) re-written.
     """
     def __init__(self, mem, cluster_size):
         self._mem = mem
@@ -733,8 +752,7 @@ class FatClusters(abc.MutableSequence):
     @property
     def readonly(self):
         """
-        Returns :data:`True` if the underlying :class:`~mmap.mmap` is
-        read-only.
+        Returns :data:`True` if the underlying buffer is read-only.
         """
         return self._mem.readonly
 
@@ -774,12 +792,14 @@ class FatDirectory(abc.Iterable):
 
     When iterated, yields sequences ending with a single
     :class:`~nobodd.fat.DirectoryEntry` and preceded by zero or more
-    :class:`~nobodd.fat.LongFilenameEntry` instances. Stops when the end of
+    :class:`~nobodd.fat.LongFilenameEntry` instances. Stops when the terminal
     directory marker (an entry with NUL as the first filename byte) is
     encountered.
 
     .. _FAT directory:
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table
+
+    .. autoattribute:: MAX_SFN_SUFFIX
     """
     MAX_SFN_SUFFIX = 0xFFFF
     __slots__ = ('_encoding',)
@@ -794,16 +814,19 @@ class FatDirectory(abc.Iterable):
         Abstract generator that is expected to yield successive offsets and the
         entries at those offsets as :class:`~nobodd.fat.DirectoryEntry`
         instances or :class:`~nobodd.fat.LongFilenameEntry` instances, as
-        appropriate. All instances must be yielded, in the order they appear on
-        disk, regardless of whether they represent deleted entries or
-        otherwise.
+        appropriate.
+
+        All instances must be yielded, in the order they appear on disk,
+        regardless of whether they represent deleted, orphaned, corrupted, or
+        other entries. Only the terminal entry (with NUL as the first byte),
+        and subsequent entries must not be yielded.
         """
         raise NotImplementedError
 
     @abstractmethod
     def _update_entry(self, offset, entry):
         """
-        Abstract method which is expected to re-write *entry* (a
+        Abstract method which is expected to (re-)write *entry* (a
         :class:`~nobodd.fat.DirectoryEntry` or
         :class:`~nobodd.fat.LongFilenameEntry` instance) at the specified
         *offset* in the directory.
@@ -850,7 +873,7 @@ class FatDirectory(abc.Iterable):
         The method scans the directory for all directory entries and long
         filename entries which start with 0xE5, indicating a deleted entry,
         and overwrites them with later (not deleted) entries. Trailing entries
-        are then zeroed out. The return value is the new offset of the EOF
+        are then zeroed out. The return value is the new offset of the terminal
         entry.
         """
         write_offset = 0
@@ -1110,8 +1133,8 @@ class FatDirectory(abc.Iterable):
                 break
         # NOTE: We write the entries in reverse order to make it more likely
         # that anything scanning the directory simultaneously sees the append
-        # as "atomic" (because the last item written overwrites the old EOF
-        # marker entry)
+        # as "atomic" (because the last item written overwrites the old
+        # terminal marker entry)
         for cleaned in (False, True):
             offsets = range(
                 eof_offset,
@@ -1131,7 +1154,7 @@ class FatDirectory(abc.Iterable):
     def remove(self, entry):
         """
         Find *entry* (a :class:`~nobodd.fat.DirectoryEntry` instance) within
-        the directory, by matching on the starting cluster, and mark it (and
+        the directory, by matching on the short filename, and mark it (and
         all preceding :class:`~nobodd.fat.LongFilenameEntry` instances) as
         deleted.
 
@@ -1154,7 +1177,7 @@ class FatDirectory(abc.Iterable):
     def update(self, entry):
         """
         Find *entry* (a :class:`~nobodd.fat.DirectoryEntry` instance) within
-        the directory, by matching on the starting cluster, and update it with
+        the directory, by matching on the short filename, and update it with
         the current contents of *entry*.
 
         If *entry* cannot be found in the directory, :exc:`FileNotFoundError`
@@ -1172,8 +1195,9 @@ class FatRoot(FatDirectory):
     An abstract derivative of :class:`FatDirectory` representing the
     (fixed-size) root directory of a FAT-12 or FAT-16 file-system. Must be
     constructed with *mem*, which is a buffer object covering the root
-    directory clusters. The :class:`Fat12Root` and :class:`Fat16Root` classes
-    are (trivial) concrete derivatives of this.
+    directory clusters, and *encoding*, which is taken from
+    :attr:`FatFileSystem.sfn_encoding`. The :class:`Fat12Root` and
+    :class:`Fat16Root` classes are (trivial) concrete derivatives of this.
     """
     __slots__ = ('_mem',)
 
@@ -1201,8 +1225,9 @@ class FatSubDirectory(FatDirectory):
     """
     A concrete derivative of :class:`FatDirectory` representing a sub-directory
     in a FAT file-system (of any type). Must be constructed with *fs* (a
-    :class:`FatFileSystem` instance) and *start*, the first cluster of the
-    sub-directory.
+    :class:`FatFileSystem` instance) *start*, the first cluster of the
+    sub-directory, and *encoding*, which is taken from
+    :attr:`FatFileSystem.sfn_encoding`.
     """
     __slots__ = ('_cs', '_file', 'fat_type')
 
@@ -1269,9 +1294,10 @@ class FatFile(io.RawIOBase):
     """
     Represents an open file from a :class:`FatFileSystem`.
 
-    You should never need to construct this instance directly. Instead it is
-    returned by the :meth:`~nobodd.path.FatPath.open` method of
-    :class:`~nobodd.path.FatPath` instances. For example::
+    You should never need to construct this instance directly. Instead it (or
+    wrapped variants of it) is returned by the
+    :meth:`~nobodd.path.FatPath.open` method of :class:`~nobodd.path.FatPath`
+    instances. For example::
 
         from nobodd.disk import DiskImage
         from nobodd.fs import FatFileSystem
@@ -1284,8 +1310,11 @@ class FatFile(io.RawIOBase):
 
     Instances can (and should) be used as context managers to implicitly close
     references upon exiting the context. Instances are readable and seekable,
-    and optionally writable, using all the methods derived from the base
-    :class:`io.RawIOBase` class.
+    and writable, depending on their opening mode and the nature of the
+    underlying :class:`FatFileSystem`.
+
+    As a derivative of :class:`io.RawIOBase`, all the usual I/O methods should
+    be available.
     """
     __slots__ = ('_fs', '_map', '_index', '_entry', '_pos', '_mode')
 
@@ -1338,8 +1367,8 @@ class FatFile(io.RawIOBase):
         equivalent to the built-in :func:`open` function.
 
         Files constructed via this method have an associated directory entry
-        which will be updated if/when a write to the file changes its size
-        (extension or truncation).
+        which will be updated if/when reads or writes occur (updating atime,
+        mtime, and size fields).
 
         .. warning::
 
