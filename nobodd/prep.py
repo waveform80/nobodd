@@ -9,7 +9,8 @@ from pathlib import Path
 from uuid import UUID
 
 from . import config
-from . import disk
+from .disk import DiskImage
+from .fs import FatFileSystem
 
 
 def fqdn():
@@ -62,8 +63,8 @@ def run(*cmdline, capture_output=False):
     return sp.run([str(s) for s in cmdline], **kwargs)
 
 
-def prepare_cmdline(conf):
-    cmdline = Path(conf.mount_point / conf.cmdline)
+def prepare_cmdline(conf, root):
+    cmdline = root / conf.cmdline
     params = cmdline.read_text()
     try:
         params = params[:params.index('\n')]
@@ -83,25 +84,21 @@ def prepare_cmdline(conf):
 
 
 def prepare_image(conf):
-    # TODO Urgh ... really ought to add writing to the FAT implementation so we
-    # could skip all this mount nonsense ...
-    run('cp', '--reflink=auto', conf.template, conf.target)
     try:
-        run('fallocate', '-l', conf.size, conf.target)
-        out = run('losetup', '--find', '--show', '--partscan', conf.target)
-        loop_device = out.stdout.rstrip()
-        try:
-            with tempfile.TemporaryDirectory() as conf.mount_point:
-                run('mount', f'{loop_device}p{conf.boot_partition}',
-                    conf.mount_point)
-                try:
-                    prepare_cmdline(conf)
-                finally:
-                    run('umount', conf.mount_point)
-        finally:
-            run('losetup', '-d', loop_device)
-    except sp.CalledProcessError:
+        run('cp', '--reflink=auto', conf.template, conf.target)
+        with conf.target.open('ab') as f:
+            size = f.seek(0, os.SEEK_END)
+            if size < conf.size:
+                f.seek(conf.size)
+                f.truncate()
+        with (
+            DiskImage(conf.target) as img,
+            FatFileSystem(img.partitions[conf.boot_partition].data) as fs
+        ):
+            prepare_cmdline(conf, fs.root)
+    except OSError:
         conf.target.unlink()
+        raise
 
 
 def main(args=None):
@@ -112,8 +109,9 @@ def main(args=None):
         logging.root.setLevel(logging.INFO)
         if conf.boot_partition is None or conf.root_partition is None:
             with (
-                    conf.template.open('rb') as img_file,
-                    disk.DiskImage(img_file) as img):
+                conf.template.open('rb') as img_file,
+                DiskImage(img_file) as img
+            ):
                 fat_type = (
                     UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')
                     if img.partitions.style == 'gpt' else 12)
