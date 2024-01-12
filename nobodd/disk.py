@@ -54,9 +54,12 @@ class DiskImage:
             self._file = filename_or_obj
         self._map = mmap.mmap(self._file.fileno(), 0, access=access)
         self._mem = memoryview(self._map)
+        self._partitions = None
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} file={self._file!r}>'
+        return (
+            f'<{self.__class__.__name__} file={self._file!r} '
+            f'style={self.style!r} signature={self.signature!r}>')
 
     def __enter__(self):
         return self
@@ -83,9 +86,27 @@ class DiskImage:
             self._map.close()
             if self._opened:
                 self._file.close()
+        self._partitions = None
         self._map = None
         self._mem = None
         self._file = None
+
+    @property
+    def style(self):
+        """
+        The style of partition table in use on the disk image. Will be one of
+        the strings, 'gpt' or 'mbr'.
+        """
+        return self.partitions.style
+
+    @property
+    def signature(self):
+        """
+        The identifying signature of the disk. In the case of a GPT partitioned
+        disk, this is a :class:`~uuid.UUID`. In the case of MBR, this is a
+        32-bit integer number.
+        """
+        return self.partitions.signature
 
     @property
     def partitions(self):
@@ -112,23 +133,26 @@ class DiskImage:
             5.
         """
         # This is a bit hacky, but reliable enough for our purposes. We check
-        # for the "EFI PART" signature at the start of LBA1 and, if we find it,
-        # we assume we're dealing with GPT. We don't check for a protective or
-        # hybrid MBR because we wouldn't use it in any case. Otherwise we,
+        # for the "EFI PART" signature at the start of sector 1 and, if we find
+        # it, we assume we're dealing with GPT. We don't check for a protective
+        # or hybrid MBR because we wouldn't use it in any case. Otherwise we,
         # check for a valid MBR boot-signature at the appropriate offset.
         # Failing both of these, we raise an error.
-        #
-        # Note that, *theoretically*, "EFI PART" could appear in the bootstrap
-        # code at the start of the MBR. However, I'm treating that as
-        # sufficiently weird that it's not worth guarding against.
-        head = GPTHeader.from_buffer(self._mem, self._ss)
-        if head.signature == b'EFI PART':
-            return DiskPartitionsGPT(self._mem, head, self._ss)
-        head = MBRHeader.from_buffer(self._mem, 0)
-        if head.boot_sig == 0xAA55:
-            return DiskPartitionsMBR(self._mem, head, self._ss)
-        raise ValueError(
-            f'Unable to determine partitioning scheme in use by {self._file}')
+        if self._partitions is None:
+            for cls in (DiskPartitionsGPT, DiskPartitionsMBR):
+                try:
+                    offset = cls.head_sector * self._ss
+                    header = cls.head_cls.from_buffer(self._mem, offset)
+                    self._partitions = cls(self._mem, header, self._ss)
+                except ValueError:
+                    pass
+                else:
+                    break
+            else:
+                raise ValueError(
+                    f'Unable to determine partitioning scheme in use by '
+                    f'{self._file}')
+        return self._partitions
 
 
 class DiskPartition:
@@ -191,7 +215,17 @@ class DiskPartition:
         return self._mem
 
 
-class DiskPartitionsGPT(Mapping):
+class DiskPartitions(Mapping):
+    """
+    Abstract base class for the classes that handle specific partition layouts.
+    Provides common handlers for :func:`repr` amongst other things.
+    """
+    def __repr__(self):
+        partitions = '\n'.join(f'{key}: {part!r},' for key, part in self.items())
+        return f'{self.__class__.__name__}({{\n{partitions}\n}})'
+
+
+class DiskPartitionsGPT(DiskPartitions):
     """
     Provides a :class:`~collections.abc.Mapping` from partition number to
     :class:`DiskPartition` instances for a `GPT`_.
@@ -203,27 +237,29 @@ class DiskPartitionsGPT(Mapping):
 
     The :attr:`style` instance attribute can be queried to determine this is a
     GPT.
-
-    .. autoattribute:: style
     """
     style = 'gpt'
+    head_cls = GPTHeader
+    head_sector = 1
 
     def __init__(self, mem, header, sector_size=512):
         if not isinstance(header, GPTHeader):
             raise ValueError('header must be a GPTHeader instance')
         if header.signature != b'EFI PART':
             raise ValueError('Bad GPT signature')
-        if header.revision != b'\x00\x00\x01\x00':
+        if header.revision != 0x10000:
             raise ValueError('Unrecognized GPT version')
         if header.header_size != GPTHeader._FORMAT.size:
             raise ValueError('Bad GPT header size')
-        data = bytearray(header.raw)
-        data[0x10:0x14] = b'\x00\x00\x00\x00'
-        if crc32(data) != header.header_crc32:
+        if crc32(bytes(header._replace(header_crc32=0))) != header.header_crc32:
             raise ValueError('Bad GPT header CRC32')
         self._mem = mem
         self._header = header
         self._ss = sector_size
+
+    @property
+    def signature(self):
+        return uuid.UUID(bytes_le=self._header.disk_guid)
 
     def _get_table(self):
         start = self._header.part_table_lba
@@ -266,7 +302,7 @@ class DiskPartitionsGPT(Mapping):
                 yield index + 1
 
 
-class DiskPartitionsMBR(Mapping):
+class DiskPartitionsMBR(DiskPartitions):
     """
     Provides a :class:`~collections.abc.Mapping` from partition number to
     :class:`DiskPartition` instances for a `MBR`_.
@@ -278,19 +314,25 @@ class DiskPartitionsMBR(Mapping):
 
     The :data:`style` instance attribute can be queried to determine this is a
     MBR style partition table.
-
-    .. autoattribute:: style
     """
     style = 'mbr'
+    head_class = MBRHeader
+    head_sector = 0
 
     def __init__(self, mem, header, sector_size=512):
         if not isinstance(header, MBRHeader):
             raise ValueError('header must be a MBRHeader instance')
         if header.boot_sig != 0xAA55:
             raise ValueError('Bad MBR signature')
+        if header.zero != 0:
+            raise ValueError('Bad MBR zero field')
         self._mem = mem
         self._header = header
         self._ss = sector_size
+
+    @property
+    def signature(self):
+        return self._header.disk_sig
 
     def _get_logical(self, ext_offset):
         logical_offset = ext_offset
