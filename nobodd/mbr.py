@@ -12,7 +12,15 @@ from .tools import labels, formats
 # [1]: https://en.wikipedia.org/wiki/Master_boot_record
 
 MBR_HEADER = """
-446x  bootstrap_code
+218x  bootstrap_code
+H     zero
+B     physical_drive
+B     seconds
+B     minutes
+B     hours
+216x  bootstrap_code
+I     disk_sig
+H     copy_protect
 16s   partition_1
 16s   partition_2
 16s   partition_3

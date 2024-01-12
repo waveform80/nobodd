@@ -10,7 +10,7 @@ from .tools import labels, formats
 
 GPT_HEADER = """
 8s   signature
-4s   revision
+I    revision
 I    header_size
 I    header_crc32
 4x   reserved
@@ -25,7 +25,7 @@ I    part_entry_size
 I    part_table_crc32
 """
 
-class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
+class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER))):
     """
     A :func:`~collections.namedtuple` representing the fields of the `GPT
     header`_.
@@ -44,7 +44,7 @@ class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
         """
         Construct a :class:`GPTHeader` from the byte-string *s*.
         """
-        return cls(*cls._FORMAT.unpack(s), s)
+        return cls(*cls._FORMAT.unpack(s))
 
     @classmethod
     def from_buffer(cls, buf, offset=0):
@@ -52,8 +52,7 @@ class GPTHeader(namedtuple('GPTHeader', labels(GPT_HEADER) + ('raw',))):
         Construct a :class:`GPTHeader` from the specified *offset* (which
         defaults to 0) in the buffer protocol object, *buf*.
         """
-        return cls(*cls._FORMAT.unpack_from(buf, offset),
-                   buf[offset:offset + cls._FORMAT.size])
+        return cls(*cls._FORMAT.unpack_from(buf, offset))
 
 
 GPT_PARTITION = """
