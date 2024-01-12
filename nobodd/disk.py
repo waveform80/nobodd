@@ -141,9 +141,7 @@ class DiskImage:
         if self._partitions is None:
             for cls in (DiskPartitionsGPT, DiskPartitionsMBR):
                 try:
-                    offset = cls.head_sector * self._ss
-                    header = cls.head_cls.from_buffer(self._mem, offset)
-                    self._partitions = cls(self._mem, header, self._ss)
+                    self._partitions = cls(self._mem, self._ss)
                 except ValueError:
                     pass
                 else:
@@ -234,17 +232,11 @@ class DiskPartitionsGPT(DiskPartitions):
     :class:`~nobodd.gpt.GPTHeader` instance decoded from the front of the
     `GPT`_. *sector_size* specifies the sector size of the disk image, which
     should almost always be left at the default of 512 bytes.
-
-    The :attr:`style` instance attribute can be queried to determine this is a
-    GPT.
     """
     style = 'gpt'
-    head_cls = GPTHeader
-    head_sector = 1
 
-    def __init__(self, mem, header, sector_size=512):
-        if not isinstance(header, GPTHeader):
-            raise ValueError('header must be a GPTHeader instance')
+    def __init__(self, mem, sector_size=512):
+        header = GPTHeader.from_buffer(mem, sector_size * 1)
         if header.signature != b'EFI PART':
             raise ValueError('Bad GPT signature')
         if header.revision != 0x10000:
@@ -308,20 +300,14 @@ class DiskPartitionsMBR(DiskPartitions):
     :class:`DiskPartition` instances for a `MBR`_.
 
     *mem* is the buffer covering the whole disk image, and *header* is a
-    :class:`~nobodd.gpt.MBRHeader` instance decoded from the front of the
+    :class:`~nobodd.mbr.MBRHeader` instance decoded from the front of the
     `MBR`_. *sector_size* specifies the sector size of the disk image, which
     should almost always be left at the default of 512 bytes.
-
-    The :data:`style` instance attribute can be queried to determine this is a
-    MBR style partition table.
     """
     style = 'mbr'
-    head_class = MBRHeader
-    head_sector = 0
 
-    def __init__(self, mem, header, sector_size=512):
-        if not isinstance(header, MBRHeader):
-            raise ValueError('header must be a MBRHeader instance')
+    def __init__(self, mem, sector_size=512):
+        header = MBRHeader.from_buffer(mem, offset=0)
         if header.boot_sig != 0xAA55:
             raise ValueError('Bad MBR signature')
         if header.zero != 0:
