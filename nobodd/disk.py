@@ -1,6 +1,7 @@
 import os
 import mmap
 import uuid
+import warnings
 from binascii import crc32
 from collections.abc import Mapping
 
@@ -168,7 +169,7 @@ class DiskPartition:
 
     def __repr__(self):
         return (
-            f'<{self.__class__.__name__} size={len(self._mem)} '
+            f'<{self.__class__.__name__} size={self._mem.nbytes} '
             f'label={self._label!r} type={self._type!r}>')
 
     def __enter__(self):
@@ -315,6 +316,8 @@ class DiskPartitionsMBR(DiskPartitions):
         self._mem = mem
         self._header = header
         self._ss = sector_size
+        if len(self) == 1 and self[1].type == 0xEE:
+            raise ValueError('Protective MBR; use GPT instead')
 
     @property
     def signature(self):
@@ -341,13 +344,14 @@ class DiskPartitionsMBR(DiskPartitions):
 
     def _get_primary(self):
         mbr = self._header
-        ebr = None
+        extended = False
         for num, buf in enumerate(mbr.partitions, start=1):
             part = MBRPartition.from_bytes(buf)
             if part.part_type in (0x05, 0x0F):
-                if ebr is not None:
+                if extended:
                     warnings.warn(
                         UserWarning('Multiple extended partitions found'))
+                extended = True
                 yield from enumerate(self._get_logical(part.first_lba), start=5)
             elif part.part_type != 0x00:
                 yield num, part
