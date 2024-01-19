@@ -53,6 +53,7 @@ specified path.
 
     api_tftpd
     api_tftp
+    api_netascii
 
 
 Command line application
