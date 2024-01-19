@@ -271,7 +271,7 @@ def decode_timestamp(date, time, ms=0):
         hour=(time & 0xF800) >> 11,
         minute=(time & 0x7E0) >> 5,
         second=(time & 0x1F) * 2 + (ms // 1000),
-        microsecond=(ms % 100) * 1000
+        microsecond=(ms % 1000) * 1000 * 10
     )
 
 
