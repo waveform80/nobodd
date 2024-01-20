@@ -14,17 +14,20 @@ enumerate, or access the data of, individual partitions:
 .. code-block:: pycon
 
     >>> from nobodd.disk import DiskImage
-    >>> img = DiskImage('test-gpt.img')
-    >>> img.partitions.style
+    >>> img = DiskImage('gpt_disk.img')
+    >>> img
+    <DiskImage file=<_io.BufferedReader name='gpt_disk.img'> style='gpt' signature=UUID('733b49a8-6918-4e44-8d3d-47ed9b481335')>
+    >>> img.style
     'gpt'
-    >>> img.partitions
-    <nobodd.disk.DiskPartitionsGPT object at 0x7f6248b99c30>
     >>> len(img.partitions)
-    2
-    >>> img.partitions[1]
-    <DiskPartition size=268435456 label='Microsoft basic data' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>
-    >>> img.partitions[2]
-    <DiskPartition size=801095168 label='Linux filesystem' type=UUID('0fc63daf-8483-4772-8e79-3d69d8477de4')>
+    4
+    >>> img.partitions
+    DiskPartitionsGPT({
+    1: <DiskPartition size=8388608 label='big-part' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,
+    2: <DiskPartition size=204800 label='little-part1' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,
+    5: <DiskPartition size=4194304 label='medium-part' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,
+    6: <DiskPartition size=204800 label='little-part2' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,
+    })
 
 Note that partitions are numbered from 1 and that, especially in the case of
 `MBR`_, partition numbers may not be contiguous: primary partitions are
@@ -36,9 +39,7 @@ partitions 1, 5, and 6:
 
     >>> from nobodd.disk import DiskImage
     >>> img = DiskImage('test-ebr.img')
-    >>> img.partitions
-    <nobodd.disk.DiskPartitionsMBR object at 0x7f74fda8d3f0>
-    >>> img.partitions.style
+    >>> img.style
     'mbr'
     >>> len(img.partitions)
     3
