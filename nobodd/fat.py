@@ -13,7 +13,7 @@ from .tools import labels, formats
 # [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 
 BIOS_PARAMETER_BLOCK = """
-3x    jump_instruction
+3s    jump_instruction
 8s    oem_name
 H     bytes_per_sector
 B     sectors_per_cluster
@@ -298,7 +298,8 @@ class DirectoryEntry(namedtuple('DirectoryEntry', labels(DIRECTORY_ENTRY))):
             instances are valid; it is up to the caller to determine the
             validity of entries.
         """
-        return cls._FORMAT.iter_unpack(buf)
+        for i in cls._FORMAT.iter_unpack(buf):
+            yield cls(*i)
 
 
 LONG_FILENAME_ENTRY = """
@@ -367,7 +368,8 @@ class LongFilenameEntry(
             instances are valid; it is up to the caller to determine the
             validity of entries.
         """
-        return cls._FORMAT.iter_unpack(buf)
+        for i in cls._FORMAT.iter_unpack(buf):
+            yield cls(*i)
 
 
 def lfn_checksum(filename, ext):

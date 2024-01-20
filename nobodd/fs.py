@@ -653,7 +653,7 @@ class Fat32Table(FatTable):
             if (
                     info.sig1 == b'RRaA' and
                     info.sig2 == b'rrAa' and
-                    info.sig3 == (0x00, 0x00, 0x55, 0xAA)):
+                    info.sig3 == b'\0\0\x55\xAA'):
                 self._info = info
                 self._info_mem = info_mem
 
