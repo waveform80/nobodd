@@ -4,6 +4,29 @@ from nobodd.disk import DiskImage
 from nobodd.fat import *
 
 
+def root_offset(part):
+    # Only for FAT-12/16 where this is in a fixed location
+    bpb = BIOSParameterBlock.from_buffer(part)
+    return (
+        bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
+    ) * bpb.bytes_per_sector
+
+
+def root_dir(part):
+    bpb = BIOSParameterBlock.from_buffer(part)
+    offset = root_offset(part)
+    return part[offset:offset + bpb.max_root_entries * DirectoryEntry._FORMAT.size]
+
+
+def first_lfn_offset(part):
+    offset = root_offset(part)
+    with root_dir(part) as mem:
+        for entry in DirectoryEntry.iter_over(mem):
+            if entry.attr == 0xF:
+                return offset
+            offset += DirectoryEntry._FORMAT.size
+
+
 def test_bpb_from_buffer(mbr_disk):
     with DiskImage(mbr_disk) as img:
         bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
@@ -146,10 +169,7 @@ def test_fat32info_to_buffer(fat32_disk):
 
 def test_direntry_from_buffer(gpt_disk):
     with DiskImage(gpt_disk) as img:
-        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
-        offset = (
-            bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
-        ) * bpb.bytes_per_sector
+        offset = root_offset(img.partitions[1].data)
         # First root entry is the volume ID
         volid = DirectoryEntry.from_buffer(img.partitions[1].data, offset)
         assert volid.filename + volid.ext == b'NOBODD---16'
@@ -162,10 +182,7 @@ def test_direntry_from_buffer(gpt_disk):
 
 def test_direntry_from_bytes(gpt_disk):
     with DiskImage(gpt_disk) as img:
-        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
-        offset = (
-            bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
-        ) * bpb.bytes_per_sector
+        offset = root_offset(img.partitions[1].data)
         dirent1 = DirectoryEntry.from_buffer(img.partitions[1].data, offset)
         dirent2 = DirectoryEntry.from_bytes(
             img.partitions[1].data[offset:offset + DirectoryEntry._FORMAT.size])
@@ -174,10 +191,7 @@ def test_direntry_from_bytes(gpt_disk):
 
 def test_direntry_to_bytes(gpt_disk):
     with DiskImage(gpt_disk) as img:
-        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
-        offset = (
-            bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
-        ) * bpb.bytes_per_sector
+        offset = root_offset(img.partitions[1].data)
         dirent = DirectoryEntry.from_buffer(img.partitions[1].data, offset)
         assert img.partitions[1].data[
             offset:offset + DirectoryEntry._FORMAT.size] == bytes(dirent)
@@ -185,10 +199,7 @@ def test_direntry_to_bytes(gpt_disk):
 
 def test_direntry_to_buffer(gpt_disk):
     with DiskImage(gpt_disk) as img:
-        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
-        offset = (
-            bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
-        ) * bpb.bytes_per_sector
+        offset = root_offset(img.partitions[1].data)
         dirent = DirectoryEntry.from_buffer(img.partitions[1].data, offset)
         buf1 = bytes(img.partitions[1].data[
             offset:offset + DirectoryEntry._FORMAT.size])
@@ -206,14 +217,79 @@ def test_direntry_eof():
 def test_direntry_iter(gpt_disk):
     with DiskImage(gpt_disk) as img:
         bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
-        offset = (
-            bpb.reserved_sectors + (bpb.sectors_per_fat * bpb.fat_count)
-        ) * bpb.bytes_per_sector
-        entries = list(DirectoryEntry.iter_over(img.partitions[1].data[
-            offset:offset + bpb.max_root_entries *
-            DirectoryEntry._FORMAT.size
-        ]))
+        with root_dir(img.partitions[1].data) as dir_mem:
+            entries = list(DirectoryEntry.iter_over(dir_mem))
         assert len(entries) == bpb.max_root_entries
-        print(repr(entries))
         assert entries[0].filename + entries[0].ext == b'NOBODD---16'
         assert entries[0].attr == 8
+
+
+def test_lfnentry_from_buffer(gpt_disk):
+    with DiskImage(gpt_disk) as img:
+        lfn = LongFilenameEntry.from_buffer(
+            img.partitions[1].data,
+            offset=first_lfn_offset(img.partitions[1].data))
+        assert lfn.sequence == 0x41 # terminal, part 1
+        assert (lfn.name_1 + lfn.name_2 + lfn.name_3).decode('utf-16le') == 'lots-of-zeros'
+
+
+def test_lfnentry_from_bytes(gpt_disk):
+    with DiskImage(gpt_disk) as img:
+        offset = first_lfn_offset(img.partitions[1].data)
+        lfn = LongFilenameEntry.from_bytes(
+            img.partitions[1].data[offset:offset + LongFilenameEntry._FORMAT.size])
+        assert lfn.sequence == 0x41 # terminal, part 1
+        assert (lfn.name_1 + lfn.name_2 + lfn.name_3).decode('utf-16le') == 'lots-of-zeros'
+
+
+def test_lfnentry_to_bytes(gpt_disk):
+    with DiskImage(gpt_disk) as img:
+        offset = first_lfn_offset(img.partitions[1].data)
+        lfn = LongFilenameEntry.from_buffer(img.partitions[1].data, offset=offset)
+        assert img.partitions[1].data[
+            offset:offset + LongFilenameEntry._FORMAT.size] == bytes(lfn)
+
+
+def test_lfnentry_to_buffer(gpt_disk):
+    with DiskImage(gpt_disk) as img:
+        lfn = LongFilenameEntry.from_buffer(
+            img.partitions[1].data,
+            offset=first_lfn_offset(img.partitions[1].data))
+        buf1 = bytes(lfn)
+        buf2 = bytearray(len(buf1))
+        lfn.to_buffer(buf2)
+        assert buf1 == buf2
+
+
+def test_lfnentry_iter(gpt_disk):
+    with DiskImage(gpt_disk) as img:
+        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
+        with root_dir(img.partitions[1].data) as dir_mem:
+            entries = list(LongFilenameEntry.iter_over(dir_mem))
+        assert len(entries) == bpb.max_root_entries
+        assert any(entry.attr == 0xF for entry in entries)
+
+
+def test_lfn_checksum():
+    assert lfn_checksum(b'        ', b'   ') == 247
+    assert lfn_checksum(b'FOO     ', b'BAR') == 83
+
+
+def test_lfn_valid():
+    assert lfn_valid('foo.bar baz')
+    assert lfn_valid('123 föo')
+    assert not lfn_valid('')
+    assert not lfn_valid('foo*')
+
+
+def test_sfn_valid():
+    assert sfn_valid(b'FOOBAR')
+    assert sfn_valid(b'FOO 123')
+    assert not sfn_valid(b'')
+    assert not sfn_valid(b'  FOO BAR  ')
+
+
+def test_sfn_safe():
+    assert sfn_safe(b'FOO BAR') == b'FOOBAR'
+    assert sfn_safe(b'FOO [BAR]', b'_') == b'FOO_BAR_'
+    assert sfn_safe(b'FOO [BAR]', b'?') == b'FOO?BAR?'

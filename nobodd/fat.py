@@ -372,14 +372,14 @@ class LongFilenameEntry(
             yield cls(*i)
 
 
-def lfn_checksum(filename, ext):
+def lfn_checksum(sfn, ext):
     """
     Calculate the expected long-filename checksum given the *filename* and
     *ext* byte-strings of the short filename (from the corresponding
     :class:`Directoryentry`).
     """
     result = 0
-    for char in filename + ext:
+    for char in sfn + ext:
         result = (((result & 1) << 7) + (result >> 1) + char) & 0xFF
     return result
 
@@ -390,8 +390,8 @@ def lfn_valid(s):
     a VFAT long filename. Almost every Unicode character is permitted with a
     few exceptions (angle brackets, wildcards, etc).
     """
-    return not lfn_valid.regex.match(s)
-lfn_valid.regex = re.compile(r"[^\w !#$%&'()-@^_`{}~+.,;=[\]]")
+    return bool(lfn_valid.regex.match(s))
+lfn_valid.regex = re.compile(r"^[\w !#$%&'()@^_`{}~+.,;=[\]-]+$")
 
 
 def sfn_valid(s):
@@ -401,8 +401,8 @@ def sfn_valid(s):
     within short filenames. This function will only return :data:`False` on
     *leading* spaces.
     """
-    return not (s.startswith(b' ') or sfn_valid.regex.match(s))
-sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()-@^_`{}~\x80-\xFF]")
+    return bool(s) and not ((s.startswith(b' ') or sfn_valid.regex.match(s)))
+sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()@^_`{}~\x80-\xFF-]")
 
 
 def sfn_safe(s, replace=b'_'):
