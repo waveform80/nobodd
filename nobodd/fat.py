@@ -60,6 +60,13 @@ class BIOSParameterBlock(
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`BIOSParameterBlock` to *buf*, a buffer protocol
+        object, at the specified *offset* (which defaults to 0).
+        """
+        self._FORMAT.pack_into(buf, offset, *self)
+
 
 EXTENDED_BIOS_PARAMETER_BLOCK = """
 B     drive_number
@@ -110,6 +117,13 @@ class ExtendedBIOSParameterBlock(
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
 
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`ExtendedBIOSParameterBlock` to *buf*, a buffer
+        protocol object, at the specified *offset* (which defaults to 0).
+        """
+        self._FORMAT.pack_into(buf, offset, *self)
+
 
 FAT32_BIOS_PARAMETER_BLOCK = """
 I     sectors_per_fat
@@ -157,6 +171,13 @@ class FAT32BIOSParameterBlock(
         *offset* (which defaults to 0) in the buffer protocol object, *buf*.
         """
         return cls(*cls._FORMAT.unpack_from(buf, offset))
+
+    def to_buffer(self, buf, offset=0):
+        """
+        Write this :class:`FAT32BIOSParameterBlock` to *buf*, a buffer protocol
+        object, at the specified *offset* (which defaults to 0).
+        """
+        self._FORMAT.pack_into(buf, offset, *self)
 
 
 FAT32_INFO_SECTOR = """

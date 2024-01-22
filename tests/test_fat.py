@@ -54,6 +54,15 @@ def test_bpb_to_bytes(mbr_disk):
         assert img.partitions[1].data[:BIOSParameterBlock._FORMAT.size] == bytes(bpb)
 
 
+def test_bpb_to_buffer(mbr_disk):
+    with DiskImage(mbr_disk) as img:
+        bpb = BIOSParameterBlock.from_buffer(img.partitions[1].data)
+        buf1 = bytes(bpb)
+        buf2 = bytearray(len(buf1))
+        bpb.to_buffer(buf2)
+        assert buf1 == buf2
+
+
 def test_ebpb_from_buffer(mbr_disk):
     with DiskImage(mbr_disk) as img:
         ebpb = ExtendedBIOSParameterBlock.from_buffer(
@@ -83,6 +92,16 @@ def test_ebpb_to_bytes(mbr_disk):
             BIOSParameterBlock._FORMAT.size:
             BIOSParameterBlock._FORMAT.size +
             ExtendedBIOSParameterBlock._FORMAT.size] == bytes(ebpb)
+
+
+def test_ebpb_to_buffer(mbr_disk):
+    with DiskImage(mbr_disk) as img:
+        ebpb = ExtendedBIOSParameterBlock.from_buffer(
+            img.partitions[1].data, offset=BIOSParameterBlock._FORMAT.size)
+        buf1 = bytes(ebpb)
+        buf2 = bytearray(len(buf1))
+        ebpb.to_buffer(buf2)
+        assert buf1 == buf2
 
 
 def test_fat32bpb_from_buffer(fat32_disk):
@@ -116,6 +135,16 @@ def test_fat32bpb_to_bytes(fat32_disk):
             BIOSParameterBlock._FORMAT.size:
             BIOSParameterBlock._FORMAT.size +
             FAT32BIOSParameterBlock._FORMAT.size] == bytes(f32bpb)
+
+
+def test_fat32bpb_to_buffer(fat32_disk):
+    with DiskImage(fat32_disk) as img:
+        f32bpb = FAT32BIOSParameterBlock.from_buffer(
+            img.partitions[1].data, offset=BIOSParameterBlock._FORMAT.size)
+        buf1 = bytes(f32bpb)
+        buf2 = bytearray(len(buf1))
+        f32bpb.to_buffer(buf2)
+        assert buf1 == buf2
 
 
 def test_fat32info_from_buffer(fat32_disk):
