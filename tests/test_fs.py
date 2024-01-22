@@ -1,0 +1,410 @@
+import mmap
+import errno
+import struct
+
+import pytest
+
+from nobodd.fat import BIOSParameterBlock, ExtendedBIOSParameterBlock
+from nobodd.disk import DiskImage
+from nobodd.fs import *
+
+
+@pytest.fixture(params=(False, True))
+def with_fsinfo(request, fat32_disk):
+    with DiskImage(fat32_disk, access=mmap.ACCESS_WRITE) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            info_offset = (
+                f32bpb.info_sector * bpb.bytes_per_sector)
+            info = FAT32InfoSector.from_buffer(part, offset=info_offset)
+            if not request.param:
+                info._replace(sig1=b'EPIC', sig2=b'FAIL').to_buffer(
+                    part, offset=info_offset)
+    yield request.param
+
+
+def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat12'
+            assert fs.label == 'NOBODD---12'
+            assert fs.sfn_encoding == 'iso-8859-1'
+            assert not fs.atime
+    with DiskImage(fat16_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat16'
+            assert fs.label == 'NOBODD---16'
+            assert fs.sfn_encoding == 'iso-8859-1'
+            assert not fs.atime
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat32'
+            assert fs.label == 'NOBODD---32'
+            assert fs.sfn_encoding == 'iso-8859-1'
+            assert not fs.atime
+
+
+def test_ambiguous_headers_fat12(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            ebpb = ExtendedBIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            # It's FAT Jim, but not as we know it ...
+            ebpb._replace(file_system=b'FAT     ').to_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat12'
+
+
+def test_ambiguous_headers_fat32(fat32_disk):
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            ebpb = ExtendedBIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size +
+                FAT32BIOSParameterBlock._FORMAT.size)
+            # Pretend we've got a normal number of sectors for FAT32 (the test
+            # image is deliberately undersized for efficiency), and that the
+            # file-system label is ambiguous
+            bpb._replace(
+                fat16_total_sectors=0,
+                fat32_total_sectors=128000).to_buffer(part)
+            ebpb._replace(file_system=b'FAT     ').to_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size +
+                FAT32BIOSParameterBlock._FORMAT.size)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat32'
+
+
+def test_ambiguous_headers_huge_fat32(fat32_disk):
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            ebpb = ExtendedBIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size +
+                FAT32BIOSParameterBlock._FORMAT.size)
+            # Pretend we've got a normal number of sectors for FAT32 (the test
+            # image is deliberately undersized for efficiency), and that the
+            # file-system label is ambiguous
+            bpb._replace(
+                fat16_total_sectors=0,
+                fat32_total_sectors=0).to_buffer(part)
+            ebpb._replace(file_system=struct.pack('<Q', 8000000000)).to_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size +
+                FAT32BIOSParameterBlock._FORMAT.size)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.fat_type == 'fat32'
+
+
+def test_bad_headers(fat16_disk, fat32_disk):
+    # Claims to be FAT32, but lacks the FAT32-specific BPB
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            ebpb = ExtendedBIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            ebpb._replace(file_system = b'FAT32   ').to_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+    # Claims to be FAT16 but has 0 root entries (like FAT32)
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            bpb._replace(max_root_entries=0).to_buffer(part)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+    # Claims to be FAT32, but has non-zero root entries (like FAT12/16)
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            bpb._replace(max_root_entries=64).to_buffer(part)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+    # Has zero sectors per FAT
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            bpb._replace(sectors_per_fat=0).to_buffer(part)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+    # Root directory doesn't fill a sector
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            bpb._replace(max_root_entries=bpb.max_root_entries - 1).to_buffer(part)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+    # No fs-label, and extended boot sigs are corrupt
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            ebpb = ExtendedBIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            ebpb._replace(
+                file_system = b'EPICFAIL',
+                extended_boot_sig=0).to_buffer(
+                    part, offset=BIOSParameterBlock._FORMAT.size)
+        with pytest.raises(ValueError):
+            FatFileSystem(img.partitions[1].data)
+
+
+def test_fs_repr(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert repr(fs) == "<FatFileSystem label='NOBODD---12' fat_type='fat12'>"
+
+
+def test_fs_close_idempotent(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        fs = FatFileSystem(img.partitions[1].data)
+        fs.close()
+        fs.close()
+        assert fs._fat is None
+        assert fs._data is None
+        assert fs._root is None
+
+
+def test_fs_readonly(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_READ) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs.readonly
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert not fs.readonly
+
+
+def test_fs_opendir(fat12_disk, fat16_disk, fat32_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.open_dir(0), FatDirectory)
+    with DiskImage(fat16_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.open_dir(0), FatDirectory)
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.open_dir(0), FatDirectory)
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            # Cheating by using the root-dir cluster as a sub-directory
+            assert isinstance(fs.open_dir(fs._root), FatSubDirectory)
+
+
+def test_fs_open_file(fat32_disk):
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            # In FAT32, the root-dir is a sub-directory; opening the root
+            # cluster as a file gets us the "file" underlying the root dir
+            with fs.open_file(fs._root) as f:
+                assert isinstance(f, FatFile)
+
+
+def test_fs_open_entry(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            index = fs.open_dir(0)
+            for entries in index:
+                entry = entries[-1]
+                if entry.attr == 0x20:  # archive bit only
+                    with fs.open_entry(index, entry) as f:
+                        assert isinstance(f, FatFile)
+                    break
+            else:
+                assert False, 'No file entries found in root'
+
+
+def test_fs_root(fat12_disk, fat16_disk, fat32_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.root, FatPath)
+    with DiskImage(fat16_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.root, FatPath)
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert isinstance(fs.root, FatPath)
+
+
+def test_fattable_close_idempotent(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            with fs._fat as tab:
+                assert len(tab._tables) == 2
+            assert not fs._fat._tables
+            fs._fat.close()
+            assert not fs._fat._tables
+
+
+
+def test_fattable_free(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            for cluster in fs._fat.free():
+                assert cluster > 1
+                break
+            with pytest.raises(OSError) as err:
+                for cluster in fs._fat.free():
+                    pass
+            assert err.value.errno == errno.ENOSPC
+
+
+
+def test_fattable_free_fat32(fat32_disk, with_fsinfo):
+    with DiskImage(fat32_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            for cluster in fs._fat.free():
+                assert cluster > 1
+                break
+            with pytest.raises(OSError) as err:
+                for cluster in fs._fat.free():
+                    pass
+            assert err.value.errno == errno.ENOSPC
+
+
+def test_fat12table_sequence(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs._fat.readonly == fs.readonly
+            assert len(fs._fat) == (
+                bpb.sectors_per_fat * bpb.bytes_per_sector // 1.5)
+            assert fs._fat[0] > fs._fat.max_valid
+            first = fs._fat[0]
+            second = fs._fat[1]
+            assert all(c == first for c in fs._fat.get_all(0))
+            assert all(c == second for c in fs._fat.get_all(1))
+            with pytest.raises(TypeError):
+                del fs._fat[0]
+            with pytest.raises(TypeError):
+                fs._fat.insert(0, 0)
+            with pytest.raises(IndexError):
+                fs._fat[4000000000]
+            with pytest.raises(IndexError):
+                fs._fat.get_all(4000000000)
+
+
+def test_fat12table_mutate(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            # Given FAT-12 crosses three-bytes for every two values, it's
+            # important to check adjacent values aren't affected by mutation
+            save2 = fs._fat[2]
+            save3 = fs._fat[3]
+            fs._fat[2] = 3
+            assert fs._fat[2] == 3
+            assert fs._fat[3] == save3
+            fs._fat.mark_end(3)
+            assert fs._fat[2] == 3
+            assert fs._fat[3] == fs._fat.end_mark
+            fs._fat.mark_free(2)
+            assert fs._fat[2] == 0
+            assert fs._fat[3] == fs._fat.end_mark
+            assert fs._fat.get_all(2) == (0, 0)
+            assert fs._fat.get_all(3) == (fs._fat.end_mark, fs._fat.end_mark)
+            with pytest.raises(ValueError):
+                fs._fat[0] = 0xFFFF
+            with pytest.raises(IndexError):
+                fs._fat[4000000000] = 2
+
+
+def test_fat16table_sequence(fat16_disk):
+    with DiskImage(fat16_disk) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs._fat.readonly == fs.readonly
+            assert len(fs._fat) == (
+                bpb.sectors_per_fat * bpb.bytes_per_sector // 2)
+            assert fs._fat[0] > fs._fat.max_valid
+            first = fs._fat[0]
+            second = fs._fat[1]
+            assert all(c == first for c in fs._fat.get_all(0))
+            assert all(c == second for c in fs._fat.get_all(1))
+            with pytest.raises(TypeError):
+                del fs._fat[0]
+            with pytest.raises(TypeError):
+                fs._fat.insert(0, 0)
+            with pytest.raises(IndexError):
+                fs._fat[4000000000]
+            with pytest.raises(IndexError):
+                fs._fat.get_all(4000000000)
+
+
+def test_fat16table_mutate(fat16_disk):
+    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            fs._fat[2] = 3
+            assert fs._fat[2] == 3
+            fs._fat.mark_end(3)
+            assert fs._fat[3] == fs._fat.end_mark
+            fs._fat.mark_free(2)
+            assert fs._fat[2] == 0
+            assert fs._fat.get_all(2) == (0, 0)
+            assert fs._fat.get_all(3) == (fs._fat.end_mark, fs._fat.end_mark)
+            with pytest.raises(ValueError):
+                fs._fat[0] = 0xFFFFFF
+            with pytest.raises(IndexError):
+                fs._fat[4000000000] = 2
+
+
+def test_fat32table_sequence(fat32_disk, with_fsinfo):
+    with DiskImage(fat32_disk) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs._fat.readonly == fs.readonly
+            assert len(fs._fat) == (
+                f32bpb.sectors_per_fat * bpb.bytes_per_sector // 4)
+            assert fs._fat[0] > fs._fat.max_valid
+            first = fs._fat[0]
+            second = fs._fat[1]
+            assert all(c == first for c in fs._fat.get_all(0))
+            assert all(c == second for c in fs._fat.get_all(1))
+            with pytest.raises(TypeError):
+                del fs._fat[0]
+            with pytest.raises(TypeError):
+                fs._fat.insert(0, 0)
+            with pytest.raises(IndexError):
+                fs._fat[4000000000]
+            with pytest.raises(IndexError):
+                fs._fat.get_all(4000000000)
+
+
+def test_fat32table_mutate(fat32_disk, with_fsinfo):
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            fs._fat[2] = 3
+            assert fs._fat[2] == 3
+            fs._fat.mark_end(3)
+            assert fs._fat[3] == fs._fat.end_mark
+            if with_fsinfo:
+                save_free = fs._fat._info.free_clusters
+            fs._fat.mark_free(2)
+            assert fs._fat[2] == 0
+            if with_fsinfo:
+                assert fs._fat._info.free_clusters == save_free + 1
+            assert fs._fat.get_all(2) == (0, 0)
+            assert fs._fat.get_all(3) == (fs._fat.end_mark, fs._fat.end_mark)
+            # Have to be sure we both de-allocate and re-allocate a cluster to
+            # test FAT32's info sector manipulation
+            fs._fat[2] = 3
+            assert fs._fat[2] == 3
+            if with_fsinfo:
+                assert fs._fat._info.free_clusters == save_free
+                assert fs._fat._info.last_alloc == 2
+            with pytest.raises(ValueError):
+                fs._fat[0] = 0xFFFFFFFF
+            with pytest.raises(IndexError):
+                fs._fat[4000000000] = 2

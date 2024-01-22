@@ -38,6 +38,18 @@ def mbr_disk(request, tmp_path):
 
 
 @pytest.fixture()
+def fat12_disk(request, tmp_path):
+    with (tmp_path / 'fat12.img').open('w+b') as output:
+        make_disk(output, part_style='mbr', fat_type='fat12')
+        yield output
+
+
+@pytest.fixture()
+def fat16_disk(request, mbr_disk):
+    yield mbr_disk
+
+
+@pytest.fixture()
 def fat32_disk(request, tmp_path):
     with (tmp_path / 'fat32.img').open('w+b') as output:
         make_disk(output, part_style='gpt', fat_type='fat32')

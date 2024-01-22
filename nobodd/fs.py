@@ -74,11 +74,10 @@ class DamagedFileSystem(FatWarning):
 class FatFileSystem:
     """
     Represents a `FAT`_ file-system, contained at the start of the buffer
-    object *mem* with a *sector_size* defaulting to 512 bytes. If *atime* is
-    :data:`False`, the default, then accesses to files will *not* update the
-    atime field in file meta-data (when the underlying *mem* mapping is
-    writable). Finally, *encoding* specifies the character set used for
-    decoding and encoding DOS short filenames.
+    object *mem*. If *atime* is :data:`False`, the default, then accesses to
+    files will *not* update the atime field in file meta-data (when the
+    underlying *mem* mapping is writable). Finally, *encoding* specifies the
+    character set used for decoding and encoding DOS short filenames.
 
     This class supports the FAT-12, FAT-16, and FAT-32 formats, and will
     automatically determine which to use from the headers found at the start of
@@ -94,26 +93,24 @@ class FatFileSystem:
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
-    def __init__(self, mem, sector_size=512, atime=False,
-                 encoding='iso-8859-1'):
+    def __init__(self, mem, atime=False, encoding='iso-8859-1'):
+        mem = memoryview(mem)
         self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
-        if bpb.bytes_per_sector != sector_size:
-            warnings.warn(
-                UserWarning(
-                    f'Unexpected sector-size in FAT, {bpb.bytes_per_sector}, '
-                    f'differs from {sector_size}'))
         self._atime = atime
         self._encoding = encoding
         self._label = ebpb.volume_label.decode(encoding, 'replace').rstrip(' ')
 
         fat_size = (
-            ebpb_fat32.sectors_per_fat if ebpb_fat32 is not None else
-            bpb.sectors_per_fat) * bpb.bytes_per_sector
+            bpb.sectors_per_fat if ebpb_fat32 is None else
+            ebpb_fat32.sectors_per_fat) * bpb.bytes_per_sector
+        if fat_size == 0:
+            raise ValueError(f'{self._fat_type.upper()} sectors per FAT is 0')
         root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
-        # Root size must be rounded up to a whole number of sectors
-        root_size = (
-            (root_size + (bpb.bytes_per_sector - 1)) //
-            bpb.bytes_per_sector) * bpb.bytes_per_sector
+        if root_size % bpb.bytes_per_sector:
+            raise ValueError(
+                f'Max. root entries, {bpb.max_root_entries} creates a root '
+                f'directory region that is not a multiple of sector size, '
+                f'{bpb.bytes_per_sector}')
         info_offset = (
             ebpb_fat32.info_sector * bpb.bytes_per_sector
             if ebpb_fat32 is not None
@@ -150,13 +147,6 @@ class FatFileSystem:
         elif self._fat_type != 'fat32' and bpb.max_root_entries == 0:
             raise ValueError(
                 f'Max. root entries must be non-zero for {self._fat_type.upper()}')
-        if fat_size == 0:
-            raise ValueError(f'{self._fat_type.upper()} sectors per FAT is 0')
-        if root_size % bpb.bytes_per_sector:
-            raise ValueError(
-                f'Max. root entries, {bpb.max_root_entries} creates a root '
-                f'directory region that is not a multiple of sector size, '
-                f'{bpb.bytes_per_sector}')
         clean = (
             (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
             (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
@@ -370,7 +360,8 @@ def fat_type(mem):
     except KeyError:
         pass
     if ebpb.extended_boot_sig in (0x28, 0x29):
-        return fat_type_from_count(bpb, ebpb), bpb, ebpb, None
+        fat_type = fat_type_from_count(bpb, ebpb, None)
+        return fat_type, bpb, ebpb, None
     ebpb_fat32 = FAT32BIOSParameterBlock.from_buffer(
         mem, BIOSParameterBlock._FORMAT.size)
     ebpb = ExtendedBIOSParameterBlock.from_buffer(
@@ -383,12 +374,13 @@ def fat_type(mem):
     except KeyError:
         pass
     if ebpb.extended_boot_sig in (0x28, 0x29):
-        return fat_type_from_count(bpb, ebpb), bpb, ebpb, ebpb_fat32
+        fat_type = fat_type_from_count(bpb, ebpb, ebpb_fat32)
+        return fat_type, bpb, ebpb, ebpb_fat32
     raise ValueError(
         'Could not find file-system type or extended boot signature')
 
 
-def fat_type_from_count(bpb, ebpb):
+def fat_type_from_count(bpb, ebpb, ebpb_fat32):
     """
     Derives the type of the `FAT`_ file-system when it cannot be determined
     directly from the *bpb* and *ebpb* headers (the
@@ -402,9 +394,13 @@ def fat_type_from_count(bpb, ebpb):
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Size_limits
     """
     total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
+    if total_sectors == 0 and ebpb.extended_boot_sig == 0x29:
+        # FAT32 with >2**32 sectors uses file-system label as an 8-byte int
+        total_sectors, = struct.unpack('<Q', ebpb.file_system)
     fat_sectors = (
         bpb.fat_count *
-        (ebpb_fat32.sectors_per_fat or bpb.fat16_sectors_per_fat))
+        (bpb.sectors_per_fat if ebpb_fat32 is None else
+         ebpb_fat32.sectors_per_fat))
     root_sectors = (
         (bpb.max_root_entries * DirectoryEntry._FORMAT.size) +
         (bpb.bytes_per_sector - 1)) // bpb.bytes_per_sector
@@ -531,9 +527,7 @@ class Fat12Table(FatTable):
 
     def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
-        if info_mem is not None:
-            warnings.warn(Warning(
-                'info-sector should not be present in fat-12'))
+        assert info_mem is None
         self._tables = tuple(
             mem[offset:offset + fat_size]
             for offset in range(0, len(mem), fat_size)
@@ -579,10 +573,12 @@ class Fat12Table(FatTable):
             if cluster % 2:
                 offset = cluster + (cluster >> 1) + 1
                 value <<= 4
-                value |= struct.unpack_from('<H', self._mem, offset)[0] & 0x000F
+                value |= struct.unpack_from(
+                    '<H', self._tables[0], offset)[0] & 0x000F
             else:
                 offset = cluster + (cluster >> 1)
-                value |= struct.unpack_from('<H', self._mem, offset)[0] & 0xF000
+                value |= struct.unpack_from(
+                    '<H', self._tables[0], offset)[0] & 0xF000
             for table in self._tables:
                 struct.pack_into('<H', table, offset, value)
         except struct.error:
@@ -605,9 +601,7 @@ class Fat16Table(FatTable):
 
     def __init__(self, mem, fat_size, info_mem=None):
         super().__init__()
-        if info_mem is not None:
-            warnings.warn(Warning(
-                'info-sector should not be present in fat-16'))
+        assert info_mem is None
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('H')
             for offset in range(0, len(mem), fat_size)
@@ -659,8 +653,9 @@ class Fat32Table(FatTable):
 
     def close(self):
         super().close()
-        if self._info is not None:
-            self._info.release()
+        if self._info_mem is not None:
+            self._info_mem.release()
+            self._info_mem = None
             self._info = None
 
     def _alloc(self, cluster):
@@ -678,20 +673,10 @@ class Fat32Table(FatTable):
                     free_clusters=self._info.free_clusters + 1)
             self._info.to_buffer(self._info_mem)
 
-    def mark_end(self, cluster):
-        if not self[cluster]:
-            self._alloc(cluster)
-        super().mark_end(cluster)
-
-    def mark_free(self, cluster):
-        if self[cluster]:
-            self._dealloc(cluster)
-        super().mark_free(cluster)
-
     def free(self):
         if self._info is not None:
             last_alloc = self._info.last_alloc
-            if min_valid <= last_alloc < len(self):
+            if self.min_valid <= last_alloc < len(self):
                 # If we have a valid info-sector, start scanning from the last
                 # allocated cluster plus one
                 for cluster in range(last_alloc + 1, len(self)):
@@ -1092,9 +1077,7 @@ class FatDirectory(abc.Iterable):
         """
         Create a :class:`~nobodd.fat.DirectoryEntry` instance, and all
         preceding :class:`~nobodd.fat.LongFilenameEntry` instances within the
-        directory, returning the new :class:`~nobodd.fat.DirectoryEntry`
-        instance (the :class:`~nobodd.fat.LongFilenameEntry` instances are
-        written but not returned).
+        directory, returning the new entries.
 
         The "long" filename will be set to *filename*. The "short" filename in
         the final directory entry will be derived from *filename*, and will be
@@ -1225,8 +1208,8 @@ class FatSubDirectory(FatDirectory):
     """
     A concrete derivative of :class:`FatDirectory` representing a sub-directory
     in a FAT file-system (of any type). Must be constructed with *fs* (a
-    :class:`FatFileSystem` instance) *start*, the first cluster of the
-    sub-directory, and *encoding*, which is taken from
+    :class:`FatFileSystem` instance), *start* (the first cluster of the
+    sub-directory), and *encoding*, which is taken from
     :attr:`FatFileSystem.sfn_encoding`.
     """
     __slots__ = ('_cs', '_file', 'fat_type')
