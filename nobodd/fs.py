@@ -100,6 +100,10 @@ class FatFileSystem:
         self._encoding = encoding
         self._label = ebpb.volume_label.decode(encoding, 'replace').rstrip(' ')
 
+        total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
+        if total_sectors == 0 and ebpb.extended_boot_sig == 0x29:
+            # FAT32 with >2**32 sectors uses file-system label as an 8-byte int
+            total_sectors, = struct.unpack('<Q', ebpb.file_system)
         fat_size = (
             bpb.sectors_per_fat if ebpb_fat32 is None else
             ebpb_fat32.sectors_per_fat) * bpb.bytes_per_sector
@@ -116,9 +120,11 @@ class FatFileSystem:
             if ebpb_fat32 is not None
             and ebpb_fat32.info_sector not in (0, 0xFFFF)
             else None)
+        end_offset = total_sectors * bpb.bytes_per_sector
         fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
         root_offset = fat_offset + (fat_size * bpb.fat_count)
         data_offset = root_offset + root_size
+
         self._fat = {
             'fat12': Fat12Table,
             'fat16': Fat16Table,
@@ -128,7 +134,8 @@ class FatFileSystem:
             mem[info_offset:info_offset + bpb.bytes_per_sector]
             if info_offset is not None else None)
         self._data = FatClusters(
-            mem[data_offset:], bpb.bytes_per_sector * bpb.sectors_per_cluster)
+            mem[data_offset:end_offset],
+            bpb.bytes_per_sector * bpb.sectors_per_cluster)
         if self._fat_type == 'fat32':
             if ebpb_fat32 is None:
                 raise ValueError(
@@ -147,18 +154,21 @@ class FatFileSystem:
         elif self._fat_type != 'fat32' and bpb.max_root_entries == 0:
             raise ValueError(
                 f'Max. root entries must be non-zero for {self._fat_type.upper()}')
-        clean = (
-            (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
-            (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
-        errors = not (
-            (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
-            (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
-        if not clean:
-            warnings.warn(DirtyFileSystem(
-                'File-system has the dirty bit set'))
-        if errors:
-            warnings.warn(DamagedFileSystem(
-                'File-system has the I/O errors bit set'))
+        # Check the clean and damaged bits; these are only present on FAT-16
+        # and FAT-32 volumes
+        if self._fat_type != 'fat12':
+            clean = (
+                (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
+                (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
+            errors = not (
+                (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
+                (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
+            if not clean:
+                warnings.warn(DirtyFileSystem(
+                    'File-system has the dirty bit set'))
+            if errors:
+                warnings.warn(DamagedFileSystem(
+                    'File-system has the I/O errors bit set'))
 
     def __repr__(self):
         return (
@@ -748,16 +758,16 @@ class FatClusters(abc.MutableSequence):
         # The first data cluster is numbered 2, hence the offset below.
         # Clusters 0 and 1 are special and don't exist in the data portion of
         # the file-system
-        offset = (cluster - 2) * self._cs
-        if offset < 0:
+        if not 2 <= cluster < len(self) + 2:
             raise IndexError(cluster)
+        offset = (cluster - 2) * self._cs
         return self._mem[offset:offset + self._cs]
 
     def __setitem__(self, cluster, value):
         # See above
-        offset = (cluster - 2) * self._cs
-        if offset < 0:
+        if not 2 <= cluster < len(self) + 2:
             raise IndexError(cluster)
+        offset = (cluster - 2) * self._cs
         self._mem[offset:offset + self._cs] = value
 
     def __delitem__(self, cluster):
@@ -995,8 +1005,8 @@ class FatDirectory(abc.Iterable):
             # NOTE: Huh, a place where match..case might actually be
             # useful! Why isn't this a dict? It was originally, but in
             # purely symbolic cases (e.g. "." and "..") the transformed SFN
-            # can be equivalent in all cases and we want to prefer the case
-            # where attr is 0.
+            # can be equivalent in all cases and we want to explicitly prefer
+            # the case where attr is 0.
             sfn_only = True
             lfn = filename.encode(self._encoding, 'replace')
             make_sfn = lambda s, e: (s + b'.' + e) if e else s

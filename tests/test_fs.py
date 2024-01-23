@@ -244,7 +244,6 @@ def test_fattable_close_idempotent(fat12_disk):
             assert not fs._fat._tables
 
 
-
 def test_fattable_free(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -408,3 +407,69 @@ def test_fat32table_mutate(fat32_disk, with_fsinfo):
                 fs._fat[0] = 0xFFFFFFFF
             with pytest.raises(IndexError):
                 fs._fat[4000000000] = 2
+
+
+def test_fatclusters_close_idempotent(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            with fs._data as data:
+                assert data._cs == bpb.sectors_per_cluster * bpb.bytes_per_sector
+            assert not fs._data._mem
+            fs._data.close()
+            assert not fs._data._mem
+
+
+def test_fatclusters_sequence(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            data_clusters = (
+                bpb.fat16_total_sectors
+                - bpb.reserved_sectors
+                # fat_sectors
+                - (bpb.fat_count * bpb.sectors_per_fat)
+                # root_sectors
+                - (bpb.max_root_entries * DirectoryEntry._FORMAT.size // bpb.bytes_per_sector)
+            ) // bpb.sectors_per_cluster
+            assert len(fs._data) == data_clusters
+            assert len(fs._data[2]) == fs._data._cs
+            assert len(fs._data[data_clusters - 1]) == fs._data._cs
+            with pytest.raises(IndexError):
+                fs._data[0]
+            with pytest.raises(IndexError):
+                fs._data[1]
+            with pytest.raises(IndexError):
+                fs._data[data_clusters + 2]
+
+
+def test_fatclusters_mutate(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            zeros = b'\0' * fs._data._cs
+            ones = b'\xff' * fs._data._cs
+            fs._data[2] = zeros
+            assert fs._data[2] == zeros
+            fs._data[2] = ones
+            assert fs._data[2] == ones
+            with pytest.raises(IndexError):
+                fs._data[0] = zeros
+            with pytest.raises(IndexError):
+                fs._data[1] = zeros
+            with pytest.raises(IndexError):
+                fs._data[len(fs._data) + 2] = zeros
+            with pytest.raises(TypeError):
+                del fs._data[2]
+            with pytest.raises(TypeError):
+                fs._data.insert(2, zeros)
+
+
+def test_fatdirectory_iter(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            for entries in root:
+                assert isinstance(entries[-1], DirectoryEntry)
+                assert all(isinstance(e, LongFilenameEntry) for e in entries[:-1])
