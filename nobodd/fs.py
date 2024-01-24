@@ -21,7 +21,7 @@ from .fat import (
     lfn_valid,
     lfn_checksum,
 )
-from .path import FatPath, get_cluster, split_filename_entry
+from .path import FatPath, get_cluster
 from .tools import (
     pairwise,
     encode_timestamp,
@@ -779,16 +779,37 @@ class FatClusters(abc.MutableSequence):
         raise TypeError('FS length is immutable')
 
 
-class FatDirectory(abc.Iterable):
+class FatDirectory(abc.MutableMapping):
     """
-    An abstract :class:`~collections.abc.Iterable` representing a `FAT
-    directory`_.
+    An abstract :class:`~collections.abc.MutableMapping` representing a `FAT
+    directory`_. The mapping is ostensibly from filename to
+    :class:`~nobodd.fat.DirectoryEntry` instances, but there are several
+    oddities to be aware of.
 
-    When iterated, yields sequences ending with a single
-    :class:`~nobodd.fat.DirectoryEntry` and preceded by zero or more
-    :class:`~nobodd.fat.LongFilenameEntry` instances. Stops when the terminal
-    directory marker (an entry with NUL as the first filename byte) is
-    encountered.
+    In VFAT, all files effectively have *two* filenames: the original DOS
+    "short" filename (SFN hereafter) and the VFAT "long" filename (LFN
+    hereafter). Even when :class:`~nobodd.fat.LongFilenameEntry` records do
+    *not* precede a :class:`~nobodd.fat.DirectoryEntry`, the file may still
+    have an LFN that differs from the SFN in case only. Naturally, some files
+    still only have one filename because the LFN doesn't vary in case from the
+    SFN, e.g. the special directory entries "." and "..". This implementation
+    never returns (or accepts) :class:`~nobodd.fat.LongFilenameEntry` records.
+    These are managed internally according to the LFNs requested.
+
+    For the purposes of listing files, most FAT implementations (including this
+    one) ignore the SFNs. Hence, iterating over this mapping will *not* yield
+    the SFNs (unless the SFN is equal to the LFN), and they are *not* counted
+    in the length of the mapping. However, for the purposes of testing
+    existence, opening, etc., FAT implementations allow the use of SFNs. Hence,
+    testing for membership, or manipulating entries via the SFN will work with
+    this mapping, and will implicitly manipulate the associated LFNs (e.g.
+    deleting an entry via SFN will also delete the associated LFN).
+
+    In other words, if a file has a distinct LFN and SFN, it has *two* entries
+    in the mapping (the "visible" LFN entry, and the "invisible" SFN entry).
+    Finally, note that FAT is case retentive (for LFNs; SFNs are folded
+    uppercase), but not case sensitive. Hence, membership tests and retrieval
+    from this mapping are case insensitive with regard to keys.
 
     .. _FAT directory:
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table
@@ -827,146 +848,143 @@ class FatDirectory(abc.Iterable):
         """
         raise NotImplementedError
 
-    def __iter__(self):
-        for sequence in self._group_entries():
-            yield [entry for offset, entry in sequence]
-
-    def _group_entries(self):
+    def _split_entries(self, entries):
         """
-        Generator which yields sequences of tuples of offsets and either
-        :class:`~nobodd.fat.LongFilenameEntry` or
-        :class:`~nobodd.fat.DirectoryEntry` instances.
+        Given *entries*, a sequence of :class:`~nobodd.fat.LongFilenameEntry`
+        instances, ending with a single :class:`~nobodd.fat.DirectoryEntry` (as
+        would typically be found in a FAT directory index), return the decoded
+        long filename, short filename, and the directory entry record as a
+        3-tuple.
 
-        Each sequence yielded represents a single (extant, non-deleted) file or
-        directory entry with its long-filename entries at the start, and the
-        directory entry as the final element. In other words, for a file with
-        three long-filename entries, the following sequence might be yielded::
+        If no long filename entries are present, the long filename will be
+        equal to the short filename (but may have lower-case parts).
 
-            [(0, <LongFilenameEntry>),
-             (32, <LongFilenameEntry>),
-             (64, <LongFilenameEntry>),
-             (96, <DirectoryEntry>)]
+        .. note::
+
+            This function also carries out several checks, including the
+            filename checksum, that all checksums match, that the number of
+            entries is valid, etc. Any violations found will raise
+            :exc:`ValueError`.
         """
-        entries = []
-        for offset, entry in self._iter_entries():
-            if isinstance(entry, LongFilenameEntry):
-                if entry.sequence == 0xE5: # deleted entry
-                    continue
-            entries.append((offset, entry))
-            if isinstance(entry, DirectoryEntry):
-                if entry.filename[0] == 0: # end of valid entries
-                    break
-                elif entry.filename[0] != 0xE5: # deleted entry
-                    yield entries
-                entries = []
+        # The extration of the long filename could be simpler, but let's do all
+        # the checks we can (the structure includes a *lot* of redundancy for
+        # checking things!)
+        if not entries:
+            raise ValueError('blank dir_entries')
+        *lfn_entries, entry = entries
+        if not isinstance(entry, DirectoryEntry):
+            raise ValueError(
+                f'last entry of entries must be a DirectoryEntry, not {entry!r}')
 
-    def _clean_entries(self):
+        # TODO The following should only be warning of all the ValueError stuff
+        # as LFN entries can be "orphaned". In the event of orphaned/invalid
+        # LFN entries, skip to the next terminal LFN entry (if any) and retry
+        if lfn_entries:
+            head, *tail = lfn_entries
+            checksum = head.checksum
+            sequence = head.sequence
+            if not sequence & 0x40:
+                raise ValueError(
+                    'first LongFilenameEntry is not marked as terminal')
+            sequence = sequence & 0b11111
+            lfn = head.name_1 + head.name_2 + head.name_3
+            for part in tail:
+                if part.first_cluster != 0:
+                    raise ValueError(
+                        f'first_cluster is non-zero: {part.first_cluster}')
+                if part.checksum != checksum:
+                    raise ValueError(
+                        f'mismatched checksum: {checksum} != {part.checksum}')
+                sequence -= 1
+                if sequence < 1:
+                    raise ValueError('too many LongFilenameEntry items')
+                if part.sequence != sequence:
+                    raise ValueError(
+                        f'incorrect LongFilenameEntry.sequence: {sequence} != '
+                        f'{part.sequence}')
+                lfn = part.name_1 + part.name_2 + part.name_3 + lfn
+            if sequence > 1:
+                raise ValueError(f'missing {sequence} LongFilenameEntry items')
+            if lfn_checksum(entry.filename, entry.ext) != checksum:
+                raise ValueError(
+                    f'checksum mismatch in long filename: {sum_} != {checksum}')
+            lfn = lfn.decode('utf-16le').rstrip('\uffff')
+            # There may be one trailing NUL char, but there may not if the
+            # filename fits perfectly in a LFN structure
+            if lfn[-1:] == '\x00':
+                lfn = lfn[:-1]
+            # But there shouldn't be more than one!
+            if lfn[-1:] == '\x00':
+                raise ValueError(f'excess NUL chars in long filename: {lfn!r}')
+            if not lfn:
+                raise ValueError('empty long filename')
+        else:
+            lfn = None
+
+        sfn = entry.filename.rstrip(b' ')
+        # If initial char of the filename is 0xE5 (which is reserved to
+        # indicate a deleted entry) then it's encoded as 0x05 (since DOS 3.0)
+        if sfn[0] == 0x05:
+            sfn = b'\xE5' + sfn[1:]
+        sfn = sfn.decode(self._encoding)
+        ext = entry.ext.rstrip(b' ').decode(self._encoding)
+        # Bits 3 & 4 of attr2 are used by Windows NT (basically any modern
+        # Windows) to indicate if the short filename (in the absence of long
+        # filename entries) has upper / lower-case portions
+        if lfn is None:
+            lfn = sfn.lower() if entry.attr2 & 0b1000 else sfn
+            if ext:
+                lfn = lfn + '.' + (ext.lower() if entry.attr2 & 0b10000 else ext)
+        if ext:
+            sfn = sfn + '.' + ext
+
+        return lfn, sfn, entry
+
+    def _prefix_entries(self, filename, entry):
         """
-        Find and remove all deleted entries from the directory.
-
-        The method scans the directory for all directory entries and long
-        filename entries which start with 0xE5, indicating a deleted entry,
-        and overwrites them with later (not deleted) entries. Trailing entries
-        are then zeroed out. The return value is the new offset of the terminal
-        entry.
-        """
-        write_offset = 0
-        for read_offset, entry in self._iter_entries():
-            if isinstance(entry, DirectoryEntry):
-                if entry.filename[0] == 0: # end of valid entries
-                    break
-                elif entry.filename[0] == 0xE5: # deleted entry
-                    continue
-            if isinstance(entry, LongFilenameEntry):
-                if entry.sequence == 0xE5: # deleted entry
-                    continue
-            if read_offset > write_offset:
-                self._update_entry(write_offset, entry)
-            write_offset += DirectoryEntry._FORMAT.size
-        eof = write_offset
-        empty = DirectoryEntry.from_bytes(b'\0' * DirectoryEntry._FORMAT.size)
-        while write_offset < read_offset:
-            self._update_entry(write_offset, empty)
-            write_offset += DirectoryEntry._FORMAT.size
-        return eof
-
-    def _find_entry(self, entry):
-        """
-        Returns the sequence of offsets and entries (as generated by
-        :meth:`_group_entries`) in the directory which matches *entry*.
-
-        The first entry with a matching SFN (short file-name) to *entry* will
-        be returned, along with its preceding long filename entries (if any)
-        and their offsets in the directory index.
-
-        If no such sequence can be found in the directory, this raises
-        :exc:`FileNotFoundError`.
-        """
-        find_sfn = entry.filename, entry.ext
-        for sequence in self._group_entries():
-            offset, entry = sequence[-1]
-            sfn = entry.filename, entry.ext
-            if sfn == find_sfn:
-                return sequence
-        name = b'.'.join(
-            p.rstrip(b' ') for p in find_sfn
-        ).rstrip(b'.').decode(self._encoding)
-        raise FileNotFoundError(
-            f'No directory entry corresponding to {name} found')
-
-    def _make_filename_entries(self, filename, attr=0x20, ctime=None,
-                               cluster=0):
-        """
-        Construct the :class:`~nobodd.fat.LongFilenameEntry` instances (if
-        any), and :class:`~nobodd.fat.DirectoryEntry` required to represent the
-        specified *filename* (with optional *attr*, *ctime*, and an initial
-        *cluster*).
+        Given *entry*, a :class:`~nobodd.fat.DirectoryEntry`, generate the
+        necessary `~nobodd.fat.LongFilenameEntry` instances (if any), that are
+        necessary to associate *entry* with the specified *filename*.
 
         This function merely constructs the instances, ensuring the (many,
         convoluted!) rules are followed, including that the short filename, if
         one is generated, is unique in this directory, and the long filename is
         encoded and check-summed appropriately.
-        """
-        if ctime is None:
-            ctime = dt.datetime.now()
-        cdate, ctime, ctime_ms = encode_timestamp(ctime)
 
+        .. note::
+
+            The *filename* and *ext* fields of *entry* are over-written by
+            this method. The only filename that is considered is the one
+            explicitly passed in which becomes the basis for the long filename
+            entries *and* the short filename stored within the *entry* itself.
+
+        The return value is the sequence of long filename entries and the
+        directory entry suffix in the order they should appear on disk.
+        """
         lfn, sfn, ext, attr2 = self._get_lfn_sfn_ext(filename)
         if lfn:
-            cksum = lfn_checksum(sfn, ext)
+            checksum = lfn_checksum(sfn, ext)
             entries = [
                 LongFilenameEntry(
-                    sequence=(0x40 if terminal else 0) | part,
+                    sequence=part,
                     name_1=lfn[offset:offset + 10],
                     attr=0xF,
-                    checksum=cksum,
+                    checksum=checksum,
                     name_2=lfn[offset + 10:offset + 22],
                     first_cluster=0,
                     name_3=lfn[offset + 22:offset + 26]
                 )
-                for terminal, (part, offset)
-                in on_first(reversed(list(enumerate(range(len(lfn), 26), start=1))))
+                for part, offset
+                in enumerate(range(len(lfn), 26), start=1)
             ]
+            entries.reverse()
+            # Add terminal marker to "last" entry
+            entries[0] = entries[0]._replace(
+                sequence=0x40 | entries[0].sequence)
         else:
             entries = []
 
-        entries.append(
-            DirectoryEntry(
-                filename=sfn,
-                ext=ext,
-                attr=attr,
-                attr2=attr2,
-                cdate=cdate,
-                ctime=ctime,
-                ctime_ms=ctime_ms,
-                adate=cdate,
-                mdate=cdate,
-                mtime=ctime,
-                first_cluster_hi=cluster >> 16,
-                first_cluster_lo=cluster & 0xFFFF,
-                size=0
-            )
-        )
+        entries.append(entry._replace(filename=sfn, ext=ext, attr2=attr2))
         return entries
 
     def _get_lfn_sfn_ext(self, filename):
@@ -1082,52 +1100,120 @@ class FatDirectory(abc.Iterable):
         # limit on entries in a dir (MAX_SFN_SUFFIX, roughly) report ENOSPC
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
-    def create(self, filename, attr=0x20, ctime=None, cluster=0):
+    def _group_entries(self):
         """
-        Create a :class:`~nobodd.fat.DirectoryEntry` instance, and all
-        preceding :class:`~nobodd.fat.LongFilenameEntry` instances within the
-        directory, returning the new entries.
+        Generator which yields an offset, and a sequence of tuples of either
+        :class:`~nobodd.fat.LongFilenameEntry` or
+        :class:`~nobodd.fat.DirectoryEntry` instances.
 
-        The "long" filename will be set to *filename*. The "short" filename in
-        the final directory entry will be derived from *filename*, and will be
-        unique within the directory.
+        Each sequence yielded represents a single (extant, non-deleted) file or
+        directory entry with its long-filename entries at the start, and the
+        directory entry as the final element. The offset associated with the
+        sequence is the offset of the *directory entry* (not its preceding long
+        filename entries). In other words, for a file with three long-filename
+        entries, the following might be yielded::
 
-        The *attr* parameter (which defaults to 0x20 or the DOS "Archive" bit)
-        will be used for the attributes on the directory entry. The *ctime*
-        parameter which defaults to :data:`None` meaning "now" is an optional
-        :class:`~datetime.datetime` which will be used to set the ctime, mtime,
-        and atime entries of the directory entry.
+            (160, [
+                <LongFilenameEntry>),
+                <LongFilenameEntry>),
+                <LongFilenameEntry>),
+                <DirectoryEntry>)
+            ])
 
-        If *cluster* is specified, it will be set as the first cluster of the
-        new entry. This defaults to 0 indicating that no storage is associated
-        with the entry.
-
-        The return value is the sequence of new directory entries created.
+        This indicates that the directory entry is at offset 160, preceded by
+        long filename entries at offsets 128, 96, and 64.
         """
-        entries = self._make_filename_entries(filename, attr, ctime, cluster)
-        self.append(*entries, DirectoryEntry.eof())
-        return entries
+        entries = []
+        for offset, entry in self._iter_entries():
+            if isinstance(entry, LongFilenameEntry):
+                if entry.sequence == 0xE5: # deleted entry
+                    continue
+            entries.append(entry)
+            if isinstance(entry, DirectoryEntry):
+                if entry.filename[0] == 0: # end of valid entries
+                    break
+                elif entry.filename[0] != 0xE5: # deleted entry
+                    yield offset, entries
+                entries = []
 
-    def append(self, *entries):
+    def _clean_entries(self):
         """
-        Append *entries*, one or more :class:`~nobodd.fat.DirectoryEntry` or
-        :class:`~nobodd.fat.LongFilenameEntry` instances, to the end of the
-        directory.
+        Find and remove all deleted entries from the directory.
 
-        If the directory structure runs out of space (which is more likely
-        under FAT-12 and FAT-16 where the root directory is fixed in size),
-        then all deleted entries will be expunged, and the method will attempt
-        to append the new entries once more.
+        The method scans the directory for all directory entries and long
+        filename entries which start with 0xE5, indicating a deleted entry,
+        and overwrites them with later (not deleted) entries. Trailing entries
+        are then zeroed out. The return value is the new offset of the terminal
+        entry.
         """
-        eof_offset = 0
-        for eof_offset, entry in self._iter_entries():
-            if isinstance(entry, DirectoryEntry) and entry.filename[0] == 0:
-                break
-        # NOTE: We write the entries in reverse order to make it more likely
-        # that anything scanning the directory simultaneously sees the append
-        # as "atomic" (because the last item written overwrites the old
-        # terminal marker entry)
+        write_offset = 0
+        for read_offset, entry in self._iter_entries():
+            if isinstance(entry, DirectoryEntry):
+                if entry.filename[0] == 0: # end of valid entries
+                    break
+                elif entry.filename[0] == 0xE5: # deleted entry
+                    continue
+            if isinstance(entry, LongFilenameEntry):
+                if entry.sequence == 0xE5: # deleted entry
+                    continue
+            if read_offset > write_offset:
+                self._update_entry(write_offset, entry)
+            write_offset += DirectoryEntry._FORMAT.size
+        eof = write_offset
+        empty = DirectoryEntry.from_bytes(b'\0' * DirectoryEntry._FORMAT.size)
+        while write_offset < read_offset:
+            self._update_entry(write_offset, empty)
+            write_offset += DirectoryEntry._FORMAT.size
+        return eof
+
+    def __len__(self):
+        return sum(1 for lfn in self)
+
+    def __iter__(self):
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            yield lfn
+
+    def __contains__(self, name):
+        uname = name.upper()
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            if lfn.upper() == uname or sfn == name:
+                return True
+        return False
+
+    def __getitem__(self, name):
+        uname = name.upper()
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            if lfn.upper() == uname or sfn == uname:
+                return entry
+        raise KeyError(name)
+
+    def __setitem__(self, name, entry):
+        # NOTE: For the purposes of setting entries, the filename and ext
+        # within *entry* are ignored. For new entries, these will be generated
+        # from *name*. For existing entries, the existing values will be
+        # re-used
+        uname = name.upper()
+        offset = 0
+        for offset, entries in self._group_entries():
+            lfn, sfn, old_entry = self._split_entries(entries)
+            if lfn.upper() == uname or sfn == uname:
+                self._update_entry(offset, entry._replace(
+                    filename=old_entry.filename, ext=old_entry.ext))
+                return
+        # This isn't *necessarily* the actual EOF. It could be orphaned or
+        # deleted entries that _group_entries isn't yielding, but that doesn't
+        # matter for our purposes. All that matters is that we can safely
+        # overwrite these entries
+        eof_offset += DirectoryEntry._FORMAT.size
+        entries = self._prefix_entries(name, entry)
         for cleaned in (False, True):
+            # We write the entries in reverse order to make it more likely that
+            # anything scanning the directory simultaneously sees the append as
+            # "atomic" (because the last item written overwrites the old
+            # terminal marker entry)
             offsets = range(
                 eof_offset,
                 eof_offset + len(entries) * DirectoryEntry._FORMAT.size,
@@ -1136,6 +1222,11 @@ class FatDirectory(abc.Iterable):
                 for offset, entry in reversed(list(zip(offsets, entries))):
                     self._update_entry(offset, entry)
             except OSError as e:
+                # If the directory structure runs out of space (which is more
+                # likely under FAT-12 and FAT-16 where the root directory is
+                # fixed in size), then all deleted entries will be expunged,
+                # and the method will attempt to append the new entries once
+                # more
                 if e.errno == errno.ENOSPC:
                     eof_offset = self._clean_entries()
                 else:
@@ -1143,41 +1234,25 @@ class FatDirectory(abc.Iterable):
             else:
                 break
 
-    def remove(self, entry):
-        """
-        Find *entry* (a :class:`~nobodd.fat.DirectoryEntry` instance) within
-        the directory, by matching on the short filename, and mark it (and
-        all preceding :class:`~nobodd.fat.LongFilenameEntry` instances) as
-        deleted.
-
-        .. note::
-
-            This does *not* remove the entries from the directory, just changes
-            the first character of the filename entry to 0xE5.
-        """
-        # NOTE: We update the DirectoryEntry first then work backwards, marking
-        # the long filename entries. This ensures anything simultaneously
-        # scanning the directory shouldn't find a "live" directory entry
-        # preceded by "dead" long filenames
-        for offset, old_entry in reversed(self._find_entry(entry)):
-            if isinstance(old_entry, DirectoryEntry):
-                self._update_entry(offset, old_entry._replace(
-                    filename=b'\xe5' + old_entry.filename[1:]))
-            else: # LongFilenameEntry
-                self._update_entry(offset, old_entry._replace(sequence=0xE5))
-
-    def update(self, entry):
-        """
-        Find *entry* (a :class:`~nobodd.fat.DirectoryEntry` instance) within
-        the directory, by matching on the short filename, and update it with
-        the current contents of *entry*.
-
-        If *entry* cannot be found in the directory, :exc:`FileNotFoundError`
-        is raised.
-        """
-        for offset, old_entry in reversed(self._find_entry(entry)):
-            self._update_entry(offset, entry)
-            break
+    def __delitem__(self, name):
+        uname = name.upper()
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            if lfn.upper() == uname or sfn == uname:
+                # NOTE: We update the DirectoryEntry first then work backwards,
+                # marking the long filename entries. This ensures anything
+                # simultaneously scanning the directory shouldn't find a "live"
+                # directory entry preceded by "dead" long filenames
+                for entry in reversed(entries):
+                    if isinstance(entry, DirectoryEntry):
+                        self._update_entry(offset, entry._replace(
+                            filename=b'\xE5' + entry.filename[1:]))
+                    else: # LongFilenameEntry
+                        self._update_entry(offset, entry._replace(
+                            sequence=0xE5))
+                    offset -= DirectoryEntry._FORMAT.size
+                return
+        raise KeyError(name)
 
     cluster = property(lambda self: self._get_cluster())
 

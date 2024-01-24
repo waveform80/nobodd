@@ -36,6 +36,4 @@ FatPath
 Internal Functions
 ==================
 
-.. autofunction:: split_filename_entry
-
 .. autofunction:: get_cluster
