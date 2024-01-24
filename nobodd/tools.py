@@ -240,24 +240,6 @@ if pairwise is None:
         return zip(a, b)
 
 
-def on_first(it):
-    """
-    Return the tuple (True, value) for the first value in *it* and the tuple
-    (False, value) for all subsequent entries.
-
-    This is particularly useful in comprehensions when something different
-    must be done for the first value of the input iterable::
-
-        >>> title = lambda s: ''.join(
-        ... c.upper() if first else c
-        ... for first, c in on_first(s))
-        >>> title('capital')
-        'Capital'
-    """
-    for i, value in enumerate(it):
-        yield (i == 0, value)
-
-
 def decode_timestamp(date, time, ms=0):
     """
     Given the integers *date*,  *time*, and optionally *ms* (from various

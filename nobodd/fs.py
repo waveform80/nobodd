@@ -24,7 +24,6 @@ from .fat import (
 from .path import FatPath, get_cluster, split_filename_entry
 from .tools import (
     pairwise,
-    on_first,
     encode_timestamp,
     any_match,
     exclude,

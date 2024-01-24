@@ -20,8 +20,6 @@ library, but are documented in case they are useful.
 
 .. autofunction:: pairwise
 
-.. autofunction:: on_first
-
 .. autofunction:: decode_timestamp
 
 .. autofunction:: encode_timestamp

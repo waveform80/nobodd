@@ -87,14 +87,6 @@ def test_frozendict():
     assert repr(FrozenDict({1: 2})) == "FrozenDict({1: 2})"
 
 
-def test_on_first():
-    assert list(on_first(range(3))) == [
-        (True, 0),
-        (False, 1),
-        (False, 2),
-    ]
-
-
 def test_decode_timestamp():
     assert decode_timestamp(33, 0, 0) == dt.datetime(1980, 1, 1)
     assert decode_timestamp(0x2999, 0x645c, 0x32) == dt.datetime(
