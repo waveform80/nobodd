@@ -17,7 +17,6 @@ from .fat import (
     FAT32InfoSector,
     DirectoryEntry,
     LongFilenameEntry,
-    sfn_safe,
     lfn_valid,
     lfn_checksum,
 )
@@ -817,6 +816,8 @@ class FatDirectory(abc.MutableMapping):
     .. autoattribute:: MAX_SFN_SUFFIX
     """
     MAX_SFN_SUFFIX = 0xFFFF
+    SFN_VALID = re.compile(b"[^A-Z0-9 !#$%&'()@^_`{}~\x80-\xFF-]")
+
     __slots__ = ('_encoding',)
 
     @abstractmethod
@@ -998,25 +999,17 @@ class FatDirectory(abc.MutableMapping):
         represented as a short filename only (potentially with non-zero case
         attributes), ``lfn`` in the result will be blank.
         """
-        # This function expects only valid long filenames to be passed.
-        # Anything invalid should raise an exception
-        if filename.strip(' ') != filename:
-            raise ValueError(
-                f'Filename {filename!r} starts or ends with space')
-        if filename.endswith('.'):
-            raise ValueError(
-                f'Filename {filename!r} ends with dots')
-        if not lfn_valid(filename):
-            raise ValueError(
-                f'Filename {filename!r} contains invalid characters, '
-                'e.g. \\/:*?"<>|')
         # sfn == short filename, lfn == long filename, ext == extension
-        sfn = sfn_safe(
-            filename.lstrip('.').upper().encode(self._encoding, 'replace'))
-        if b'.' in sfn:
-            sfn, ext = sfn.rsplit(b'.', 1)
+        if filename in ('.', '..'):
+            sfn, ext = filename.encode(self._encoding), b''
         else:
-            sfn, ext = sfn, b''
+            sfn = filename.lstrip('.').upper().encode(self._encoding, 'replace')
+            sfn = sfn.replace(b' ', b'')
+            sfn = self.SFN_VALID.sub(b'_', sfn)
+            if b'.' in sfn:
+                sfn, ext = sfn.rsplit(b'.', 1)
+            else:
+                sfn, ext = sfn, b''
 
         if len(sfn) <= 8 and len(ext) <= 3:
             # NOTE: Huh, a place where match..case might actually be
@@ -1039,8 +1032,8 @@ class FatDirectory(abc.MutableMapping):
                 sfn_only = False
                 attr = 0
         else:
-            attr = 0
             sfn_only = False
+            attr = 0
 
         if sfn_only:
             lfn = b''
@@ -1081,8 +1074,9 @@ class FatDirectory(abc.MutableMapping):
         """
         ranges = [range(self.MAX_SFN_SUFFIX)]
         regexes = [
-            re.compile(f'{re.escape(prefix[:i])}~([0-9]{{{i}}}).{re.escape(ext)}',
-                       re.IGNORECASE)
+            re.compile(
+                f'{re.escape(prefix[:i])}~([0-9]{{{i}}}).{re.escape(ext)}',
+                re.IGNORECASE)
             for i in range(1, len(str(self.MAX_SFN_SUFFIX)) + 1)
         ]
         for entries in self:

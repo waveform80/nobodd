@@ -424,16 +424,3 @@ def sfn_valid(s):
     """
     return bool(s) and not ((s.startswith(b' ') or sfn_valid.regex.match(s)))
 sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()@^_`{}~\x80-\xFF-]")
-
-
-def sfn_safe(s, replace=b'_'):
-    """
-    Return the :class:`bytes` string *s* with all characters that are not
-    permitted in a short DOS filename replaced with the :class:`bytes` str
-    *replace*.
-
-    Additionally, this strips all spaces from the filename; these are
-    technically valid characters, but were disallowed by convention (and lack
-    of a suitable escaping mechanism in DOS).
-    """
-    return sfn_valid.regex.sub(replace, s.replace(b' ', b''))

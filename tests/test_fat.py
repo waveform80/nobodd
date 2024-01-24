@@ -316,9 +316,3 @@ def test_sfn_valid():
     assert sfn_valid(b'FOO 123')
     assert not sfn_valid(b'')
     assert not sfn_valid(b'  FOO BAR  ')
-
-
-def test_sfn_safe():
-    assert sfn_safe(b'FOO BAR') == b'FOOBAR'
-    assert sfn_safe(b'FOO [BAR]', b'_') == b'FOO_BAR_'
-    assert sfn_safe(b'FOO [BAR]', b'?') == b'FOO?BAR?'

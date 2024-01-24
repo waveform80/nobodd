@@ -37,5 +37,3 @@ structure, or check that tentative contents are valid.
 .. autofunction:: lfn_valid
 
 .. autofunction:: sfn_valid
-
-.. autofunction:: sfn_safe
