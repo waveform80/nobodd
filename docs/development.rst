@@ -31,7 +31,7 @@ restarted your shell, continue:
 .. code-block:: console
 
     $ cd
-    $ mkvirtualenv -p /usr/bin/python3 nobodd
+    $ mkvirtualenv nobodd
     $ workon nobodd
     (nobodd) $ git clone https://github.com/waveform80/nobodd.git
     (nobodd) $ cd nobodd
