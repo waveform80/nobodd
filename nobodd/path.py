@@ -8,7 +8,7 @@ import datetime as dt
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
-from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum
+from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum, lfn_valid
 from .tools import encode_timestamp, decode_timestamp
 
 
@@ -45,6 +45,11 @@ class FatPath:
         self._index = None
         self._entry = None
         self._parts = get_parts(*pathsegments)
+        for index, part in enumerate(self._parts):
+            if index == 0 and not part:
+                continue # ignore root marker
+            elif not lfn_valid(part):
+                raise ValueError(f'invalid name {str(self)!r}')
         self._resolved = False
 
     def __repr__(self):
