@@ -1212,6 +1212,7 @@ class FatDirectory(abc.MutableMapping):
         # overwrite these entries
         eof_offset += DirectoryEntry._FORMAT.size
         entries = self._prefix_entries(name, entry)
+        entries.append(DirectoryEntry.eof())
         for cleaned in (False, True):
             # We write the entries in reverse order to make it more likely that
             # anything scanning the directory simultaneously sees the append as
@@ -1230,7 +1231,7 @@ class FatDirectory(abc.MutableMapping):
                 # fixed in size), then all deleted entries will be expunged,
                 # and the method will attempt to append the new entries once
                 # more
-                if e.errno == errno.ENOSPC:
+                if e.errno == errno.ENOSPC and not cleaned:
                     eof_offset = self._clean_entries()
                 else:
                     raise
