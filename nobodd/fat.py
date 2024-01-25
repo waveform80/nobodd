@@ -411,5 +411,9 @@ def lfn_valid(s):
     a VFAT long filename. Almost every Unicode character is permitted with a
     few exceptions (angle brackets, wildcards, etc).
     """
-    return bool(lfn_valid.regex.match(s))
+    return (
+        not s.startswith(' ') and
+        not s.endswith((' ', '.')) and
+        bool(lfn_valid.regex.match(s))
+    )
 lfn_valid.regex = re.compile(r"^[\w !#$%&'()@^_`{}~+.,;=[\]-]+$")
