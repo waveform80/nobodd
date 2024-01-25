@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from nobodd.fat import BIOSParameterBlock, ExtendedBIOSParameterBlock
+from nobodd.fat import BIOSParameterBlock, ExtendedBIOSParameterBlock, lfn_valid
 from nobodd.disk import DiskImage
 from nobodd.fs import *
 
@@ -212,8 +212,7 @@ def test_fs_open_entry(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             index = fs.open_dir(0)
-            for entries in index:
-                entry = entries[-1]
+            for entry in index.values():
                 if entry.attr == 0x20:  # archive bit only
                     with fs.open_entry(index, entry) as f:
                         assert isinstance(f, FatFile)
@@ -470,6 +469,10 @@ def test_fatdirectory_iter(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            for entries in root:
-                assert isinstance(entries[-1], DirectoryEntry)
-                assert all(isinstance(e, LongFilenameEntry) for e in entries[:-1])
+            for name1, entry1, (name2, entry2) in zip(
+                root, root.values(), root.items()
+            ):
+                assert lfn_valid(name1)
+                assert name1 == name2
+                assert isinstance(entry1, DirectoryEntry)
+                assert entry1 == entry2

@@ -877,12 +877,9 @@ class FatDirectory(abc.MutableMapping):
         # The extration of the long filename could be simpler, but let's do all
         # the checks we can (the structure includes a *lot* of redundancy for
         # checking things!)
-        if not entries:
-            raise ValueError('blank dir_entries')
+        assert entries
         *lfn_entries, entry = entries
-        if not isinstance(entry, DirectoryEntry):
-            raise ValueError(
-                f'last entry of entries must be a DirectoryEntry, not {entry!r}')
+        assert isinstance(entry, DirectoryEntry)
 
         # TODO The following should only be warning of all the ValueError stuff
         # as LFN entries can be "orphaned". In the event of orphaned/invalid
