@@ -49,12 +49,14 @@ class DamagedFileSystem(FatWarning):
 
 # The following references were invaluable in constructing this implementation;
 # the wikipedia page on the Design of the FAT File system [1], Jonathan
-# de Boyne Pollard's notes on determination of FAT widths [2], and the
-# Microsoft Extensible Firmware Initiative FAT32 File System Specification [3].
+# de Boyne Pollard's notes on determination of FAT widths [2], the
+# Microsoft Extensible Firmware Initiative FAT32 File System Specification [3],
+# and Electronic Lives Mfg.'s notes on the FAT File system [4].
 #
 # [1]: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 # [2]: http://homepage.ntlworld.com/jonathan.deboynepollard/FGA/determining-fat-widths.html
 # [3]: http://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/fatgen103.doc
+# [4]: http://elm-chan.org/docs/fat_e.html
 #
 # Future maintainers, please note [2] is a dead link at the time of writing;
 # use archive.org to retrieve. [1] is the best starting point although it does
@@ -65,9 +67,13 @@ class DamagedFileSystem(FatWarning):
 # [3] is extremely useful in some places, though you have to put up with the
 # slighly condescending tone as the author argues that everyone else habitually
 # gets it wrong, and Microsoft's detection algorithms are The One True Way
-# (reading [2] provides a good antidote to this). Unfortunately, in other
-# places [3] is dreadfully vague for a spec (e.g. valid SFN / LFN characters).
-# Refer back to [1] for these.
+# (reading [2] provides a good antidote to this).
+#
+# Unfortunately, in other places [3] is dreadfully vague for a spec (e.g. valid
+# SFN / LFN characters). Refer back to [1] for these. [4] is obviously partly
+# drawn from [3], but adds some extremely important notes that others have
+# omitted (or not noticed), such as the fact that volume labels can
+# legitimately duplicate the name of a later file in the root directory.
 
 class FatFileSystem:
     """
@@ -96,6 +102,7 @@ class FatFileSystem:
         self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
         self._atime = atime
         self._encoding = encoding
+        # TODO: Replace with root volume label if == b'NO NAME    '
         self._label = ebpb.volume_label.decode(encoding, 'replace').rstrip(' ')
 
         total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
@@ -1126,6 +1133,8 @@ class FatDirectory(abc.MutableMapping):
             if isinstance(entry, DirectoryEntry):
                 if entry.filename[0] == 0: # end of valid entries
                     break
+                elif entry.attr & 0x8: # volume label
+                    pass
                 elif entry.filename[0] != 0xE5: # deleted entry
                     yield offset, entries
                 entries = []
