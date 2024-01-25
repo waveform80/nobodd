@@ -969,7 +969,7 @@ class FatDirectory(abc.MutableMapping):
         The return value is the sequence of long filename entries and the
         directory entry suffix in the order they should appear on disk.
         """
-        lfn, sfn, ext, attr2 = self._get_lfn_sfn_ext(filename)
+        lfn, sfn, ext, attr2 = self._get_names(filename)
         if lfn:
             checksum = lfn_checksum(sfn, ext)
             entries = [
@@ -995,7 +995,7 @@ class FatDirectory(abc.MutableMapping):
         entries.append(entry._replace(filename=sfn, ext=ext, attr2=attr2))
         return entries
 
-    def _get_lfn_sfn_ext(self, filename):
+    def _get_names(self, filename):
         """
         Given a *filename*, generate an appropriately encoded long filename
         (encoded in little-endian UCS-2), a short filename, an extension, and
