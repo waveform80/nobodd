@@ -1177,6 +1177,18 @@ class FatDirectory(abc.MutableMapping):
             lfn, sfn, entry = self._split_entries(entries)
             yield lfn
 
+    def items(self):
+        # NOTE: Overridden to avoid quadratic behaviour of inherited method
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            yield lfn, entry
+
+    def values(self):
+        # NOTE: Overridden to avoid quadratic behaviour of inherited method
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
+            yield entry
+
     def __contains__(self, name):
         uname = name.upper()
         for offset, entries in self._group_entries():
