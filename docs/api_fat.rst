@@ -35,5 +35,3 @@ structure, or check that tentative contents are valid.
 .. autofunction:: lfn_checksum
 
 .. autofunction:: lfn_valid
-
-.. autofunction:: sfn_valid

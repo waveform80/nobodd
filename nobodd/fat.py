@@ -413,14 +413,3 @@ def lfn_valid(s):
     """
     return bool(lfn_valid.regex.match(s))
 lfn_valid.regex = re.compile(r"^[\w !#$%&'()@^_`{}~+.,;=[\]-]+$")
-
-
-def sfn_valid(s):
-    """
-    Returns :data:`True` if :class:`bytes` string *s* only contains characters
-    valid in a FAT short filename. Note that spaces *are* permitted characters
-    within short filenames. This function will only return :data:`False` on
-    *leading* spaces.
-    """
-    return bool(s) and not ((s.startswith(b' ') or sfn_valid.regex.match(s)))
-sfn_valid.regex = re.compile(b"[^A-Z0-9 !#$%&'()@^_`{}~\x80-\xFF-]")

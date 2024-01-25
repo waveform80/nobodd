@@ -309,10 +309,3 @@ def test_lfn_valid():
     assert lfn_valid('123 föo')
     assert not lfn_valid('')
     assert not lfn_valid('foo*')
-
-
-def test_sfn_valid():
-    assert sfn_valid(b'FOOBAR')
-    assert sfn_valid(b'FOO 123')
-    assert not sfn_valid(b'')
-    assert not sfn_valid(b'  FOO BAR  ')
