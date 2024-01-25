@@ -9,7 +9,7 @@ from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
 from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum
-from .tools import decode_timestamp
+from .tools import encode_timestamp, decode_timestamp
 
 
 class FatPath:
@@ -37,19 +37,18 @@ class FatPath:
     the same :class:`~nobodd.fs.FatFileSystem` instance (comparisons across
     file-system instances raise :exc:`TypeError`).
     """
-    __slots__ = ('_fs', '_index', '_entry', '_parts', '_sfn', '_resolved')
+    __slots__ = ('_fs', '_index', '_entry', '_parts', '_resolved')
     sep = '/'
 
-    def __init__(self, fs, *pathsegments, sfn=None):
+    def __init__(self, fs, *pathsegments):
         self._fs = weakref.ref(fs)
         self._index = None
         self._entry = None
         self._parts = get_parts(*pathsegments)
-        self._sfn = sfn
         self._resolved = False
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(<fs>, {self.__str__()!r})'
+        return f'{self.__class__.__name__}(<fs>, {str(self)!r})'
 
     def __str__(self):
         if self._parts == ('',):
@@ -69,40 +68,34 @@ class FatPath:
         return fs
 
     @classmethod
-    def _from_index(cls, fs, index, prefix=sep, sfn=None):
+    def _from_index(cls, fs, index, path=sep):
         """
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
-        :class:`~nobodd.fs.FatDirectory` instance), and a *prefix* path.
+        :class:`~nobodd.fs.FatDirectory` instance), and a *path*.
 
-        This is only used for construction of directory instances.
+        This is only used in the construction of directory instances.
         """
-        self = cls(fs, prefix, sfn=sfn)
+        self = cls(fs, path)
         self._index = index
         self._resolved = True
         return self
 
     @classmethod
-    def _from_entries(cls, fs, index, entries, prefix=sep):
+    def _from_entry(cls, fs, index, entry, path=sep):
         """
         Internal class method for constructing an instance from *fs* (a
         :class:`~nobodd.fs.FatFileSystem` instance), *index* (a
         :class:`~nobodd.fs.FatDirectory instance), *entries* (a sequence of
         associated :class:`~nobodd.fat.LongFilenameEntry` and
         :class:`~nobodd.fat.DirectoryEntry` instances which must exist within
-        *index*), and a *prefix* path.
+        *index*), and a *path*.
         """
-        lfn, sfn, entry = split_filename_entry(
-            entries, encoding=fs.sfn_encoding)
-        if not prefix.endswith(cls.sep):
-            prefix += cls.sep
         if entry.attr & 0x10: # directory
             cluster = get_cluster(entry, fs.fat_type)
-            self = cls._from_index(
-                fs, fs.open_dir(cluster),
-                prefix=prefix + lfn + cls.sep, sfn=sfn)
+            self = cls._from_index(fs, fs.open_dir(cluster), path)
         else:
-            self = cls(fs, prefix + lfn, sfn=sfn)
+            self = cls(fs, path)
             self._index = index
         self._entry = entry
         self._resolved = True
@@ -118,29 +111,24 @@ class FatPath:
         assert self._index is None
         assert self._entry is None
         try:
-            parts = self.parts
-            if parts[0] != self.sep:
+            head, *parts = self.parts
+            if head != self.sep:
                 raise ValueError('relative FatPath cannot be resolved')
-            parts = parts[1:]
             fs = self._get_fs()
-            parent = fs.root
+            path = fs.root
             while parts:
-                for child in parent._listdir():
-                    if (
-                        (child.name.lower() == parts[0].lower()) or
-                        (
-                            child.shortname is not None and
-                            child.shortname == parts[0].upper()
-                        )
-                    ):
-                        parent = child
-                        parts = parts[1:]
-                        break
-                else: # path doesn't exist
+                path._must_exist()
+                path._must_be_dir()
+                head, *parts = parts
+                try:
+                    path = FatPath._from_entry(
+                        fs, path._index, path._index[head],
+                        str(path / head))
+                except KeyError:
+                    # Path doesn't exist
                     return
-            self._index = parent._index
-            self._entry = parent._entry
-            self._sfn = parent._sfn
+            self._index = path._index
+            self._entry = path._entry
         finally:
             self._resolved = True
 
@@ -156,20 +144,18 @@ class FatPath:
         ".." entries so it never changes).
 
         The entry will be refreshed by searching for an entry in the _index
-        with a matching SFN (short file-name), i.e. this is no good if the
-        calling method has renamed the entry.
+        with a matching name, i.e. this is no good if the calling method has
+        renamed the entry.
         """
         if self._resolved:
             assert self._index
             assert self._entry
             assert not self._entry.attr & 0x10, 'no need for _refresh on dirs'
-            find_sfn = self._entry.filename, self._entry.ext
-            for entries in self._index:
-                entry = entries[-1]
-                if find_sfn == (entry.filename, entry.ext):
-                    self._entry = entry
-                    return
-            raise FileNotFoundError(f'Directory entry for {self} disappeared')
+            try:
+                self._entry = self._index[self.name]
+            except KeyError:
+                raise FileNotFoundError(
+                    f'Directory entry for {self} disappeared')
         else:
             self._resolve()
 
@@ -243,13 +229,27 @@ class FatPath:
         # If self._entry is None at this point, we must be creating a file
         # so get the containing index and make an appropriate DirectoryEntry
         if self._entry is None:
+            date, time, ms = encode_timestamp(dt.datetime.now())
             parent = self.parent
             parent._must_exist()
             parent._must_be_dir()
-            lfn, self._sfn, self._entry = split_filename_entry(
-                parent._index.create(self.name), encoding=fs.sfn_encoding)
-            assert lfn == self.name, f'{lfn=} {self.name=}'
             self._index = parent._index
+            self._entry = DirectoryEntry(
+                # filename and ext of the entry will be ignored and overwritten
+                # with SFN generated from the associated name
+                filename=b'\0' * 8, ext=b'\0' * 3,
+                # Set DOS "Archive" bit and nothing else
+                attr=0x20, attr2=0,
+                cdate=date, ctime=time, ctime_ms=ms,
+                mdate=date, mtime=time,
+                adate=date,
+                first_cluster_lo=0, first_cluster_hi=0, size=0)
+            try:
+                parent._index[self.name] = self._entry
+            except OSError:
+                self._entry = None
+                self._index = None
+                raise
 
         # Sanity check the buffering parameter and create the underlying
         # FatFile instance with an appropriate mode
@@ -311,7 +311,7 @@ class FatPath:
         self._must_not_be_dir()
 
         self._refresh()
-        self._index.remove(self._entry)
+        del self._index[self.name]
         for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
             fs.fat.mark_free(cluster)
         self._index = None
@@ -352,22 +352,18 @@ class FatPath:
         if target.exists():
             target._must_not_be_dir()
             target._refresh()
-            old_cluster = get_cluster(target._entry, fs.fat_type)
+            target_cluster = get_cluster(target._entry, fs.fat_type)
         else:
             target.touch()
-            old_cluster = 0
+            target_cluster = 0
         self._refresh()
-        target._entry = self._entry._replace(
-            filename=target._entry.filename,
-            ext=target._entry.ext)
-        target._index.update(target._entry)
-        self._index.remove(self._entry)
-        if old_cluster:
-            for cluster in fs.fat.chain(old_cluster):
+        target._index[target.name] = self._entry
+        del self._index[self.name]
+        if target_cluster:
+            for cluster in fs.fat.chain(target_cluster):
                 fs.fat.mark_free(cluster)
         self._index = None
         self._entry = None
-        self._sfn = None
         return target
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -407,25 +403,39 @@ class FatPath:
                 raise
         parent._must_be_dir()
 
+        date, time, ms = encode_timestamp(dt.datetime.now())
         cluster = next(fs.fat.free())
         fs.fat.mark_end(cluster)
-        lfn, self._sfn, self._entry = split_filename_entry(
-            parent._index.create(self.name, attr=0x10, cluster=cluster),
-            encoding=fs.sfn_encoding)
-        assert lfn == self.name, f'{lfn=} {self.name=}'
-        self._index = fs.open_dir(get_cluster(self._entry, fs.fat_type))
+
+        self._entry = DirectoryEntry(
+            # filename and ext of the entry will be ignored and overwritten
+            # with SFN generated from the associated name
+            filename=b'\0' * 8, ext=b'\0' * 3,
+            # Set DOS "Directory" bit and nothing else
+            attr=0x10, attr2=0,
+            cdate=date, ctime=time, ctime_ms=ms,
+            mdate=date, mtime=time,
+            adate=date,
+            first_cluster_lo=cluster & 0xFFFF,
+            first_cluster_hi=cluster >> 16 if fs.fat_type == 'fat32' else 0,
+            size=0)
+        try:
+            parent._index[self.name] = self._entry
+        except OSError:
+            self._entry = None
+            raise
+        else:
+            self._index = fs.open_dir(cluster)
 
         # Write the minimum entries that all sub-dirs must have: the "." and
         # ".." entries, and a terminal EOF entry
-        dot = self._entry._replace(filename=b'.       ', ext=b'   ', attr2=0)
+        self._index['.'] = self._entry
         if parent._entry is None:
             # Parent is the root
-            dotdot = dot._replace(
-                filename=b'..      ', first_cluster_hi=0, first_cluster_lo=0)
+            self._index['..'] = self._entry._replace(
+                first_cluster_hi=0, first_cluster_lo=0)
         else:
-            dotdot = parent._entry._replace(
-                filename=b'..      ', ext=b'   ', attr2=0)
-        self._index.append(dot, dotdot, DirectoryEntry.eof())
+            self._index['..'] = parent._entry
 
     def rmdir(self):
         """
@@ -446,22 +456,11 @@ class FatPath:
         parent = self.resolve(strict=False).parent
         # NOTE: We already know parent must exist and be a dir
         parent._resolve()
-        parent._index.remove(self._entry)
+        del parent._index[self.name]
         for cluster in fs.fat.chain(cluster):
             fs.fat.mark_free(cluster)
         self._index = None
         self._entry = None
-
-    def _listdir(self):
-        fs = self._get_fs()
-        self._must_exist()
-        self._must_be_dir()
-        for entries in self._index:
-            if not entries:
-                raise ValueError('empty dir entries')
-            if entries[-1].attr & 0x8:
-                continue # skip volume label
-            yield FatPath._from_entries(fs, self._index, entries, prefix=str(self))
 
     def resolve(self, strict=False):
         """
@@ -513,9 +512,13 @@ class FatPath:
         in the file-system), and the special entries ``'.'`` and ``'..'`` are
         not included.
         """
-        for path in self._listdir():
-            if path.name not in ('.', '..'):
-                yield path
+        fs = self._get_fs()
+        self._must_exist()
+        self._must_be_dir()
+        for name, entry in self._index.items():
+            if name not in ('.', '..'):
+                yield FatPath._from_entry(
+                    fs, self._index, entry, str(self / name))
 
     def match(self, pattern):
         """
@@ -1041,7 +1044,7 @@ class FatPath:
         fs = self._get_fs()
         if not self.name:
             raise ValueError(f'{self!r} has an empty name')
-        if not name or name[-1] == self.sep:
+        if not name:
             raise ValueError(f'invalid name {name!r}')
         return type(self)(fs, *self._parts[:-1], name)
 
