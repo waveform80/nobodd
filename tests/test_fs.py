@@ -303,6 +303,7 @@ def test_fat12table_sequence(fat12_disk):
             assert len(fs._fat) == (
                 bpb.sectors_per_fat * bpb.bytes_per_sector // 1.5)
             assert fs._fat[0] > fs._fat.max_valid
+            assert fs._fat[1] > fs._fat.max_valid
             first = fs._fat[0]
             second = fs._fat[1]
             assert all(c == first for c in fs._fat.get_all(0))
@@ -350,6 +351,7 @@ def test_fat16table_sequence(fat16_disk):
             assert len(fs._fat) == (
                 bpb.sectors_per_fat * bpb.bytes_per_sector // 2)
             assert fs._fat[0] > fs._fat.max_valid
+            assert fs._fat[1] > fs._fat.max_valid
             first = fs._fat[0]
             second = fs._fat[1]
             assert all(c == first for c in fs._fat.get_all(0))
@@ -392,6 +394,7 @@ def test_fat32table_sequence(fat32_disk, with_fsinfo):
             assert len(fs._fat) == (
                 f32bpb.sectors_per_fat * bpb.bytes_per_sector // 4)
             assert fs._fat[0] > fs._fat.max_valid
+            assert fs._fat[1] > fs._fat.max_valid
             first = fs._fat[0]
             second = fs._fat[1]
             assert all(c == first for c in fs._fat.get_all(0))

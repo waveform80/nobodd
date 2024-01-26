@@ -568,14 +568,13 @@ class Fat12Table(FatTable):
 
     def get_all(self, cluster):
         try:
+            offset = cluster + (cluster >> 1)
             if cluster % 2:
-                offset = cluster + (cluster >> 1) + 1
                 return tuple(
                     struct.unpack_from('<H', t, offset)[0] >> 4
                     for t in self._tables
                 )
             else:
-                offset = cluster + (cluster >> 1)
                 return tuple(
                     struct.unpack_from('<H', t, offset)[0] & 0x0FFF
                     for t in self._tables
@@ -585,12 +584,11 @@ class Fat12Table(FatTable):
 
     def __getitem__(self, cluster):
         try:
+            offset = cluster + (cluster >> 1)
             if cluster % 2:
-                offset = cluster + (cluster >> 1) + 1
                 return struct.unpack_from(
                     '<H', self._tables[0], offset)[0] >> 4
             else:
-                offset = cluster + (cluster >> 1)
                 return struct.unpack_from(
                     '<H', self._tables[0], offset)[0] & 0x0FFF
         except struct.error:
@@ -600,13 +598,12 @@ class Fat12Table(FatTable):
         if not 0x000 <= value <= 0xFFF:
             raise ValueError(f'{value} is outside range 0x000..0xFFF')
         try:
+            offset = cluster + (cluster >> 1)
             if cluster % 2:
-                offset = cluster + (cluster >> 1) + 1
                 value <<= 4
                 value |= struct.unpack_from(
                     '<H', self._tables[0], offset)[0] & 0x000F
             else:
-                offset = cluster + (cluster >> 1)
                 value |= struct.unpack_from(
                     '<H', self._tables[0], offset)[0] & 0xF000
             for table in self._tables:
