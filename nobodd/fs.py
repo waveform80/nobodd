@@ -46,6 +46,21 @@ class DamagedFileSystem(FatWarning):
     the second entry of the FAT.
     """
 
+class OrphanedLongFilename(FatWarning):
+    """
+    Raised when a :class:`~nobodd.fat.LongFilenameEntry` is found with a
+    mismatched checksum, terminal flag, out of order index, etc. This usually
+    indicates an orphaned entry as the result of a non-LFN aware file-system
+    driver manipulating a directory.
+    """
+
+class BadLongFilename(FatWarning):
+    """
+    Raised when a :class:`~nobodd.fat.LongFilenameEntry` is unambiguously
+    corrupted, e.g. including a non-zero cluster number, in a way that would
+    not be caused by a non-LFN aware file-system driver.
+    """
+
 
 # The following references were invaluable in constructing this implementation;
 # the wikipedia page on the Design of the FAT File system [1], Jonathan
@@ -881,50 +896,17 @@ class FatDirectory(abc.MutableMapping):
         *lfn_entries, entry = entries
         assert isinstance(entry, DirectoryEntry)
 
-        # TODO The following should only be warning of all the ValueError stuff
-        # as LFN entries can be "orphaned". In the event of orphaned/invalid
-        # LFN entries, skip to the next terminal LFN entry (if any) and retry
-        if lfn_entries:
-            head, *tail = lfn_entries
-            checksum = head.checksum
-            sequence = head.sequence
-            if not sequence & 0x40:
-                raise ValueError(
-                    'first LongFilenameEntry is not marked as terminal')
-            sequence = sequence & 0b11111
-            lfn = head.name_1 + head.name_2 + head.name_3
-            for part in tail:
-                if part.first_cluster != 0:
-                    raise ValueError(
-                        f'first_cluster is non-zero: {part.first_cluster}')
-                if part.checksum != checksum:
-                    raise ValueError(
-                        f'mismatched checksum: {checksum} != {part.checksum}')
-                sequence -= 1
-                if sequence < 1:
-                    raise ValueError('too many LongFilenameEntry items')
-                if part.sequence != sequence:
-                    raise ValueError(
-                        f'incorrect LongFilenameEntry.sequence: {sequence} != '
-                        f'{part.sequence}')
-                lfn = part.name_1 + part.name_2 + part.name_3 + lfn
-            if sequence > 1:
-                raise ValueError(f'missing {sequence} LongFilenameEntry items')
-            if lfn_checksum(entry.filename, entry.ext) != checksum:
-                raise ValueError(
-                    f'checksum mismatch in long filename: {sum_} != {checksum}')
+        checksum = lfn_checksum(entry.filename, entry.ext)
+        lfn = self._join_lfn_entries(lfn_entries, checksum)
+        if lfn is not None:
             lfn = lfn.decode('utf-16le').rstrip('\uffff')
             # There may be one trailing NUL char, but there may not if the
             # filename fits perfectly in a LFN structure
             if lfn[-1:] == '\x00':
                 lfn = lfn[:-1]
-            # But there shouldn't be more than one!
-            if lfn[-1:] == '\x00':
-                raise ValueError(f'excess NUL chars in long filename: {lfn!r}')
             if not lfn:
-                raise ValueError('empty long filename')
-        else:
-            lfn = None
+                warnings.warn(BadLongFilename('empty LongFilenameEntry decoded'))
+                lfn = None
 
         sfn = entry.filename.rstrip(b' ')
         # If initial char of the filename is 0xE5 (which is reserved to
@@ -933,6 +915,7 @@ class FatDirectory(abc.MutableMapping):
             sfn = b'\xE5' + sfn[1:]
         sfn = sfn.decode(self._encoding)
         ext = entry.ext.rstrip(b' ').decode(self._encoding)
+
         # Bits 3 & 4 of attr2 are used by Windows NT (basically any modern
         # Windows) to indicate if the short filename (in the absence of long
         # filename entries) has upper / lower-case portions
@@ -944,6 +927,62 @@ class FatDirectory(abc.MutableMapping):
             sfn = sfn + '.' + ext
 
         return lfn, sfn, entry
+
+    def _join_lfn_entries(self, entries, checksum, sequence=0, lfn=b''):
+        """
+        Given *entries*, a sequence of :class:`~nobodd.fat.LongFilenameEntry`
+        instances, decode the long filename encoded within them, ensuring that
+        all the invariants (sequence number, checksums, terminal flag, etc.)
+        are obeyed.
+
+        Returns the decoded (:class:`str`) long filename, or :data:`None` if
+        no valid long filename can be found. Emits various warnings if
+        "orphaned" long filename entries are encoded during decoding.
+        """
+        if not entries:
+            return None
+        head, *entries = entries
+        if head.first_cluster != 0:
+            warnings.warn(BadLongFilename(
+                f'LongFilenameEntry.first_cluster is non-zero: '
+                f'{head.first_cluster}'))
+            return self._join_lfn_entries(entries, checksum)
+        if head.checksum != checksum:
+            warnings.warn(OrphanedLongFilename(
+                f'mismatched LongFilenameEntry.checksum: {checksum} != '
+                f'{head.checksum}'))
+            return self._join_lfn_entries(entries, checksum)
+        if head.sequence & 0x40:
+            if lfn:
+                # NOTE: Add the new terminal back onto the list to be
+                # processed. All other failures (below) don't need to do this
+                # because they're definitely non-terminal and thus can't start
+                # a valid LongFilenameEntry run
+                warnings.warn(OrphanedLongFilename(
+                    'new terminal LongFilenameEntry'))
+                return self._join_lfn_entries([head] + entries, checksum)
+            sequence = head.sequence & 0b11111
+            if not sequence:
+                warnings.warn(BadLongFilename(
+                    'LongFilenameEntry.sequence is zero'))
+                return self._join_lfn_entries(entries, checksum)
+        elif head.sequence != sequence:
+            warnings.warn(OrphanedLongFilename(
+                f'unexpected LongFilenameEntry.sequence: {sequence} != '
+                f'{head.sequence}'))
+            return self._join_lfn_entries(entries, checksum)
+        lfn = head.name_1 + head.name_2 + head.name_3 + lfn
+        if sequence == 1:
+            if entries:
+                warnings.warn(OrphanedLongFilename(
+                    f'more LongFilenameEntry after sequence: 1'))
+                return self._join_lfn_entries(entries, checksum)
+            return lfn
+        else:
+            if not entries:
+                warnings.warn(OrphanedLongFilename(
+                    f'missing LongFilenameEntry after sequence: {sequence}'))
+            return self._join_lfn_entries(entries, checksum, sequence - 1, lfn)
 
     def _prefix_entries(self, filename, entry):
         """
@@ -1083,8 +1122,8 @@ class FatDirectory(abc.MutableMapping):
                 re.IGNORECASE)
             for i in range(1, len(str(self.MAX_SFN_SUFFIX)) + 1)
         ]
-        for entries in self:
-            lfn, sfn, entry = split_filename_entry(entries)
+        for offset, entries in self._group_entries():
+            lfn, sfn, entry = self._split_entries(entries)
             m = any_match(sfn, regexes)
             if m:
                 exclude(ranges, int(m.group(1)))
