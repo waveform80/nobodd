@@ -4,7 +4,12 @@ import struct
 
 import pytest
 
-from nobodd.fat import BIOSParameterBlock, ExtendedBIOSParameterBlock, lfn_valid
+from nobodd.fat import (
+    BIOSParameterBlock,
+    ExtendedBIOSParameterBlock,
+    lfn_valid,
+    lfn_checksum,
+)
 from nobodd.disk import DiskImage
 from nobodd.fs import *
 
@@ -23,6 +28,27 @@ def with_fsinfo(request, fat32_disk):
                 info._replace(sig1=b'EPIC', sig2=b'FAIL').to_buffer(
                     part, offset=info_offset)
     yield request.param
+
+
+def first_dir(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        if entries[-1].attr & 0x10:
+            return offset, entries
+    assert False, 'failed to find dir'
+
+
+def first_lfn_file(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        if len(entries) > 1 and not entries[-1].attr & 0x10:
+            return offset, entries
+    assert False, 'failed to find file with LFN'
+
+
+def first_non_lfn_file(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        if len(entries) == 1 and not entries[-1].attr & 0x10:
+            return offset, entries
+    assert False, 'failed to find file without LFN'
 
 
 def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
@@ -476,3 +502,133 @@ def test_fatdirectory_iter(fat12_disk):
                 assert name1 == name2
                 assert isinstance(entry1, DirectoryEntry)
                 assert entry1 == entry2
+
+
+def test_fatdirectory_split_entries(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_lfn_file(root)
+            # Filename with mod 13 chars (no \0 terminator)
+            lfn, sfn, _ = root._split_entries(entries)
+            assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
+            # Filenames with ! mod 13 chars
+            lfn, sfn, _ = root._split_entries([
+                LongFilenameEntry(
+                    sequence=0x41,
+                    name_1=b'a\0b\0c\0d\0e\0',
+                    attr=0xF,
+                    checksum=0xCA,
+                    name_2=b'f\0g\0h\0i\0j\0k\0',
+                    first_cluster=0,
+                    name_3=b'l\0\0\0'),
+                entries[-1]._replace(
+                    filename=b'ABCDEF~1',
+                    ext=b'   ')
+            ])
+            assert (lfn, sfn) == ('abcdefghijkl', 'ABCDEF~1')
+
+
+def test_fatdirectory_prefix_entries(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_non_lfn_file(root)
+            # Regular, non-LFN file
+            lfn, sfn, entry = root._split_entries(entries)
+            assert (lfn, sfn) == ('empty', 'EMPTY')
+            cksum = lfn_checksum(entry.filename, entry.ext)
+            # Filename with mod 13 chars (no \0 terminator)
+            assert root._prefix_entries('abcdefghijklmnopqrstuvwxyz', entry) == [
+                LongFilenameEntry(
+                    sequence=0x42,
+                    name_1=b'n\0o\0p\0q\0r\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b's\0t\0u\0v\0w\0x\0',
+                    first_cluster=0,
+                    name_3=b'y\0z\0',
+                ),
+                LongFilenameEntry(
+                    sequence=0x01,
+                    name_1=b'a\0b\0c\0d\0e\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'f\0g\0h\0i\0j\0k\0',
+                    first_cluster=0,
+                    name_3=b'l\0m\0',
+                ),
+                entry,
+            ]
+
+
+def test_fatdirectory_bad_lfn(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_lfn_file(root)
+
+            # Blank LFN
+            with pytest.warns(BadLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(
+                        name_1=b'\xFF' * 10,
+                        name_2=b'\xFF' * 12,
+                        name_3=b'\xFF' * 4),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+            # Bad first_cluster
+            with pytest.warns(BadLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(first_cluster=1),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+            # Bad checksum
+            with pytest.warns(OrphanedLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(checksum=0xFF),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+            # Repeated terminal entry
+            with pytest.warns(OrphanedLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(sequence=0x43),
+                    entries[0]._replace(sequence=0x02),
+                    entries[0],
+                    entries[-1]])
+            assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
+
+            # Bad sequence number
+            with pytest.warns(BadLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(sequence=0x40),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+            # More bad sequence numbers
+            with pytest.warns(OrphanedLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(sequence=0x42),
+                    entries[0]._replace(sequence=0x03),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+            # More entries after last
+            with pytest.warns(OrphanedLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0],
+                    entries[0],
+                    entries[0],
+                    entries[-1]])
+            assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
+
+            # Missing entries
+            with pytest.warns(OrphanedLongFilename):
+                lfn, sfn, _ = root._split_entries([
+                    entries[0]._replace(sequence=0x43),
+                    entries[0]._replace(sequence=0x02),
+                    entries[-1]])
+            assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
