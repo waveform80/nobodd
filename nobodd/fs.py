@@ -1044,11 +1044,12 @@ class FatDirectory(abc.MutableMapping):
         else:
             sfn = filename.lstrip('.').upper().encode(self._encoding, 'replace')
             sfn = sfn.replace(b' ', b'')
-            sfn = self.SFN_VALID.sub(b'_', sfn)
             if b'.' in sfn:
                 sfn, ext = sfn.rsplit(b'.', 1)
             else:
                 sfn, ext = sfn, b''
+            sfn = self.SFN_VALID.sub(b'_', sfn)
+            ext = self.SFN_VALID.sub(b'_', ext)
 
         if len(sfn) <= 8 and len(ext) <= 3:
             # NOTE: Huh, a place where match..case might actually be
@@ -1090,18 +1091,19 @@ class FatDirectory(abc.MutableMapping):
                 lfn = lfn.ljust(pad, b'\xff')
             assert len(lfn) % 26 == 0
             ext = ext[:3]
-            sfn = self._get_unique_sfn(sfn, ext).encode(
-                self._encoding, 'replace')
+            sfn = self._get_unique_sfn(
+                sfn.decode(self._encoding),
+                ext.decode(self._encoding)).encode(self._encoding, 'replace')
         sfn = sfn.ljust(8, b' ')
         ext = ext.ljust(3, b' ')
         return lfn, sfn, ext, attr
 
     def _get_unique_sfn(self, prefix, ext):
         """
-        Given *prefix* and *ext*, which are :class:`bytes` strings, of the
-        short filename prefix and extension, find a suffix that is unique in
-        the directory (amongst both long *and* short filenames, because
-        anything with a long filename in VFAT effectively has *two* filenames).
+        Given *prefix* and *ext*, which are :class:`str`, of the short filename
+        prefix and extension, find a suffix that is unique in the directory
+        (amongst both long *and* short filenames, because anything with a long
+        filename in VFAT effectively has *two* filenames).
 
         For example, given a file with long filename ``default.conf``, in
         a directory containing ``default.config`` (which has shortname
@@ -1112,10 +1114,12 @@ class FatDirectory(abc.MutableMapping):
         enforced. If this is reached, the search will terminate with an error,
         causing the creation of the file/directory to fail.
         """
-        ranges = [range(self.MAX_SFN_SUFFIX)]
+        ranges = [range(1, self.MAX_SFN_SUFFIX)]
         regexes = [
             re.compile(
-                f'{re.escape(prefix[:i])}~([0-9]{{{i}}}).{re.escape(ext)}',
+                f'{re.escape(prefix[:7 - i])}~([0-9]{{{i}}})\.{re.escape(ext)}'
+                if ext else
+                f'{re.escape(prefix[:7 - i])}~([0-9]{{{i}}})',
                 re.IGNORECASE)
             for i in range(1, len(str(self.MAX_SFN_SUFFIX)) + 1)
         ]
@@ -1128,7 +1132,7 @@ class FatDirectory(abc.MutableMapping):
             if m:
                 exclude(ranges, int(m.group(1)))
         for r in ranges:
-            return f'{prefix[:len(str(r.start))]}~{r.start}'
+            return f'{prefix[:7 - len(str(r.start))]}~{r.start}'
         # We cannot create any shortnames that aren't already taken. Given the
         # limit on entries in a dir (MAX_SFN_SUFFIX, roughly) report ENOSPC
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
