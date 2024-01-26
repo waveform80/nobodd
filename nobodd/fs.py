@@ -852,9 +852,8 @@ class FatDirectory(abc.MutableMapping):
         appropriate.
 
         All instances must be yielded, in the order they appear on disk,
-        regardless of whether they represent deleted, orphaned, corrupted, or
-        other entries. Only the terminal entry (with NUL as the first byte),
-        and subsequent entries must not be yielded.
+        regardless of whether they represent deleted, orphaned, corrupted,
+        terminal, or post-terminal entries.
         """
         raise NotImplementedError
 
