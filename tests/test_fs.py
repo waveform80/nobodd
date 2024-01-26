@@ -30,6 +30,12 @@ def with_fsinfo(request, fat32_disk):
     yield request.param
 
 
+def dir_eof(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        pass
+    return offset + DirectoryEntry._FORMAT.size
+
+
 def first_dir(fat_dir):
     for offset, entries in fat_dir._group_entries():
         if entries[-1].attr & 0x10:
@@ -537,11 +543,52 @@ def test_fatdirectory_prefix_entries(fat12_disk):
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = first_non_lfn_file(root)
-            # Regular, non-LFN file
             lfn, sfn, entry = root._split_entries(entries)
             assert (lfn, sfn) == ('empty', 'EMPTY')
-            cksum = lfn_checksum(entry.filename, entry.ext)
+
+            # Ensure we don't generate LFNs when unnecessary
+            assert root._prefix_entries('empty', entry) == entries
+
+            # Short filenames with extension and variety of cases
+            cksum = lfn_checksum(b'EMPTY   ', b'DAT')
+            assert root._prefix_entries('EMPTY.DAT', entry) == [
+                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0)
+            ]
+            assert root._prefix_entries('empty.dat', entry) == [
+                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b11000)
+            ]
+            assert root._prefix_entries('EMPTY.dat', entry) == [
+                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b10000)
+            ]
+            assert root._prefix_entries('empty.DAT', entry) == [
+                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b1000)
+            ]
+
+            # Short filename with mixed case, demanding LFN
+            cksum = lfn_checksum(b'EMPTY~1 ', b'DAT')
+            assert root._prefix_entries('Empty.Dat', entry) == [
+                LongFilenameEntry(
+                    sequence=0x41,
+                    name_1=b'E\0m\0p\0t\0y\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'.\0D\0a\0t\0\0\0\xFF\xFF',
+                    first_cluster=0,
+                    name_3=b'\xFF' * 4,
+                ),
+                entry._replace(filename=b'EMPTY~1 ', ext=b'DAT', attr2=0)
+            ]
+
+            # "Special" . and .. entries
+            assert root._prefix_entries('.', entry) == [
+                entry._replace(filename=b'.       ', ext=b'   ', attr2=0)
+            ]
+            assert root._prefix_entries('..', entry) == [
+                entry._replace(filename=b'..      ', ext=b'   ', attr2=0)
+            ]
+
             # Filename with mod 13 chars (no \0 terminator)
+            cksum = lfn_checksum(b'ABCDEF~1', b'   ')
             assert root._prefix_entries('abcdefghijklmnopqrstuvwxyz', entry) == [
                 LongFilenameEntry(
                     sequence=0x42,
@@ -561,8 +608,44 @@ def test_fatdirectory_prefix_entries(fat12_disk):
                     first_cluster=0,
                     name_3=b'l\0m\0',
                 ),
-                entry,
+                entry._replace(
+                    filename=b'ABCDEF~1',
+                    ext=b'   ',
+                    attr2=0,
+                ),
             ]
+
+            # Filename with !mod 13 chars (adds \0 terminator and padding)
+            cksum = lfn_checksum(b'ABCDEF~1', b'   ')
+            assert root._prefix_entries('abcdefghijklmnopqrstuvw', entry) == [
+                LongFilenameEntry(
+                    sequence=0x42,
+                    name_1=b'n\0o\0p\0q\0r\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b's\0t\0u\0v\0w\0\0\0',
+                    first_cluster=0,
+                    name_3=b'\xff' * 4,
+                ),
+                LongFilenameEntry(
+                    sequence=0x01,
+                    name_1=b'a\0b\0c\0d\0e\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'f\0g\0h\0i\0j\0k\0',
+                    first_cluster=0,
+                    name_3=b'l\0m\0',
+                ),
+                entry._replace(
+                    filename=b'ABCDEF~1',
+                    ext=b'   ',
+                    attr2=0,
+                ),
+            ]
+
+            # Excessive length
+            with pytest.raises(ValueError):
+                root._prefix_entries('foo' * 255, entry)
 
 
 def test_fatdirectory_bad_lfn(fat12_disk):
@@ -635,3 +718,78 @@ def test_fatdirectory_bad_lfn(fat12_disk):
                     entries[0]._replace(sequence=0x02),
                     entries[-1]])
             assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
+
+
+def test_fatdirectory_get_unique_sfn(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_lfn_file(root)
+            lfn, sfn, entry = root._split_entries(entries)
+            assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
+
+            # Colliding SFN
+            cksum = lfn_checksum(b'LOTS-O~2', b'   ')
+            entries_2 = root._prefix_entries('lots-of-ones', entry)
+            assert entries_2 == [
+                LongFilenameEntry(
+                    sequence=0x41,
+                    name_1=b'l\0o\0t\0s\0-\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'o\0f\0-\0o\0n\0e\0',
+                    first_cluster=0,
+                    name_3=b's\0\0\0',
+                ),
+                entry._replace(
+                    filename=b'LOTS-O~2',
+                    ext=b'   ',
+                    attr2=0,
+                ),
+            ]
+            offset = dir_eof(root)
+            for e in entries_2:
+                root._update_entry(offset, e)
+                offset += DirectoryEntry._FORMAT.size
+
+            # Colliding LFN and SFN
+            cksum = lfn_checksum(b'LOTS-O~4', b'   ')
+            entries_3 = [
+                LongFilenameEntry(
+                    sequence=0x41,
+                    name_1=b'L\0O\0T\0S\0-\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'O\0~\x003\0\0\0' + b'\xFF' * 4,
+                    first_cluster=0,
+                    name_3=b'\xFF' * 4,
+                ),
+                entry._replace(
+                    filename=b'LOTS-O~4',
+                    ext=b'   ',
+                    attr2=0,
+                ),
+            ]
+            offset = dir_eof(root)
+            for e in entries_3:
+                root._update_entry(offset, e)
+                offset += DirectoryEntry._FORMAT.size
+
+            cksum = lfn_checksum(b'LOTS-O~5', b'   ')
+            entries_5 = root._prefix_entries('lots-of-nowt', entry)
+            assert entries_5 == [
+                LongFilenameEntry(
+                    sequence=0x41,
+                    name_1=b'l\0o\0t\0s\0-\0',
+                    attr=0xF,
+                    checksum=cksum,
+                    name_2=b'o\0f\0-\0n\0o\0w\0',
+                    first_cluster=0,
+                    name_3=b't\0\0\0',
+                ),
+                entry._replace(
+                    filename=b'LOTS-O~5',
+                    ext=b'   ',
+                    attr2=0,
+                ),
+            ]
