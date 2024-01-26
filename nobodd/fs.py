@@ -1019,7 +1019,7 @@ class FatDirectory(abc.MutableMapping):
                     name_3=lfn[offset + 22:offset + 26]
                 )
                 for part, offset
-                in enumerate(range(len(lfn), 26), start=1)
+                in enumerate(range(0, len(lfn), 26), start=1)
             ]
             entries.reverse()
             # Add terminal marker to "last" entry
@@ -1085,9 +1085,10 @@ class FatDirectory(abc.MutableMapping):
             if len(lfn) > 255 * 2:
                 raise ValueError(
                     f'{filename} is too long (more than 255 UCS-2 characters)')
-            # Always NUL terminate (although it seems some drivers don't if the
+            # NUL terminate if len(result) mod 26
             # result fits perfectly in a LongFilenameEntry)
-            lfn += b'\0\0'
+            if len(lfn) % 26:
+                lfn += b'\0\0'
             if len(lfn) % 26:
                 pad = ((len(lfn) + 25) // 26) * 26
                 lfn = lfn.ljust(pad, b'\xff')
@@ -1131,8 +1132,7 @@ class FatDirectory(abc.MutableMapping):
             if m:
                 exclude(ranges, int(m.group(1)))
         for r in ranges:
-            l = len(str(r.start))
-            return f'{prefix[:l]}~{r.start}'
+            return f'{prefix[:len(str(r.start))]}~{r.start}'
         # We cannot create any shortnames that aren't already taken. Given the
         # limit on entries in a dir (MAX_SFN_SUFFIX, roughly) report ENOSPC
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
