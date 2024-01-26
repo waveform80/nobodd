@@ -747,23 +747,6 @@ class FatPath:
         return self._parts[-1]
 
     @property
-    def shortname(self):
-        """
-        A string representing the shortened version of the final path
-        component, excluding the root::
-
-            >>> fs
-            <FatFileSystem label='TEST' fat_type='fat16'>
-            >>> p = (fs.root / 'nobodd' / 'main.py')
-            >>> p.name
-            'MAIN.PY'
-
-        Short names are always upper-case and limited to a length of 8.3 (8
-        characters for the filename, 3 for the extension).
-        """
-        return self._sfn
-
-    @property
     def suffix(self):
         """
         The file extension of the final component, if any::
