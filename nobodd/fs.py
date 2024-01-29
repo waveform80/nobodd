@@ -1504,7 +1504,7 @@ class FatFile(io.RawIOBase):
         """
         fs = self._fs()
         if fs is None:
-            raise OSError(f'FatFileSystem containing {self!r} is closed')
+            raise ValueError(f'FatFileSystem containing {self!r} is closed')
         return fs
 
     def _get_size(self):
