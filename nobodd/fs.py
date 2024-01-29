@@ -1117,7 +1117,7 @@ class FatDirectory(abc.MutableMapping):
         ranges = [range(1, self.MAX_SFN_SUFFIX)]
         regexes = [
             re.compile(
-                f'{re.escape(prefix[:7 - i])}~([0-9]{{{i}}})\.{re.escape(ext)}'
+                f'{re.escape(prefix[:7 - i])}~([0-9]{{{i}}})\\.{re.escape(ext)}'
                 if ext else
                 f'{re.escape(prefix[:7 - i])}~([0-9]{{{i}}})',
                 re.IGNORECASE)
