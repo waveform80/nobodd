@@ -1258,7 +1258,7 @@ class FatDirectory(abc.MutableMapping):
         # deleted entries that _group_entries isn't yielding, but that doesn't
         # matter for our purposes. All that matters is that we can safely
         # overwrite these entries
-        eof_offset += DirectoryEntry._FORMAT.size
+        eof_offset = offset + DirectoryEntry._FORMAT.size
         entries = self._prefix_entries(name, entry)
         entries.append(DirectoryEntry.eof())
         for cleaned in (False, True):
