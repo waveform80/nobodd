@@ -54,3 +54,12 @@ def fat32_disk(request, tmp_path):
     with (tmp_path / 'fat32.img').open('w+b') as output:
         make_disk(output, part_style='gpt', fat_type='fat32')
         yield output
+
+
+@pytest.fixture()
+def fat_disks(request, fat12_disk, fat16_disk, fat32_disk):
+    yield {
+        'fat12': fat12_disk,
+        'fat16': fat16_disk,
+        'fat32': fat32_disk,
+    }

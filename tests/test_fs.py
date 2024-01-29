@@ -1,3 +1,4 @@
+import io
 import mmap
 import errno
 import struct
@@ -43,18 +44,25 @@ def first_dir(fat_dir):
     assert False, 'failed to find dir'
 
 
-def first_lfn_file(fat_dir):
+def find_lfn_file(fat_dir):
     for offset, entries in fat_dir._group_entries():
         if len(entries) > 1 and not entries[-1].attr & 0x10:
             return offset, entries
     assert False, 'failed to find file with LFN'
 
 
-def first_non_lfn_file(fat_dir):
+def find_non_lfn_file(fat_dir):
     for offset, entries in fat_dir._group_entries():
         if len(entries) == 1 and not entries[-1].attr & 0x10:
             return offset, entries
     assert False, 'failed to find file without LFN'
+
+
+def find_non_empty_file(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        if entries[-1].size > 0:
+            return offset, entries
+    assert False, 'failed to find non-empty file'
 
 
 def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
@@ -500,24 +508,74 @@ def test_fatclusters_mutate(fat12_disk):
                 fs._data.insert(2, zeros)
 
 
-def test_fatdirectory_iter(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_mapping(fat_disks):
+    for fat_disk in fat_disks.values():
+        with DiskImage(fat_disk) as img:
+            with FatFileSystem(img.partitions[1].data) as fs:
+                root = fs.open_dir(0)
+                # Length, contains, iter, and all mapping views
+                assert len(root) > 0
+                assert 'empty' in root
+                assert 'EMPTY' in root
+                assert 'lots-of-zeros' in root
+                assert 'LOTS-O~1' in root
+                assert root['empty'] == root['EMPTY']
+                assert root['lots-of-zeros'] == root['LOTS-O~1']
+                assert 'lots-of-ones' not in root
+                with pytest.raises(KeyError):
+                    root['lots-of-ones']
+                for name1, entry1, (name2, entry2) in zip(
+                    root, root.values(), root.items()
+                ):
+                    assert lfn_valid(name1)
+                    assert name1 == name2
+                    assert isinstance(entry1, DirectoryEntry)
+                    assert entry1 == entry2
+
+
+def test_fatdirectory_mutate_out_of_range(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            for name1, entry1, (name2, entry2) in zip(
-                root, root.values(), root.items()
-            ):
-                assert lfn_valid(name1)
-                assert name1 == name2
-                assert isinstance(entry1, DirectoryEntry)
-                assert entry1 == entry2
+            empty = root['empty']
+            with pytest.raises(OSError):
+                root._update_entry(128000, empty)
+
+
+def test_fatdirectory_mutate(fat_disks):
+    for fat_disk in fat_disks.values():
+        with DiskImage(fat_disk, access=mmap.ACCESS_COPY) as img:
+            with FatFileSystem(img.partitions[1].data) as fs:
+                root = fs.open_dir(0)
+
+                # Append, overwrite, and delete of simple SFN entries
+                l = len(root)
+                empty = root['empty']
+                touched = empty._replace(adate=empty.adate + 1)
+                root['empty'] = touched
+                assert root['empty'] == touched
+                root['empty2'] = touched
+                assert 'empty2' in root
+                assert root['empty'] == root['empty2']._replace(filename=b'EMPTY   ')
+                assert len(root) == l + 1
+                del root['empty']
+                assert 'empty' not in root
+                assert len(root) == l
+
+                # Cover deletion of LFN entries too
+                assert 'lots-of-zeros' in root
+                del root['lots-of-zeros']
+                assert 'lots-of-zeros' not in root
+                assert len(root) == l - 1
+                with pytest.raises(KeyError):
+                    del root['i-dont-exist']
 
 
 def test_fatdirectory_split_entries(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            offset, entries = first_lfn_file(root)
+            offset, entries = find_lfn_file(root)
             # Filename with mod 13 chars (no \0 terminator)
             lfn, sfn, _ = root._split_entries(entries)
             assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
@@ -542,7 +600,7 @@ def test_fatdirectory_prefix_entries(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            offset, entries = first_non_lfn_file(root)
+            offset, entries = find_non_lfn_file(root)
             lfn, sfn, entry = root._split_entries(entries)
             assert (lfn, sfn) == ('empty', 'EMPTY')
 
@@ -652,7 +710,7 @@ def test_fatdirectory_bad_lfn(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            offset, entries = first_lfn_file(root)
+            offset, entries = find_lfn_file(root)
 
             # Blank LFN
             with pytest.warns(BadLongFilename):
@@ -720,11 +778,56 @@ def test_fatdirectory_bad_lfn(fat12_disk):
             assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
 
 
+def test_fatdirectory_ignores_deleted(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            del_offset, entries = find_lfn_file(root)
+
+            # Mark lots-of-zeros as deleted
+            entries[0] = entries[0]._replace(sequence=0xE5)
+            entries[1] = entries[1]._replace(
+                filename=b'\xE5' + entries[1].filename[1:])
+            root._update_entry(
+                del_offset - DirectoryEntry._FORMAT.size, entries[0])
+            root._update_entry(
+                del_offset, entries[1])
+
+            # Ensure _group_entries never yields the offsets we deleted
+            for offset, entries in root._group_entries():
+                assert offset != del_offset
+
+
+def test_fatdirectory_clean(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            eof_offset = dir_eof(root)
+            del_offset, entries = find_lfn_file(root)
+
+            # Mark lots-of-zeros as deleted
+            entries[0] = entries[0]._replace(sequence=0xE5)
+            entries[1] = entries[1]._replace(
+                filename=b'\xE5' + entries[1].filename[1:])
+            root._update_entry(
+                del_offset - DirectoryEntry._FORMAT.size, entries[0])
+            root._update_entry(
+                del_offset, entries[1])
+
+            # Offsets may change after clean, but not entries
+            before_entries = [e for offset, e in root._group_entries()]
+            root._clean_entries()
+            after_entries = [e for offset, e in root._group_entries()]
+            assert before_entries == after_entries
+            assert dir_eof(root) == (
+                eof_offset - (DirectoryEntry._FORMAT.size * 2))
+
+
 def test_fatdirectory_get_unique_sfn(fat12_disk):
     with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
-            offset, entries = first_lfn_file(root)
+            offset, entries = find_lfn_file(root)
             lfn, sfn, entry = root._split_entries(entries)
             assert (lfn, sfn) == ('lots-of-zeros', 'LOTS-O~1')
 
@@ -793,3 +896,85 @@ def test_fatdirectory_get_unique_sfn(fat12_disk):
                     attr2=0,
                 ),
             ]
+
+
+def test_fatdirectory_cluster(fat_disks):
+    for fat_type, fat_disk in fat_disks.items():
+        with DiskImage(fat_disk) as img:
+            with FatFileSystem(img.partitions[1].data) as fs:
+                root = fs.open_dir(0)
+                if fat_type == 'fat32':
+                    assert root.cluster != 0
+                else:
+                    assert root.cluster == 0
+
+
+def test_fatfile_readonly(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            f = fs.open_entry(root, entry)
+            assert f.tell() == 0
+            assert f.seek(0, io.SEEK_END) > 0
+            assert f.seek(0, io.SEEK_END) == entry.size
+            assert f.readable()
+            assert f.seekable()
+            assert not f.writable()
+            with pytest.raises(OSError):
+                f.write(b'foo')
+            f.seek(0)
+            buf = f.read()
+            assert isinstance(buf, bytes)
+            assert len(buf) == entry.size
+            f.close()
+            with pytest.raises(ValueError):
+                f.seek(0)
+            with pytest.raises(ValueError):
+                fs.open_entry(root, entry, mode='r')
+
+
+def test_fatfile_fs_gone(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+            f = fs.open_entry(root, entry)
+    del fs  # Necessary to make sure fs is well and truly gone
+    with pytest.raises(ValueError):
+        f.read(1024)
+
+
+def test_fatfile_dir_no_key(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_dir(root)
+            *entries, entry = entries
+            f = fs.open_dir(get_cluster(entry, fs.fat_type))
+            with pytest.raises(ValueError):
+                f._file._get_key()
+
+
+def test_fatfile_writable(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='a+b') as f:
+                assert f.tell() == entry.size
+                assert f.readable()
+                assert f.seekable()
+                assert f.writable()
+            with fs.open_entry(root, entry, mode='wb') as f:
+                assert f.tell() == 0
+                assert not f.readable()
+                assert f.seekable()
+                assert f.writable()
+                with pytest.raises(OSError):
+                    f.read(10)
