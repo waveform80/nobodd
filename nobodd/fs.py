@@ -1675,8 +1675,7 @@ class FatFile(io.RawIOBase):
         finally:
             if self._pos > size:
                 self._set_size(self._pos)
-            if not fs.readonly:
-                self._set_mtime()
+            self._set_mtime()
         return written
 
     def _write1(self, buf, fs=None):
@@ -1714,7 +1713,7 @@ class FatFile(io.RawIOBase):
         else:
             raise ValueError(f'invalid whence: {whence}')
         if pos < 0:
-            raise IOError('invalid argument')
+            raise OSError(errno.EINVAL, os.strerror(errno.EINVAL))
         self._pos = pos
         return self._pos
 
@@ -1764,6 +1763,5 @@ class FatFile(io.RawIOBase):
                 fs.fat.mark_free(cluster)
         # Finally, correct the directory entry to reflect the new size
         self._set_size(size)
-        if not fs.readonly:
-            self._set_mtime()
+        self._set_mtime()
         return size
