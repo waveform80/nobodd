@@ -1584,6 +1584,10 @@ class FatFile(io.RawIOBase):
             self._index[self._get_key()] = entry
             self._entry = entry
 
+    def _check_closed(self):
+        if self.closed:
+            raise ValueError('I/O operation on closed file')
+
     def close(self):
         if not self.closed:
             if self._entry is not None and self._entry.size == 0 and self._map:
@@ -1605,7 +1609,8 @@ class FatFile(io.RawIOBase):
         return self._mode in 'w+'
 
     def readall(self):
-        if not self.readable:
+        self._check_closed()
+        if not self.readable():
             raise io.UnsupportedOperation()
         size = self._get_size()
         buf = bytearray(max(0, size - self._pos))
@@ -1616,7 +1621,8 @@ class FatFile(io.RawIOBase):
         return bytes(buf)
 
     def readinto(self, buf):
-        if not self.readable:
+        self._check_closed()
+        if not self.readable():
             raise io.UnsupportedOperation()
         fs = self._get_fs()
         cs = fs.clusters.size
@@ -1637,7 +1643,8 @@ class FatFile(io.RawIOBase):
         return read
 
     def write(self, buf):
-        if not self.writable:
+        self._check_closed()
+        if not self.writable():
             raise io.UnsupportedOperation()
         mem = memoryview(buf)
         fs = self._get_fs()
@@ -1679,6 +1686,7 @@ class FatFile(io.RawIOBase):
         advancing the position of the file-pointer. If the current position is
         beyond the end of the file, this method writes nothing and return 0.
         """
+        self._check_closed()
         if fs is None:
             fs = self._get_fs()
         mem = memoryview(buf)
@@ -1696,6 +1704,7 @@ class FatFile(io.RawIOBase):
         return written
 
     def seek(self, pos, whence=io.SEEK_SET):
+        self._check_closed()
         if whence == io.SEEK_SET:
             pos = pos
         elif whence == io.SEEK_CUR:
@@ -1710,7 +1719,8 @@ class FatFile(io.RawIOBase):
         return self._pos
 
     def truncate(self, size=None):
-        if not self.writable:
+        self._check_closed()
+        if not self.writable():
             raise io.UnsupportedOperation()
         fs = self._get_fs()
         cs = fs.clusters.size
