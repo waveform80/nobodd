@@ -1519,6 +1519,21 @@ class FatFile(io.RawIOBase):
         else:
             return self._entry.size
 
+    def _get_key(self):
+        """
+        Returns the short filename (SFN) key for the associated directory
+        entry. This is used by various internal methods to locate the entry
+        for updating in the associated directory index.
+        """
+        if self._entry is None:
+            raise ValueError('no key for entry-less FatFile')
+        fs = self._get_fs()
+        filename = self._entry.filename.rstrip(b' ')
+        ext = self._entry.ext.rstrip(b' ')
+        return (
+            filename + b'.' + ext if ext else filename
+        ).decode(fs.sfn_encoding)
+
     def _set_size(self, new_size):
         """
         Update the size of the file in the associated directory entry, if any.
@@ -1534,11 +1549,12 @@ class FatFile(io.RawIOBase):
                 # doesn't "move cluster" while it's opened, even if it's
                 # truncated. Only on close() do we remove the last cluster
                 first_cluster = 0
-            self._entry = self._entry._replace(
+            entry = self._entry._replace(
                 size=new_size,
                 first_cluster_hi=first_cluster >> 16,
                 first_cluster_lo=first_cluster & 0xFFFF)
-            self._index.update(self._entry)
+            self._index[self._get_key()] = entry
+            self._entry = entry
 
     def _set_atime(self, ts=None):
         """
@@ -1550,8 +1566,9 @@ class FatFile(io.RawIOBase):
             if ts is None:
                 ts = dt.datetime.now()
             adate, _, _ = encode_timestamp(ts)
-            self._entry = self._entry._replace(adate=adate)
-            self._index.update(self._entry)
+            entry = self._entry._replace(adate=adate)
+            self._index[self._get_key()] = entry
+            self._entry = entry
 
     def _set_mtime(self, ts=None):
         """
@@ -1563,8 +1580,9 @@ class FatFile(io.RawIOBase):
             if ts is None:
                 ts = dt.datetime.now()
             mdate, mtime, _ = encode_timestamp(ts)
-            self._entry = self._entry._replace(mdate=mdate, mtime=mtime)
-            self._index.update(self._entry)
+            entry = self._entry._replace(mdate=mdate, mtime=mtime)
+            self._index[self._get_key()] = entry
+            self._entry = entry
 
     def close(self):
         if not self.closed:
