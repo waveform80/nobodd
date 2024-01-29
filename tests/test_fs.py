@@ -58,6 +58,13 @@ def find_non_lfn_file(fat_dir):
     assert False, 'failed to find file without LFN'
 
 
+def find_empty_file(fat_dir):
+    for offset, entries in fat_dir._group_entries():
+        if entries[-1].size == 0 and not entries[-1].attr & 0x10:
+            return offset, entries
+    assert False, 'failed to find non-empty file'
+
+
 def find_non_empty_file(fat_dir):
     for offset, entries in fat_dir._group_entries():
         if entries[-1].size > 0:
@@ -84,6 +91,20 @@ def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
             assert fs.label == 'NOBODD---32'
             assert fs.sfn_encoding == 'iso-8859-1'
             assert not fs.atime
+
+
+def test_fs_init_bad(fat16_disk):
+    # The bad/dirty flags are present on FAT16/32 only, hence using the larger
+    # disk image here
+    with DiskImage(fat16_disk, access=mmap.ACCESS_WRITE) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            fs.fat[1] = 0x7FFF
+        with pytest.warns(DirtyFileSystem):
+            with FatFileSystem(img.partitions[1].data) as fs:
+                fs.fat[1] = 0xBFFF
+        with pytest.warns(DamagedFileSystem):
+            with FatFileSystem(img.partitions[1].data) as fs:
+                pass
 
 
 def test_ambiguous_headers_fat12(fat12_disk):
@@ -295,7 +316,6 @@ def test_fattable_free(fat12_disk):
             assert err.value.errno == errno.ENOSPC
 
 
-
 def test_fattable_free_fat32(fat32_disk, with_fsinfo):
     with DiskImage(fat32_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -306,6 +326,52 @@ def test_fattable_free_fat32(fat32_disk, with_fsinfo):
                 for cluster in fs._fat.free():
                     pass
             assert err.value.errno == errno.ENOSPC
+
+
+def test_fattable_free_fat32_bad_last_alloc(fat32_disk):
+    # When FSINFO's last_alloc is invalid, test we just fall back to scanning
+    # sequentially
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            info_offset = (
+                f32bpb.info_sector * bpb.bytes_per_sector)
+            info = FAT32InfoSector.from_buffer(part, offset=info_offset)
+            info._replace(last_alloc=0).to_buffer(part, offset=info_offset)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            for cluster in fs._fat.free():
+                assert cluster > 1
+                break
+            with pytest.raises(OSError) as err:
+                for cluster in fs._fat.free():
+                    pass
+            assert err.value.errno == errno.ENOSPC
+
+    # When FSINFO's last_alloc+1 is allocated, test we skip it (this isn't
+    # really "bad", more inconvenient)
+    with DiskImage(fat32_disk, access=mmap.ACCESS_WRITE) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            info = fs._fat._info
+            fs._fat._info = None
+            fs.fat.mark_end(info.last_alloc + 1)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            for cluster in fs._fat.free():
+                assert cluster > info.last_alloc + 1
+                break
+
+
+def test_fattable_free_too_large():
+    # FAT table can exceed max_valid clusters for the purposes of filling a
+    # sector; this ensures we do not yield clusters out of range
+    fat_table = bytearray(6144)
+    fat_table[:6114] = b'\xFF' * 6114
+    with Fat12Table(memoryview(fat_table), len(fat_table)) as tbl:
+        with pytest.raises(OSError) as err:
+            for cluster in tbl.free():
+                assert tbl.min_valid <= cluster <= tbl.max_valid
+        assert err.value.errno == errno.ENOSPC
 
 
 def test_fat12table_sequence(fat12_disk):
@@ -449,6 +515,43 @@ def test_fat32table_mutate(fat32_disk, with_fsinfo):
                 fs._fat[0] = 0xFFFFFFFF
             with pytest.raises(IndexError):
                 fs._fat[4000000000] = 2
+
+
+def test_fat32table_alloc_bad(fat32_disk):
+    # Ignore FSINFO block's free_clusters when allocating and it says there
+    # are 0 free clusters left
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            info_offset = (
+                f32bpb.info_sector * bpb.bytes_per_sector)
+            info = FAT32InfoSector.from_buffer(part, offset=info_offset)
+            info._replace(free_clusters=0).to_buffer(part, offset=info_offset)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs._fat._info.free_clusters == 0
+            fs.fat.mark_end(next(fs.fat.free()))
+            assert fs._fat._info.free_clusters == 0
+    # ... and likewise when deallocating; ignore bad info that says
+    # everything's free
+    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+        with img.partitions[1].data as part, FatFileSystem(part) as fs:
+            bpb = BIOSParameterBlock.from_buffer(part)
+            f32bpb = FAT32BIOSParameterBlock.from_buffer(
+                part, offset=BIOSParameterBlock._FORMAT.size)
+            info_offset = (
+                f32bpb.info_sector * bpb.bytes_per_sector)
+            info = FAT32InfoSector.from_buffer(part, offset=info_offset)
+            info._replace(free_clusters=len(fs.fat)).to_buffer(
+                part, offset=info_offset)
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert fs._fat._info.free_clusters == len(fs.fat)
+            for cluster, value in enumerate(fs.fat):
+                if cluster >= 2 and value:
+                    fs.fat.mark_free(cluster)
+                    break
+            assert fs._fat._info.free_clusters == len(fs.fat)
 
 
 def test_fatclusters_close_idempotent(fat12_disk):
@@ -920,15 +1023,24 @@ def test_fatfile_readonly(fat12_disk):
             assert f.tell() == 0
             assert f.seek(0, io.SEEK_END) > 0
             assert f.seek(0, io.SEEK_END) == entry.size
+            with pytest.raises(ValueError):
+                f.seek(0, whence=100)
+            with pytest.raises(OSError):
+                f.seek(-1)
             assert f.readable()
             assert f.seekable()
             assert not f.writable()
             with pytest.raises(OSError):
                 f.write(b'foo')
+            with pytest.raises(OSError):
+                f.truncate()
             f.seek(0)
             buf = f.read()
             assert isinstance(buf, bytes)
             assert len(buf) == entry.size
+            buf = bytearray(10)
+            assert f.readinto(buf) == 0
+            assert f.tell() == entry.size
             f.close()
             with pytest.raises(ValueError):
                 f.seek(0)
@@ -943,7 +1055,9 @@ def test_fatfile_fs_gone(fat12_disk):
             offset, entries = find_non_empty_file(root)
             *entries, entry = entries
             f = fs.open_entry(root, entry)
-    del fs  # Necessary to make sure fs is well and truly gone
+    # Necessary to make sure fs is well and truly gone; will probably fail
+    # on non-CPython, due to slower GC
+    del fs
     with pytest.raises(ValueError):
         f.read(1024)
 
@@ -978,3 +1092,103 @@ def test_fatfile_writable(fat12_disk):
                 assert f.writable()
                 with pytest.raises(OSError):
                     f.read(10)
+                with pytest.raises(OSError):
+                    f.readall()
+                # FatFile maintains one cluster even when file is empty, to
+                # avoid re-allocation of clusters
+                assert len(f._map) == 1
+                # Write something multiple clusters long to test allocation of
+                # new clusters
+                assert f.write(b'\xFF' * fs.clusters.size * 2)
+                assert len(f._map) == 2
+
+
+def test_fatfile_write_empty(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_empty_file(root)
+            *entries, entry = entries
+            with fs.open_entry(root, entry, mode='wb') as f:
+                assert f.tell() == 0
+                # Ensure map really is empty so we're allocating from scratch
+                assert len(f._map) == 0
+                # Write something multiple clusters long to test allocation of
+                # new clusters
+                assert f.write(b'\xFF' * fs.clusters.size * 2)
+                assert len(f._map) == 2
+                # This shouldn't be possible given how _write1 is normally
+                # called, but for the sake of coverage...
+                assert f._write1(b'') == 0
+
+
+def test_fatfile_atime(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data, atime=True) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry) as f:
+                f.read()
+                assert f._entry.adate > entry.adate
+
+
+def test_fatfile_mtime(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data, atime=True) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='r+b') as f:
+                f.write(b'\x00' * 10)
+                assert f._entry.mdate > entry.mdate
+
+
+def test_fatfile_truncate(fat12_disk):
+    # Check general truncate functionality (truncate to 0, and implicit
+    # truncation to current position)
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='r+b') as f:
+                # Ensure truncate actually removes bytes from the file's record
+                assert f.tell() == 0
+                assert f._entry.size > 0
+                assert f.truncate() == 0
+                assert f._entry.size == 0
+                # Seek beyond new EOF and ensure next write "truncates" up to
+                # the new position
+                assert f.seek(512) == 512
+                assert f.write(b'foo') == 3
+                assert f.tell() == 515
+                assert f._entry.size == 515
+
+    # Check truncate with explicit sizes
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='r+b') as f:
+                assert f.tell() == 0
+                assert f._entry.size > 2
+                assert f.truncate(size=2) == 2
+                assert f._entry.size == 2
+
+    # Check truncate with multiple extra clusters
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='wb') as f:
+                assert f.seek(fs.clusters.size * 4) == fs.clusters.size * 4
+                assert f.write(b'foo') == 3
+                assert f.tell() == fs.clusters.size * 4 + 3
