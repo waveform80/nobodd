@@ -1198,8 +1198,12 @@ class FatDirectory(abc.MutableMapping):
             if read_offset > write_offset:
                 self._update_entry(write_offset, entry)
             write_offset += DirectoryEntry._FORMAT.size
+        else:
+            # If we exit the loop without a break, the source has no EOF marker
+            # which is strictly invalid; advance the read_offset to force one
+            read_offset += DirectoryEntry._FORMAT.size
         eof = write_offset
-        empty = DirectoryEntry.from_bytes(b'\0' * DirectoryEntry._FORMAT.size)
+        empty = DirectoryEntry.eof()
         while write_offset < read_offset:
             self._update_entry(write_offset, empty)
             write_offset += DirectoryEntry._FORMAT.size
@@ -1284,7 +1288,7 @@ class FatDirectory(abc.MutableMapping):
                 else:
                     raise
             else:
-                break
+                return
 
     def __delitem__(self, name):
         uname = name.upper()

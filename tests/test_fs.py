@@ -634,6 +634,27 @@ def test_fatdirectory_mapping(fat_disks):
                     assert name1 == name2
                     assert isinstance(entry1, DirectoryEntry)
                     assert entry1 == entry2
+                assert (
+                    len(list(root)) ==
+                    len(list(root.values())) ==
+                    len(list(root.items()))
+                )
+
+
+def test_fatdirectory_iter_all(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_dir(root)
+            *entries, entry = entries
+            subdir = fs.open_dir(get_cluster(entry, fs.fat_type))
+
+            # Check _iter_entries returns *everything* in the underlying medium
+            # whether that's a memory block or a file
+            assert sum(1 for e in root._iter_entries()) == (
+                len(root._mem) // DirectoryEntry._FORMAT.size)
+            assert sum(1 for e in subdir._iter_entries()) == (
+                subdir._file.seek(0, io.SEEK_END) // DirectoryEntry._FORMAT.size)
 
 
 def test_fatdirectory_mutate_out_of_range(fat12_disk):
@@ -672,6 +693,32 @@ def test_fatdirectory_mutate(fat_disks):
                 assert len(root) == l - 1
                 with pytest.raises(KeyError):
                     del root['i-dont-exist']
+
+
+def test_fatsubdirectory_mutate(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = first_dir(root)
+            *entries, entry = entries
+            subdir = fs.open_dir(get_cluster(entry, fs.fat_type))
+            map_len = len(subdir._file._map)
+            assert subdir._file._entry is None
+
+            # Write at least enough new entries to guarantee the underlying
+            # sub-dir file requires a new cluster
+            for i in range(fs.clusters.size // DirectoryEntry._FORMAT.size):
+                subdir[f'FOO-{i:03d}'] = DirectoryEntry(
+                    filename=f'FOO-{i:03d}'.encode('ascii'),
+                    ext=b'DAT',
+                    attr=0x20, attr2=0,
+                    cdate=0, ctime=0, ctime_ms=0,
+                    mdate=0, mtime=0,
+                    adate=0,
+                    first_cluster_hi=0, first_cluster_lo=0,
+                    size=0)
+            assert subdir._file._entry is None
+            assert len(subdir._file._map) > map_len
 
 
 def test_fatdirectory_split_entries(fat12_disk):
@@ -901,6 +948,18 @@ def test_fatdirectory_ignores_deleted(fat12_disk):
                 assert offset != del_offset
 
 
+def test_fatdirectory_group_no_eof(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+
+            # Lop off the terminal EOF record and check we still enumerate the
+            # same results
+            tbl = bytearray(root._mem[:dir_eof(root)])
+            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+            assert list(root._group_entries()) == list(fakeroot._group_entries())
+
+
 def test_fatdirectory_clean(fat12_disk):
     with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -919,11 +978,90 @@ def test_fatdirectory_clean(fat12_disk):
 
             # Offsets may change after clean, but not entries
             before_entries = [e for offset, e in root._group_entries()]
-            root._clean_entries()
+            new_eof = root._clean_entries()
             after_entries = [e for offset, e in root._group_entries()]
             assert before_entries == after_entries
-            assert dir_eof(root) == (
-                eof_offset - (DirectoryEntry._FORMAT.size * 2))
+            assert dir_eof(root) == new_eof
+
+
+def test_fatdirectory_clean_no_eof(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+
+            # Create a directory that has no EOF record (technically invalid)
+            # and ensure clean still works
+            tbl = bytearray(root._mem[:dir_eof(root)])
+            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+
+            # Mark empty as deleted
+            del_offset, entries = find_empty_file(fakeroot)
+            entries[0] = entries[0]._replace(
+                filename=b'\xE5' + entries[0].filename[1:])
+            fakeroot._update_entry(del_offset, entries[0])
+
+            # Offsets may change after clean, but not entries
+            before_entries = [e for offset, e in fakeroot._group_entries()]
+            new_eof = fakeroot._clean_entries()
+            after_entries = [e for offset, e in fakeroot._group_entries()]
+            assert before_entries == after_entries
+            assert dir_eof(fakeroot) == new_eof
+
+
+def test_fatdirectory_clean_when_out_of_space(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+
+            # As above, create a directory structure that's entirely full and
+            # has no EOF (technically invalid) with one deleted entry. Attempt
+            # to set a new entry, and make sure clean runs and the subsequent
+            # write succeeds
+            tbl = bytearray(root._mem[:dir_eof(root)])
+            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+
+            # Mark lots-of-zeros as deleted (need two entries to delete so we
+            # can replace them with one and the EOF; if we can't write the EOF
+            # we'll, correctly, raise ENOSPC)
+            del_offset, entries = find_lfn_file(fakeroot)
+            entries[0] = entries[0]._replace(sequence=0xE5)
+            entries[1] = entries[1]._replace(
+                filename=b'\xE5' + entries[1].filename[1:])
+            fakeroot._update_entry(
+                del_offset - DirectoryEntry._FORMAT.size, entries[0])
+            fakeroot._update_entry(
+                del_offset, entries[1])
+
+            # Offsets may change after clean, but not entries
+            assert 'FOO.BAR' not in fakeroot
+            fakeroot['FOO.BAR'] = entries[1]._replace(filename=b'FOO', ext=b'BAR')
+            assert 'FOO.BAR' in fakeroot
+
+
+def test_fatdirectory_really_out_of_space(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+
+            # As above, create a directory structure that's entirely full and
+            # has no EOF (technically invalid) with one deleted entry. Attempt
+            # to set a new entry, and make sure clean runs and the subsequent
+            # write succeeds
+            tbl = bytearray(root._mem[:dir_eof(root)])
+            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+
+            # Mark empty as deleted
+            del_offset, entries = find_empty_file(fakeroot)
+            entries[0] = entries[0]._replace(
+                filename=b'\xE5' + entries[0].filename[1:])
+            fakeroot._update_entry(del_offset, entries[0])
+
+            # Offsets may change after clean, but not entries
+            assert 'FOO.BAR' not in fakeroot
+            with pytest.raises(OSError) as err:
+                fakeroot['FOO.BAR'] = entries[0]._replace(filename=b'FOO', ext=b'BAR')
+            assert err.value.errno == errno.ENOSPC
+            assert 'FOO.BAR' not in fakeroot
 
 
 def test_fatdirectory_get_unique_sfn(fat12_disk):
@@ -1192,3 +1330,24 @@ def test_fatfile_truncate(fat12_disk):
                 assert f.seek(fs.clusters.size * 4) == fs.clusters.size * 4
                 assert f.write(b'foo') == 3
                 assert f.tell() == fs.clusters.size * 4 + 3
+
+
+def test_fatfile_empty(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            with fs.open_entry(root, entry, mode='r+b') as f:
+                assert f._map
+                f.truncate()
+                # Ensure truncate sets size to 0 but doesn't actually remove
+                # the first cluster so we don't go bouncing stuff in and out of
+                # allocation in the FAT when truncating and re-writing a file
+                assert f._entry.size == 0
+                assert len(f._map) == 1
+            # Only once the file is actually *closed* empty do we eliminate the
+            # last cluster
+            assert f._entry.size == 0
+            assert not f._map
