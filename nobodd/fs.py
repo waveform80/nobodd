@@ -1581,6 +1581,10 @@ class FatFile(io.RawIOBase):
             if ts is None:
                 ts = dt.datetime.now()
             adate, _, _ = encode_timestamp(ts)
+            # This slightly convoluted logic is because assigning to _index
+            # causes writes to the underlying media and can fail for a variety
+            # of reasons (including no more space in the dir). Hence, don't
+            # re-write self._entry until it's actually written to disk.
             entry = self._entry._replace(adate=adate)
             self._index[self._get_key()] = entry
             self._entry = entry
@@ -1595,6 +1599,7 @@ class FatFile(io.RawIOBase):
             if ts is None:
                 ts = dt.datetime.now()
             mdate, mtime, _ = encode_timestamp(ts)
+            # See note above
             entry = self._entry._replace(mdate=mdate, mtime=mtime)
             self._index[self._get_key()] = entry
             self._entry = entry
