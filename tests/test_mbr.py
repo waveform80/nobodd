@@ -4,6 +4,7 @@ from nobodd.mbr import *
 
 
 def test_mbr_header_from_buffer(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)
@@ -14,6 +15,7 @@ def test_mbr_header_from_buffer(mbr_disk):
 
 
 def test_mbr_header_from_bytes(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h1 = MBRHeader.from_bytes(head[:MBRHeader._FORMAT.size])
@@ -22,6 +24,7 @@ def test_mbr_header_from_bytes(mbr_disk):
 
 
 def test_mbr_header_to_bytes(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)
@@ -29,6 +32,7 @@ def test_mbr_header_to_bytes(mbr_disk):
 
 
 def test_mbr_header_partitions(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)
@@ -37,6 +41,7 @@ def test_mbr_header_partitions(mbr_disk):
 
 
 def test_mbr_partition_from_buffer(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)
@@ -54,6 +59,7 @@ def test_mbr_partition_from_buffer(mbr_disk):
 
 
 def test_mbr_partition_from_bytes(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)
@@ -63,6 +69,7 @@ def test_mbr_partition_from_bytes(mbr_disk):
 
 
 def test_mbr_partition_to_bytes(mbr_disk):
+    mbr_disk.seek(0)
     head = mbr_disk.read(512)
 
     h = MBRHeader.from_buffer(head)

@@ -16,8 +16,8 @@ from nobodd.fs import *
 
 
 @pytest.fixture(params=(False, True))
-def with_fsinfo(request, fat32_disk):
-    with DiskImage(fat32_disk, access=mmap.ACCESS_WRITE) as img:
+def with_fsinfo(request, fat32_disk_w):
+    with DiskImage(fat32_disk_w, access=mmap.ACCESS_WRITE) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -93,10 +93,10 @@ def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
             assert not fs.atime
 
 
-def test_fs_init_bad(fat16_disk):
+def test_fs_init_bad(fat16_disk_w):
     # The bad/dirty flags are present on FAT16/32 only, hence using the larger
     # disk image here
-    with DiskImage(fat16_disk, access=mmap.ACCESS_WRITE) as img:
+    with DiskImage(fat16_disk_w, access=mmap.ACCESS_WRITE) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             fs.fat[1] = 0x7FFF
         with pytest.warns(DirtyFileSystem):
@@ -328,10 +328,10 @@ def test_fattable_free_fat32(fat32_disk, with_fsinfo):
             assert err.value.errno == errno.ENOSPC
 
 
-def test_fattable_free_fat32_bad_last_alloc(fat32_disk):
+def test_fattable_free_fat32_bad_last_alloc(fat32_disk_w):
     # When FSINFO's last_alloc is invalid, test we just fall back to scanning
     # sequentially
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat32_disk_w, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -351,7 +351,7 @@ def test_fattable_free_fat32_bad_last_alloc(fat32_disk):
 
     # When FSINFO's last_alloc+1 is allocated, test we skip it (this isn't
     # really "bad", more inconvenient)
-    with DiskImage(fat32_disk, access=mmap.ACCESS_WRITE) as img:
+    with DiskImage(fat32_disk_w, access=mmap.ACCESS_WRITE) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             info = fs._fat._info
             fs._fat._info = None
