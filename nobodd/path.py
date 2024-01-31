@@ -550,9 +550,9 @@ class FatPath:
         As FAT file-systems are case-insensitive, all matches are likewise
         case-insensitive.
         """
-        pat_parts = get_parts(pattern.lower())
-        if not pat_parts:
+        if not pattern:
             raise ValueError('empty pattern')
+        pat_parts = get_parts(pattern.lower())
         parts = self.parts
         if len(pat_parts) > len(parts):
             return False
@@ -590,9 +590,7 @@ class FatPath:
             yield parent
         elif parent.is_dir():
             part, *parts = parts
-            if not part:
-                raise ValueError('empty pattern component')
-            elif part == '**':
+            if part == '**':
                 yielded = set()
                 for path in recursive(parent, parts):
                     if path._parts not in yielded:
@@ -635,10 +633,10 @@ class FatPath:
             inordinate amount of time.
         """
         self._must_exist()
-        pat_parts = tuple(p.lower() for p in self.parts)
-        if not pat_parts:
+        if not pattern:
             raise ValueError('Unacceptable pattern')
-        if pat_parts[0] == self.sep:
+        pat_parts = get_parts(pattern)
+        if pat_parts[:1] == ('',):
             raise ValueError('Non-relative patterns are not supported')
         yield from self._search(self, pat_parts)
 
@@ -648,10 +646,10 @@ class FatPath:
         specified *pattern*.
         """
         self._must_exist()
-        pat_parts = tuple(p.lower() for p in self.parts)
-        if not pat_parts:
+        if not pattern:
             raise ValueError('Unacceptable pattern')
-        if pat_parts[0] == self.sep:
+        pat_parts = get_parts(pattern)
+        if pat_parts[:1] == ('',):
             raise ValueError('Non-relative patterns are not supported')
         yield from self._search(self, ('**',) + pat_parts)
 
@@ -777,10 +775,7 @@ class FatPath:
             ['.tar', '.gz']
         """
         name = self.name
-        if name.endswith('.'):
-            return []
-        else:
-            return ['.' + s for s in name.lstrip('.').split('.')[1:]]
+        return ['.' + s for s in name.lstrip('.').split('.')[1:]]
 
     @property
     def stem(self):
