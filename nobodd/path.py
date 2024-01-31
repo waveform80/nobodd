@@ -242,8 +242,7 @@ class FatPath:
             parent = self.parent
             parent._must_exist()
             parent._must_be_dir()
-            self._index = parent._index
-            self._entry = DirectoryEntry(
+            entry = DirectoryEntry(
                 # filename and ext of the entry will be ignored and overwritten
                 # with SFN generated from the associated name
                 filename=b'\0' * 8, ext=b'\0' * 3,
@@ -253,12 +252,11 @@ class FatPath:
                 mdate=date, mtime=time,
                 adate=date,
                 first_cluster_lo=0, first_cluster_hi=0, size=0)
-            try:
-                parent._index[self.name] = self._entry
-            except OSError:
-                self._entry = None
-                self._index = None
-                raise
+            parent._index[self.name] = entry
+            self._index = parent._index
+            self._entry = entry
+        else:
+            self._refresh()
 
         # Sanity check the buffering parameter and create the underlying
         # FatFile instance with an appropriate mode
@@ -416,7 +414,7 @@ class FatPath:
         cluster = next(fs.fat.free())
         fs.fat.mark_end(cluster)
 
-        self._entry = DirectoryEntry(
+        entry = DirectoryEntry(
             # filename and ext of the entry will be ignored and overwritten
             # with SFN generated from the associated name
             filename=b'\0' * 8, ext=b'\0' * 3,
@@ -428,13 +426,9 @@ class FatPath:
             first_cluster_lo=cluster & 0xFFFF,
             first_cluster_hi=cluster >> 16 if fs.fat_type == 'fat32' else 0,
             size=0)
-        try:
-            parent._index[self.name] = self._entry
-        except OSError:
-            self._entry = None
-            raise
-        else:
-            self._index = fs.open_dir(cluster)
+        parent._index[self.name] = entry
+        self._index = fs.open_dir(cluster)
+        self._entry = entry
 
         # Write the minimum entries that all sub-dirs must have: the "." and
         # ".." entries, and a terminal EOF entry
