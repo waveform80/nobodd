@@ -313,6 +313,54 @@ def test_path_attr(fat12_disk):
                 '/')
 
 
+def test_path_join(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            p = fs.root / 'a.dir' / 'licenses'
+            assert str(p / 'gpl3.txt') == '/a.dir/licenses/gpl3.txt'
+            assert str(p / '/empty.dir') == '/empty.dir'
+
+
+def test_path_queries(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            p = fs.root / 'a.dir' / 'licenses' / 'gpl3.txt'
+            assert p.exists()
+            assert p.is_file()
+            assert not p.is_dir()
+            assert p.parent.exists()
+            assert p.parent.is_dir()
+            assert not p.parent.is_file()
+            assert fs.root.is_mount()
+            assert not p.parent.is_mount()
+            assert p.is_absolute()
+            assert p.is_relative_to(p.parent)
+            assert not p.is_relative_to(fs.root / 'empty.dir')
+            assert str(p.relative_to(p.parent)) == 'gpl3.txt'
+            assert not p.relative_to(p.parent).is_absolute()
+            with pytest.raises(TypeError):
+                p.relative_to()
+
+
+def test_path_with(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            p = fs.root / 'a.dir' / 'licenses' / 'gpl3.txt'
+            assert str(p.with_name('gpl2.txt')) == '/a.dir/licenses/gpl2.txt'
+            with pytest.raises(ValueError):
+                FatPath(fs).with_name('foo')
+            with pytest.raises(ValueError):
+                p.with_name('')
+            assert str(p.with_stem('mit')) == '/a.dir/licenses/mit.txt'
+            assert str(p.with_suffix('.rst')) == '/a.dir/licenses/gpl3.rst'
+            assert str(p.with_suffix('')) == '/a.dir/licenses/gpl3'
+            assert str(p.parent.with_suffix('.dir')) == '/a.dir/licenses.dir'
+            with pytest.raises(ValueError):
+                p.with_suffix('/rst')
+            with pytest.raises(ValueError):
+                p.with_suffix('rst')
+
+
 def test_path_read(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -332,3 +380,61 @@ def test_path_write(fat12_disk):
             data = b'\x01\x02\x03\x04' * 4096
             assert p.write_bytes(data) == len(data)
             assert p.read_bytes() == data
+
+
+def test_path_touch(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            p = fs.root / 'empty'
+            old = p.stat()
+            p.touch()
+            new = p.stat()
+            assert new.st_ctime == old.st_ctime
+            assert new.st_atime == old.st_atime
+            assert new.st_mtime > old.st_mtime
+            with pytest.raises(FileExistsError):
+                p.touch(exist_ok=False)
+
+            p = fs.root / 'foo'
+            assert not p.exists()
+            p.touch(exist_ok=False)
+            assert p.exists()
+
+
+def test_path_compares(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert [str(p) for p in sorted(fs.root.iterdir())] == [
+                '/a.dir',
+                '/empty',
+                '/empty.dir',
+                '/lots-of-zeros',
+                '/random',
+            ]
+            p1 = fs.root / 'a.dir'
+            p2 = fs.root / 'empty.dir'
+            assert p1 == p1
+            assert p2 == p2
+            assert p1 != p2
+            assert p1 < p2
+            assert p1 <= p2
+            assert p1 <= p1
+            assert p2 > p1
+            assert p2 >= p1
+            assert p2 >= p2
+            assert not ((fs.root / 'a.dir') == '')
+            assert (fs.root / 'a.dir') != ''
+            with pytest.raises(TypeError):
+                (fs.root / 'a.dir') > ''
+            with pytest.raises(TypeError):
+                (fs.root / 'a.dir') >= ''
+            with pytest.raises(TypeError):
+                (fs.root / 'a.dir') < ''
+            with pytest.raises(TypeError):
+                (fs.root / 'a.dir') <= ''
+            with FatFileSystem(img.partitions[1].data) as fs2:
+                with pytest.raises(TypeError):
+                    (fs.root / 'a.dir') == (fs2.root / 'a.dir')
+                with pytest.raises(TypeError):
+                    (fs.root / 'a.dir') <= (fs2.root / 'a.dir')
+

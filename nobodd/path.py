@@ -746,7 +746,10 @@ class FatPath:
             >>> p.name
             'main.py'
         """
-        return self._parts[-1]
+        try:
+            return self._parts[-1]
+        except IndexError:
+            return ''
 
     @property
     def suffix(self):
@@ -1071,7 +1074,7 @@ class FatPath:
             raise TypeError(
                 f'comparison is not supported between instances of '
                 f'{self.__class__.__name__} with different file-systems')
-        return len(sp) == len(op) and all(
+        return len(self._parts) == len(other._parts) and all(
             sp.lower() == op.lower()
             for sp, op in zip_longest(self._parts, other._parts, fillvalue=''))
 
@@ -1089,15 +1092,23 @@ class FatPath:
             for sp, op in zip_longest(self.parts, other.parts, fillvalue=''))
 
     def __ne__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
         return not self.__eq__(other)
 
     def __lt__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
         return self.__le__(other) and not self.__eq__(other)
 
     def __gt__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
         return not self.__le__(other)
 
     def __ge__(self, other):
+        if not isinstance(other, FatPath):
+            return NotImplemented
         return self.__eq__(other) or self.__gt__(other)
 
 
