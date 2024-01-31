@@ -234,7 +234,7 @@ class FatPath:
         # If self._entry is None at this point, we must be creating a file
         # so get the containing index and make an appropriate DirectoryEntry
         if self._entry is None:
-            date, time, ms = encode_timestamp(dt.datetime.now())
+            date, time, cs = encode_timestamp(dt.datetime.now())
             parent = self.parent
             parent._must_exist()
             parent._must_be_dir()
@@ -245,7 +245,7 @@ class FatPath:
                 filename=b'\0' * 8, ext=b'\0' * 3,
                 # Set DOS "Archive" bit and nothing else
                 attr=0x20, attr2=0,
-                cdate=date, ctime=time, ctime_ms=ms,
+                cdate=date, ctime=time, ctime_cs=cs,
                 mdate=date, mtime=time,
                 adate=date,
                 first_cluster_lo=0, first_cluster_hi=0, size=0)
@@ -408,7 +408,7 @@ class FatPath:
                 raise
         parent._must_be_dir()
 
-        date, time, ms = encode_timestamp(dt.datetime.now())
+        date, time, cs = encode_timestamp(dt.datetime.now())
         cluster = next(fs.fat.free())
         fs.fat.mark_end(cluster)
 
@@ -418,7 +418,7 @@ class FatPath:
             filename=b'\0' * 8, ext=b'\0' * 3,
             # Set DOS "Directory" bit and nothing else
             attr=0x10, attr2=0,
-            cdate=date, ctime=time, ctime_ms=ms,
+            cdate=date, ctime=time, ctime_cs=cs,
             mdate=date, mtime=time,
             adate=date,
             first_cluster_lo=cluster & 0xFFFF,
@@ -695,7 +695,7 @@ class FatPath:
                     self._entry.mdate, self._entry.mtime).timestamp(),
                 decode_timestamp(                           # ctime
                     self._entry.cdate, self._entry.ctime,
-                    self._entry.ctime_ms * 10).timestamp()))
+                    self._entry.ctime_cs).timestamp()))
         else: # self._index is not None is guaranteed by _must_exist
             # NOTE: No need to _refresh as the cluster of a sub-directory can
             # never change

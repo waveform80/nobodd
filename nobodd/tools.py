@@ -240,12 +240,13 @@ if pairwise is None:
         return zip(a, b)
 
 
-def decode_timestamp(date, time, ms=0):
+def decode_timestamp(date, time, cs=0):
     """
-    Given the integers *date*,  *time*, and optionally *ms* (from various
+    Given the integers *date*,  *time*, and optionally *cs* (from various
     fields in :class:`~nobodd.fat.DirectoryEntry`), return a
     :class:`~datetime.datetime` with the decoded timestamp.
     """
+    ms = cs * 10
     return dt.datetime(
         year=1980 + ((date & 0xFE00) >> 9),
         month=(date & 0x1E0) >> 5,
@@ -253,7 +254,7 @@ def decode_timestamp(date, time, ms=0):
         hour=(time & 0xF800) >> 11,
         minute=(time & 0x7E0) >> 5,
         second=(time & 0x1F) * 2 + (ms // 1000),
-        microsecond=(ms % 1000) * 1000 * 10
+        microsecond=(ms % 1000) * 1000
     )
 
 

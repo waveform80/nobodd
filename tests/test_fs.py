@@ -712,7 +712,7 @@ def test_fatsubdirectory_mutate(fat12_disk):
                     filename=f'FOO-{i:03d}'.encode('ascii'),
                     ext=b'DAT',
                     attr=0x20, attr2=0,
-                    cdate=0, ctime=0, ctime_ms=0,
+                    cdate=0, ctime=0, ctime_cs=0,
                     mdate=0, mtime=0,
                     adate=0,
                     first_cluster_hi=0, first_cluster_lo=0,

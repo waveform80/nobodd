@@ -240,7 +240,7 @@ DIRECTORY_ENTRY = """
 3s    ext
 B     attr
 B     attr2
-B     ctime_ms
+B     ctime_cs
 H     ctime
 H     cdate
 H     adate

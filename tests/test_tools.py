@@ -102,6 +102,15 @@ def test_encode_timestamp():
         dt.datetime(2000, 12, 25, 12, 34, 56, 500000)) == (0x2999, 0x645c, 0x32)
 
 
+def test_timestamp_roundtrip():
+    # Resolution is limited to 10ms units
+    now = dt.datetime.now()
+    now = now.replace(
+        microsecond=(now.microsecond // 10000) * 10000)
+    print(now)
+    assert decode_timestamp(*encode_timestamp(now)) == now
+
+
 def test_exclude():
     r = [range(10)]
     exclude(r, 5)
