@@ -221,7 +221,7 @@ class FatPath:
         fs = self._get_fs()
         # Check the mode is valid and matches our expectations (can't open a
         # directory, can't read a non-existent file, etc.)
-        if set(mode) > set('rwaxb+'):
+        if set(mode) - set('rwaxb+'):
             raise ValueError(f'invalid file mode {mode!r}')
         if len(set(mode) & set('rwax')) != 1:
             raise ValueError('must have exactly one of read, write, append, '
