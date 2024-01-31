@@ -60,6 +60,8 @@ Packets
 
 .. autoclass:: RRQPacket
 
+.. autoclass:: WRQPacket
+
 .. autoclass:: DATAPacket
 
 .. autoclass:: ACKPacket
