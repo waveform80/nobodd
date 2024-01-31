@@ -243,8 +243,8 @@ class FatPath:
             parent._must_exist()
             parent._must_be_dir()
             entry = DirectoryEntry(
-                # filename and ext of the entry will be ignored and overwritten
-                # with SFN generated from the associated name
+                # filename and ext of the entry will be ignored; generated
+                # SFN will be used instead
                 filename=b'\0' * 8, ext=b'\0' * 3,
                 # Set DOS "Archive" bit and nothing else
                 attr=0x20, attr2=0,
@@ -254,7 +254,9 @@ class FatPath:
                 first_cluster_lo=0, first_cluster_hi=0, size=0)
             parent._index[self.name] = entry
             self._index = parent._index
-            self._entry = entry
+            # Look up entry to get generated SFN; this is required so the entry
+            # we pass to FatFile below has a valid key for later lookups
+            self._entry = parent._index[self.name]
         else:
             self._refresh()
 
