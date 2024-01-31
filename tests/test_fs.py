@@ -641,6 +641,17 @@ def test_fatdirectory_mapping(fat_disks):
                 )
 
 
+def test_fatdirectory_no_update_atime(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data, atime=True) as fs:
+            root = fs.open_dir(0)
+            offsets, entries = first_dir(root)
+            subdir = fs.open_dir(get_cluster(entries[-1], fs.fat_type))
+            # There is no atime to update because there's no _entry in the
+            # subdir's underlying file, but we hit it for coverage anyway
+            assert len(subdir) > 0
+
+
 def test_fatdirectory_iter_all(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -1184,6 +1195,21 @@ def test_fatfile_readonly(fat12_disk):
                 f.seek(0)
             with pytest.raises(ValueError):
                 fs.open_entry(root, entry, mode='r')
+
+
+def test_fatfile_close_idempotent(fat12_disk):
+    with DiskImage(fat12_disk) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            f = fs.open_entry(root, entry)
+            assert not f.closed
+            f.close()
+            assert f.closed
+            f.close()
+            assert f.closed
 
 
 def test_fatfile_fs_gone(fat12_disk):
