@@ -1542,7 +1542,9 @@ class FatFile(io.RawIOBase):
             raise ValueError('no key for entry-less FatFile')
         fs = self._get_fs()
         filename = self._entry.filename.rstrip(b' ')
+        assert filename != b'\0' * 8
         ext = self._entry.ext.rstrip(b' ')
+        assert ext != b'\0' * 3
         return (
             filename + b'.' + ext if ext else filename
         ).decode(fs.sfn_encoding)
