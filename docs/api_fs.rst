@@ -58,6 +58,10 @@ Exceptions and Warnings
 
 .. autoexception:: DamagedFileSystem
 
+.. autoexception:: OrphanedLongFilename
+
+.. autoexception:: BadLongFilename
+
 
 Internal Classes and Functions
 ==============================

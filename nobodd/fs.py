@@ -283,7 +283,8 @@ class FatFileSystem:
         .. warning::
 
             This attribute is intended for internal use by the :class:`FatFile`
-            class.
+            class, but may be useful for low-level exploration or manipulation
+            of FAT file-systems.
         """
         return self._fat
 
@@ -296,7 +297,8 @@ class FatFileSystem:
         .. warning::
 
             This attribute is intended for internal use by the :class:`FatFile`
-            class.
+            class, but may be useful for low-level exploration or manipulation
+            of FAT file-systems.
         """
         return self._data
 
@@ -354,8 +356,9 @@ class FatFileSystem:
 
             This is intended to be the primary entry-point for querying and
             manipulating the file-system at the high level. Only use the
-            :attr:`fat` and :attr:`clusters` attributes if you want to explore
-            the file-system at a low level.
+            :attr:`fat` and :attr:`clusters` attributes, and the various "open"
+            methods if you want to explore or manipulate the file-system at a
+            low level.
         """
         return FatPath._from_index(self, self.open_dir(0))
 
@@ -804,30 +807,33 @@ class FatDirectory(abc.MutableMapping):
     :class:`~nobodd.fat.DirectoryEntry` instances, but there are several
     oddities to be aware of.
 
-    In VFAT, all files effectively have *two* filenames: the original DOS
+    In VFAT, most files effectively have *two* filenames: the original DOS
     "short" filename (SFN hereafter) and the VFAT "long" filename (LFN
     hereafter). Even when :class:`~nobodd.fat.LongFilenameEntry` records do
     *not* precede a :class:`~nobodd.fat.DirectoryEntry`, the file may still
     have an LFN that differs from the SFN in case only. Naturally, some files
     still only have one filename because the LFN doesn't vary in case from the
-    SFN, e.g. the special directory entries "." and "..". This implementation
-    never returns (or accepts) :class:`~nobodd.fat.LongFilenameEntry` records.
-    These are managed internally according to the LFNs requested.
+    SFN, e.g. the special directory entries "." and "..", and anything which
+    conforms to original DOS naming rules like "README.TXT".
 
     For the purposes of listing files, most FAT implementations (including this
     one) ignore the SFNs. Hence, iterating over this mapping will *not* yield
-    the SFNs (unless the SFN is equal to the LFN), and they are *not* counted
-    in the length of the mapping. However, for the purposes of testing
+    the SFNs as keys (unless the SFN is equal to the LFN), and they are *not*
+    counted in the length of the mapping. However, for the purposes of testing
     existence, opening, etc., FAT implementations allow the use of SFNs. Hence,
     testing for membership, or manipulating entries via the SFN will work with
     this mapping, and will implicitly manipulate the associated LFNs (e.g.
-    deleting an entry via SFN will also delete the associated LFN).
+    deleting an entry via a SFN key will also delete the associated LFN key).
 
     In other words, if a file has a distinct LFN and SFN, it has *two* entries
-    in the mapping (the "visible" LFN entry, and the "invisible" SFN entry).
-    Finally, note that FAT is case retentive (for LFNs; SFNs are folded
+    in the mapping (a "visible" LFN entry, and an "invisible" SFN entry).
+    Further, note that FAT is case retentive (for LFNs; SFNs are folded
     uppercase), but not case sensitive. Hence, membership tests and retrieval
     from this mapping are case insensitive with regard to keys.
+
+    Finally, note that the values in the mapping are always instances of
+    :class:`~nobodd.fat.DirectoryEntry`. :class:`~nobodd.fat.LongFilenameEntry`
+    instances are neither accepted nor returned; these are managed internally.
 
     .. _FAT directory:
         https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#Directory_table
@@ -882,8 +888,8 @@ class FatDirectory(abc.MutableMapping):
 
             This function also carries out several checks, including the
             filename checksum, that all checksums match, that the number of
-            entries is valid, etc. Any violations found will raise
-            :exc:`ValueError`.
+            entries is valid, etc. Any violations found may raise warnings
+            including :exc:`OrphanedLongFilename` and :exc:`BadLongFilename`.
         """
         # The extration of the long filename could be simpler, but let's do all
         # the checks we can (the structure includes a *lot* of redundancy for
@@ -933,7 +939,8 @@ class FatDirectory(abc.MutableMapping):
 
         Returns the decoded (:class:`str`) long filename, or :data:`None` if
         no valid long filename can be found. Emits various warnings if
-        "orphaned" long filename entries are encoded during decoding.
+        invalid entries are encountered during decoding, including
+        :exc:`OrphanedLongFilename` and :exc:`BadLongFilename`.
         """
         if not entries:
             return None
@@ -983,8 +990,8 @@ class FatDirectory(abc.MutableMapping):
     def _prefix_entries(self, filename, entry):
         """
         Given *entry*, a :class:`~nobodd.fat.DirectoryEntry`, generate the
-        necessary `~nobodd.fat.LongFilenameEntry` instances (if any), that are
-        necessary to associate *entry* with the specified *filename*.
+        necessary :class:`~nobodd.fat.LongFilenameEntry` instances (if any),
+        that are necessary to associate *entry* with the specified *filename*.
 
         This function merely constructs the instances, ensuring the (many,
         convoluted!) rules are followed, including that the short filename, if
@@ -993,13 +1000,13 @@ class FatDirectory(abc.MutableMapping):
 
         .. note::
 
-            The *filename* and *ext* fields of *entry* are over-written by
-            this method. The only filename that is considered is the one
-            explicitly passed in which becomes the basis for the long filename
-            entries *and* the short filename stored within the *entry* itself.
+            The *filename* and *ext* fields of *entry* are ignored by this
+            method. The only filename that is considered is the one explicitly
+            passed in which becomes the basis for the long filename entries
+            *and* the short filename stored within the *entry* itself.
 
         The return value is the sequence of long filename entries and the
-        directory entry suffix in the order they should appear on disk.
+        modified directory entry in the order they should appear on disk.
         """
         lfn, sfn, ext, attr2 = self._get_names(filename)
         if lfn:
@@ -1030,13 +1037,14 @@ class FatDirectory(abc.MutableMapping):
     def _get_names(self, filename):
         """
         Given a *filename*, generate an appropriately encoded long filename
-        (encoded in little-endian UCS-2), a short filename, an extension, and
-        the case attributes. The result is a 4-tuple: ``lfn, sfn, ext, attr``.
+        (encoded in little-endian UCS-2), short filename (encoded in the
+        file-system's SFN encoding), extension, and the case attributes. The
+        result is a 4-tuple: ``lfn, sfn, ext, attr``.
 
         ``lfn``, ``sfn``, and ``ext`` will be :class:`bytes` strings, and
         ``attr`` will be an :class:`int`. If *filename* is capable of being
         represented as a short filename only (potentially with non-zero case
-        attributes), ``lfn`` in the result will be blank.
+        attributes), ``lfn`` in the result will be zero-length.
         """
         # sfn == short filename, lfn == long filename, ext == extension
         if filename in ('.', '..'):
@@ -1102,17 +1110,18 @@ class FatDirectory(abc.MutableMapping):
         """
         Given *prefix* and *ext*, which are :class:`str`, of the short filename
         prefix and extension, find a suffix that is unique in the directory
-        (amongst both long *and* short filenames, because anything with a long
-        filename in VFAT effectively has *two* filenames).
+        (amongst both long *and* short filenames, because these are still in
+        the same namespace).
 
-        For example, given a file with long filename ``default.conf``, in
-        a directory containing ``default.config`` (which has shortname
-        ``DEFAUL~1.CON``), this function will return ``DEFAUL~2.CON``.
+        For example, in a directory containing ``default.config`` (which has
+        shortname ``DEFAUL~1.CON``), given the filename and extension
+        ``default.conf``, this function will return the :class:`str`
+        ``DEFAUL~2.CON``.
 
         Because the search requires enumeration of the whole directory, which
         is expensive, an artificial limit of :data:`MAX_SFN_SUFFIX` is
-        enforced. If this is reached, the search will terminate with an error,
-        causing the creation of the file/directory to fail.
+        enforced. If this is reached, the search will terminate with an
+        :exc:`OSError` with code ENOSPC (out of space).
         """
         ranges = [range(1, self.MAX_SFN_SUFFIX)]
         regexes = [
@@ -1139,12 +1148,12 @@ class FatDirectory(abc.MutableMapping):
 
     def _group_entries(self):
         """
-        Generator which yields an offset, and a sequence of tuples of either
-        :class:`~nobodd.fat.LongFilenameEntry` or
+        Generator which yields an offset, and a sequence of either
+        :class:`~nobodd.fat.LongFilenameEntry` and
         :class:`~nobodd.fat.DirectoryEntry` instances.
 
-        Each sequence yielded represents a single (extant, non-deleted) file or
-        directory entry with its long-filename entries at the start, and the
+        Each tuple yielded represents a single (extant, non-deleted) file or
+        directory with its long-filename entries at the start, and the
         directory entry as the final element. The offset associated with the
         sequence is the offset of the *directory entry* (not its preceding long
         filename entries). In other words, for a file with three long-filename
