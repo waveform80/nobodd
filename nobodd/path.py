@@ -2,8 +2,10 @@ import io
 import os
 import re
 import stat
+import errno
 import fnmatch
 import weakref
+import warnings
 import datetime as dt
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
