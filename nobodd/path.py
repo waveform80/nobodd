@@ -371,6 +371,10 @@ class FatPath:
                 fs.fat.mark_free(cluster)
         self._index = None
         self._entry = None
+        # The entry is mutated by the FatDirectory when setting (specifically
+        # the SFN is re-written); in case the *target* is not ephemeral, update
+        # its internal _entry to match to mutated one
+        target._entry = target._index[target.name]
         return target
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
