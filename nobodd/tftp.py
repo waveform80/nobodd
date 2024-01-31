@@ -114,13 +114,19 @@ class Packet:
             RRQPacket(filename='config.txt', mode='octet', options=FrozenDict({}))
         """
         opcode, = struct.unpack_from('!H', s)
-        return {
-            OpCode.RRQ:   RRQPacket,
-            OpCode.DATA:  DATAPacket,
-            OpCode.ACK:   ACKPacket,
-            OpCode.ERROR: ERRORPacket,
-            OpCode.OACK:  OACKPacket,
-        }[opcode].from_data(s[2:])
+        try:
+            cls = {
+                OpCode.RRQ:   RRQPacket,
+                OpCode.WRQ:   WRQPacket,
+                OpCode.DATA:  DATAPacket,
+                OpCode.ACK:   ACKPacket,
+                OpCode.ERROR: ERRORPacket,
+                OpCode.OACK:  OACKPacket,
+            }[opcode]
+        except KeyError:
+            raise ValueError(f'invalid packet opcode {opcode}')
+        else:
+            return cls.from_data(s[2:])
 
     @classmethod
     def from_data(cls, data):
@@ -180,7 +186,7 @@ class RRQPacket(Packet):
         try:
             filename, mode, suffix = cls.packet_re.match(data).groups()
         except AttributeError:
-            raise ValueError('badly formed RRQ packet')
+            raise ValueError('badly formed RRQ/WRQ packet')
         # Technically the filename must be in ASCII format (7-bit chars in an
         # 8-bit field), but given ASCII is a strict subset of UTF-8, and that
         # UTF-8 cannot include NUL chars, I see no harm in permitting UTF-8
@@ -195,6 +201,19 @@ class RRQPacket(Packet):
             for match in cls.options_re.finditer(suffix)
         }
         return cls(filename, mode, options)
+
+
+class WRQPacket(RRQPacket):
+    """
+    Concrete type for ``WRQ`` (write request) packets.
+
+    These packets are sent by a client to initiate a transfer to the server.
+    They include the *filename* to be sent, the *mode* to send it (one of the
+    strings "octet" or "netascii"), and any *options* the client wishes to
+    negotiate.
+    """
+    __slots__ = ()
+    opcode = OpCode.WRQ
 
 
 class DATAPacket(Packet):

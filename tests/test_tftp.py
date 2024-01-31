@@ -82,3 +82,8 @@ def test_oack_roundtrip():
     pkt = Packet.from_bytes(b'\x00\x06blksize\x001428\x00')
     pkt2 = Packet.from_bytes(bytes(pkt))
     assert pkt.options == pkt2.options
+
+
+def test_bad_init():
+    with pytest.raises(ValueError):
+        Packet.from_bytes(b'\x00\x08\x00\x00\x00\x00')

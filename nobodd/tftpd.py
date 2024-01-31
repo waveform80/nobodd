@@ -25,6 +25,7 @@ from .tftp import (
     TFTP_OPTIONS,
     Packet,
     RRQPacket,
+    WRQPacket,
     DATAPacket,
     ACKPacket,
     ERRORPacket,
