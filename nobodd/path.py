@@ -50,6 +50,8 @@ class FatPath:
         for index, part in enumerate(self._parts):
             if index == 0 and not part:
                 continue # ignore root marker
+            elif part in ('.', '..'):
+                continue # ignore path components
             elif not lfn_valid(part):
                 raise ValueError(f'invalid name {str(self)!r}')
         self._resolved = False
