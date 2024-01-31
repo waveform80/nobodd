@@ -259,7 +259,7 @@ class ERRORPacket(Packet):
     opcode = OpCode.ERROR
 
     def __init__(self, error, message=None):
-        self.error = Error(error)
+        self.error = Error(int(error))
         if message is None:
             self.message = {
                 Error.UNDEFINED:    'Undefined error',
@@ -316,6 +316,6 @@ class OACKPacket(Packet):
         options = {
             match.group('name').decode('ascii').lower():
                 match.group('value').decode('ascii').lower()
-            for match in cls.options_re.finditer(suffix)
+            for match in cls.options_re.finditer(data)
         }
         return cls(options)
