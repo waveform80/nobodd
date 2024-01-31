@@ -882,7 +882,7 @@ class FatPath:
         """
         with self.open(mode='w', encoding=encoding, errors=errors,
                        newline=newline) as f:
-            return r.write(data)
+            return f.write(data)
 
     def read_bytes(self):
         """
