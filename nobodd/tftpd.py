@@ -161,7 +161,10 @@ class TFTPClientState:
         # regardless of its order in the options. If both are present, timeout
         # is removed from the returned options to indicate we accept utimeout
         if TFTP_TIMEOUT in options:
-            self.timeout = int(options[TFTP_TIMEOUT]) * 1_000_000_000
+            try:
+                self.timeout = int(options[TFTP_TIMEOUT]) * 1_000_000_000
+            except ValueError:
+                self.timeout = int(float(options[TFTP_TIMEOUT]) * 1_000_000_000)
         if TFTP_UTIMEOUT in options:
             self.timeout = int(options[TFTP_UTIMEOUT]) * 1_000
             with suppress(KeyError):
