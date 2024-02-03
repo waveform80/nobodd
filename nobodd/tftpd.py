@@ -568,6 +568,7 @@ class TFTPSubServer(UDPServer):
         state = self.client_state
         if now - state.last_recv > state.timeout:
             if state.last_send is None:
+                # TODO: Not sure this code can be reached?
                 self.logger.error('internal error; timeout without send')
                 self.done = True
             elif state.last_send - state.last_recv > state.timeout * 5:
@@ -601,6 +602,7 @@ class TFTPSubServers(Thread):
 
     def close(self):
         self._done.set()
+        self.join(timeout=10)
 
     def add(self, server):
         """
