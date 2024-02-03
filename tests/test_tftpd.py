@@ -1,5 +1,7 @@
 import io
 import socket
+import select
+import logging
 from threading import Thread
 
 import pytest
@@ -30,13 +32,21 @@ def cmdline_txt(tftp_root):
 @pytest.fixture(scope='session')
 def initrd_img(tftp_root):
     p = tftp_root / 'initrd.img'
-    p.write_bytes(b'\x00' * 10485760)
+    p.write_bytes(b'\x00' * 4096)
     p.chmod(0o444)
     return p
 
 
 @pytest.fixture(scope='session')
-def tftp_server(tftp_root, cmdline_txt, initrd_img):
+def unreadable(tftp_root):
+    p = tftp_root / 'unreadable.txt'
+    p.write_text("Nah nah, can't read me!")
+    p.chmod(0o222)
+    return p
+
+
+@pytest.fixture(scope='session')
+def tftp_server(tftp_root, cmdline_txt, initrd_img, unreadable):
     # NOTE: Because this is a session scoped fixture, tests must ensure they
     # leave the server "clean" of connections after they finish; other tests
     # may rely upon the server having no outstanding connections
@@ -47,6 +57,11 @@ def tftp_server(tftp_root, cmdline_txt, initrd_img):
         server.shutdown()
         thread.join(10)
         assert not thread.is_alive()
+
+
+def tftp_recv(sock):
+    buf, addr = sock.recvfrom(1500)
+    return Packet.from_bytes(buf), addr
 
 
 def test_clientstate_init(localhost, cmdline_txt):
@@ -162,94 +177,361 @@ def test_clientstate_transfer(localhost, initrd_img):
     assert state.finished
 
 
-def test_tftp_rrq_transfer(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+def test_tftp_rrq_transfer(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
         assert not tftp_server.subs._alive
 
-        tx_pkt1 = RRQPacket('cmdline.txt', 'octet')
-        client.sendto(bytes(tx_pkt1), tftp_server.server_address)
-        buf, tx_addr1 = client.recvfrom(1500)
-        rx_pkt1 = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt1, DATAPacket)
-        assert rx_pkt1.block == 1
-        assert rx_pkt1.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
+        client.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
         # Responses come from the same address, but *not* the same port as the
         # initial request (an ephemeral port is allocated per transfer)
-        assert tx_addr1[0] == tftp_server.server_address[0]
-        assert tx_addr1[1] != tftp_server.server_address[1]
+        assert addr[0] == tftp_server.server_address[0]
+        assert addr[1] != tftp_server.server_address[1]
         assert tftp_server.subs._alive
 
         # Be nice and ACK the DATA packet
-        tx_pkt2 = ACKPacket(rx_pkt1.block)
-        client.sendto(bytes(tx_pkt2), tx_addr1)
+        client.sendto(bytes(ACKPacket(pkt.block)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+        ]
 
 
-def test_tftp_rrq_transfer_with_options(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        tx_pkt1 = RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})
-        client.sendto(bytes(tx_pkt1), tftp_server.server_address)
-        buf, tx_addr1 = client.recvfrom(1500)
-        rx_pkt1 = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt1, OACKPacket)
-        assert rx_pkt1.options == {'blksize': '128'}
+def test_tftp_rrq_transfer_repeat_ack(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
+        for block, offset in enumerate(range(0, 4096, 512), start=1):
+            buf, addr = client.recvfrom(1500)
+            pkt = Packet.from_bytes(buf)
+            assert isinstance(pkt, DATAPacket)
+            assert pkt.block == block
+            assert pkt.data == b'\0' * 512
+            # ACK the received packet
+            client.sendto(bytes(ACKPacket(pkt.block)), addr)
+            # ACK the first DATA packet repeatedly after we've received the
+            # first block; this should be ignored and should not cause repeated
+            # transfers (after later packets are ACKed)
+            if block > 1:
+                client.sendto(bytes(ACKPacket(1)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) initrd.img'),
+        ]
+
+
+def test_tftp_rrq_transfer_future_ack(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'\0' * 512
+
+        # ACK a packet we haven't seen yet; this should return an ERROR packet
+        # and terminate the transfer
+        client.sendto(bytes(ACKPacket(2)), addr)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.UNDEFINED
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) initrd.img'),
+        ]
+
+
+def test_tftp_rrq_transfer_resend(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
+
+        # Don't ACK the packet and await the resend after timeout
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
+
+        # Now we can ACK the packet
+        client.sendto(bytes(ACKPacket(pkt.block)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+        ]
+
+
+def test_tftp_rrq_transfer_with_options(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
+            tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, OACKPacket)
+        assert pkt.options == {'blksize': '128'}
         # Responses come from the same address, but *not* the same port as the
         # initial request (an ephemeral port is allocated per transfer)
-        assert tx_addr1[0] == tftp_server.server_address[0]
-        assert tx_addr1[1] != tftp_server.server_address[1]
+        assert addr[0] == tftp_server.server_address[0]
+        assert addr[1] != tftp_server.server_address[1]
 
-        tx_pkt2 = ACKPacket(0)
-        client.sendto(bytes(tx_pkt2), tx_addr1)
-        buf, tx_addr2 = client.recvfrom(1500)
-        rx_pkt2 = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt2, DATAPacket)
-        assert rx_pkt2.block == 1
-        assert rx_pkt2.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
-        assert tx_addr1 == tx_addr2
+        client.sendto(bytes(ACKPacket(0)), addr)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
 
         # Be nice and ACK the DATA packet
-        tx_pkt3 = ACKPacket(rx_pkt2.block)
-        client.sendto(bytes(tx_pkt3), tx_addr2)
+        client.sendto(bytes(ACKPacket(pkt.block)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+        ]
 
 
-def test_tftp_rrq_transfer_bad_options(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        tx_pkt1 = RRQPacket('cmdline.txt', 'octet', {'blksize': '1'})
-        client.sendto(bytes(tx_pkt1), tftp_server.server_address)
-        buf, tx_addr1 = client.recvfrom(1500)
-        rx_pkt1 = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt1, ERRORPacket)
-        assert rx_pkt1.error == Error.INVALID_OPT
+def test_tftp_rrq_transfer_resend_and_die(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet', {'utimeout': '100000'})),
+            tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, OACKPacket)
+        assert pkt.options == {'utimeout': '100000'}
+        client.sendto(bytes(ACKPacket(0)), addr)
+
+        for i in range(4):
+            # We should receive at least 4 retries before the server finally
+            # gives up
+            buf, addr = client.recvfrom(1500)
+            pkt = Packet.from_bytes(buf)
+            assert isinstance(pkt, DATAPacket)
+            assert pkt.block == 1
+            assert pkt.data == b'nbdroot=server:image root=/dev/nbd0p2 quiet splash'
+
+        # No need to ACK the packet; the server's given up by this point
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - timed out to 127.0.0.1:{addr[1]}'),
+        ]
 
 
-def test_tftp_rrq_transfer_bad_filename(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        tx_pkt1 = RRQPacket('foo.txt', 'octet')
-        client.sendto(bytes(tx_pkt1), tftp_server.server_address)
-        buf, tx_addr1 = client.recvfrom(1500)
-        rx_pkt1 = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt1, ERRORPacket)
-        assert rx_pkt1.error == Error.NOT_FOUND
+def test_tftp_rrq_transfer_bad_options(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '1'})),
+            tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.INVALID_OPT
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - ERROR - bad options; silly block size'),
+        ]
 
 
-def test_tftp_wrq_transfer(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        tx_pkt = WRQPacket('cmdline.txt', 'octet')
-        client.sendto(bytes(tx_pkt), tftp_server.server_address)
-        buf, tx_addr = client.recvfrom(1500)
-        rx_pkt = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt, ERRORPacket)
-        assert rx_pkt.error == Error.UNDEFINED
-        assert rx_pkt.message == (
+def test_tftp_rrq_transfer_bad_filename(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('foo.txt', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.NOT_FOUND
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) foo.txt'),
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - ERROR - not found'),
+        ]
+
+
+def test_tftp_rrq_transfer_permission_error(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('unreadable.txt', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.NOT_AUTH
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) unreadable.txt'),
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - ERROR - permission denied'),
+        ]
+
+
+def test_tftp_wrq_transfer(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(WRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.UNDEFINED
+        assert pkt.message == (
             "Unsupported operation, 'SimpleTFTPHandler' object has no "
             "attribute 'do_WRQ'")
 
+        assert caplog.record_tuples == [
+            ('tftpd', logging.WARNING,
+             f'127.0.0.1:{client.getsockname()[1]} - ERROR - unsupported operation; '
+             "'SimpleTFTPHandler' object has no attribute 'do_WRQ'"),
+        ]
 
-def test_tftp_bad_request(tftp_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        tx_pkt = WRQPacket('cmdline.txt', 'octet')
+
+def test_tftp_client_error1(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(ERRORPacket(Error.UNDEFINED)), tftp_server.server_address)
+        # If client sends an error on the main connection, it's simply ignored
+        assert select.select([client], [], [], 0.1) == ([], [], [])
+
+        # To the extent it's not even logging, because this is a valid way to
+        # terminate a connection
+        assert caplog.record_tuples == []
+
+
+def test_tftp_client_error2(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
+        client.sendto(
+            bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+        assert pkt.data == b'\0' * 512
+
+        # If client sends an error on the ephemeral connection, it simply
+        # terminates the transfer immediately
+        client.sendto(bytes(ERRORPacket(Error.UNDEFINED)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client.getsockname()[1]} - RRQ (octet) initrd.img'),
+        ]
+
+
+def test_tftp_bad_request(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
+        caplog.at_level(logging.INFO)
+    ):
         client.sendto(b'\x00\x08\x00\x00\x00', tftp_server.server_address)
-        buf, tx_addr = client.recvfrom(1500)
-        rx_pkt = Packet.from_bytes(buf)
-        assert isinstance(rx_pkt, ERRORPacket)
-        assert rx_pkt.error == Error.UNDEFINED
-        assert rx_pkt.message == 'Invalid request, invalid packet opcode 8'
+        buf, addr = client.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, ERRORPacket)
+        assert pkt.error == Error.UNDEFINED
+        assert pkt.message == 'Invalid request, invalid packet opcode 8'
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.WARNING,
+             f'127.0.0.1:{client.getsockname()[1]} - ERROR - invalid request; '
+             f'invalid packet opcode 8'),
+        ]
+
+
+def test_tftp_bad_client(tftp_server, caplog):
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client1,
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client2,
+        caplog.at_level(logging.INFO)
+    ):
+        # Start a valid transfer from client1...
+        client1.sendto(
+            bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
+            tftp_server.server_address)
+        buf, addr = client1.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, OACKPacket)
+        assert pkt.options == {'blksize': '128'}
+        assert addr[0] == tftp_server.server_address[0]
+        assert addr[1] != tftp_server.server_address[1]
+
+        # Now have client2 hijack the ephemeral port of client1 and try to
+        # talk to the server with an otherwise valid response. This should be
+        # ignored by the server...
+        client2.sendto(bytes(ACKPacket(0)), addr)
+        # ...client1 should be able to talk, however
+        client1.sendto(bytes(ACKPacket(0)), addr)
+        assert select.select(
+            [client1, client2], [], [], 0.1) == ([client1], [], [])
+
+        buf, addr = client1.recvfrom(1500)
+        pkt = Packet.from_bytes(buf)
+        assert isinstance(pkt, DATAPacket)
+        assert pkt.block == 1
+
+        # Be nice and ACK the DATA packet from client1
+        client1.sendto(bytes(ACKPacket(pkt.block)), addr)
+
+        assert caplog.record_tuples == [
+            ('tftpd', logging.INFO,
+             f'127.0.0.1:{client1.getsockname()[1]} - RRQ (octet) cmdline.txt'),
+            ('tftpd', logging.WARNING,
+             f'127.0.0.1:{client2.getsockname()[1]} - IGNORE - bad client '
+             f'for 127.0.0.1:{addr[1]}'),
+        ]
