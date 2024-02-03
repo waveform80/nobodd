@@ -613,7 +613,10 @@ class TFTPSubServers(Thread):
         # combination (as we could be serving distinct networks on multiple
         # interfaces)
         tid = (server.server_address, server.client_state.address)
-        thread = Thread(target=server.serve_forever)
+        # Override default poll_interval on serve_forever to permit
+        # finer-grained timeouts (as supported by the utimeout extension)
+        thread = Thread(
+            target=server.serve_forever, kwargs={'poll_interval': 0.01})
         self.logger.debug(
             '%s - starting server on %s',
             format_address(server.client_state.address),
