@@ -2,10 +2,11 @@
 nobodd.main
 ==============
 
-.. module:: nobodd.main
+.. module:: nobodd.server
 
 This module contains the server and handler classes which make up the main
-nobodd application, as well as the entry point for the application itself.
+:program:`nobodd-server` application, as well as the entry point for the
+application itself.
 
 
 Handler Classes

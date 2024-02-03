@@ -56,21 +56,24 @@ specified path.
     api_netascii
 
 
-Command line application
-========================
+Command line applications
+=========================
 
-The :mod:`nobodd.main` module contains the primary classes,
+The :mod:`nobodd.server` module contains the primary classes,
 :class:`~nobodd.main.BootServer` and :class:`~nobodd.main.BootHandler` which
-define a TFTP server that reads files from FAT file-systems contained in OS
-images.
+define a TFTP server (:program:`nobodd-server`) that reads files from FAT
+file-systems contained in OS images. The :mod:`nobodd.prep` module contains the
+implementation of the :program:`nobodd-prep` command, which customizes images
+prior to first net boot.
 
-The other modules, :mod:`nobodd.config` and :mod:`nobodd.tools` provide
-configuration parsing and miscellaneous utilities respectively.
+The :mod:`nobodd.config` module provides configuration parsing facilities to
+these applications.
 
 .. toctree::
     :maxdepth: 1
 
-    api_main
+    api_server
+    api_prep
     api_config
 
 

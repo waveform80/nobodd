@@ -18,7 +18,7 @@ then serving it as simple as:
 
 .. code-block:: console
 
-    $ sudo nobodd --board 1234ABCD,ubuntu.img
+    $ sudo nobodd-server --board 1234ABCD,ubuntu.img
 
 This defaults to read the first partition from the file, and pretends (to TFTP
 clients) that the contents of the first partition appears under the
