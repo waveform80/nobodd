@@ -395,14 +395,6 @@ class TFTPBaseHandler(TFTPHandler):
                 packet = OACKPacket(options)
             else:
                 packet = DATAPacket(1, state.get_block(1))
-            # Construct a new sub-server with an ephemeral port to handler all
-            # further packets from this connection
-            server = TFTPSubServer(self.server, state)
-            self.server.subs.add(server)
-            self.server.logger.debug(
-                '%s <- %s - %r',
-                format_address(self.client_address),
-                format_address(server.server_address), packet)
         except BadOptions as exc:
             self.server.logger.info(
                 '%s - ERROR - bad options; %s',
@@ -424,10 +416,19 @@ class TFTPBaseHandler(TFTPHandler):
                 format_address(self.client_address), exc)
             return ERRORPacket(Error.UNDEFINED, str(exc))
         else:
+            # Construct a new sub-server with an ephemeral port to handler all
+            # further packets from this connection
+            sub_server = TFTPSubServer(self.server, state)
+            self.server.subs.add(sub_server)
+            self.server.logger.debug(
+                '%s <- %s - %r',
+                format_address(self.client_address),
+                format_address(sub_server.server_address), packet)
             # We cause the sub-server to send the first packet instead of
             # returning it for the main server to send, as it must originate
             # from the ephemeral port of the sub-server, not port 69
-            server.socket.sendto(bytes(packet), self.client_address)
+            sub_server.socket.sendto(bytes(packet), self.client_address)
+            state.last_send = time_ns()
             return None
 
     def do_ERROR(self, packet):
