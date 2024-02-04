@@ -217,6 +217,7 @@ def test_tftp_rrq_transfer(tftp_server, caplog):
         # fixture above)
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -249,6 +250,7 @@ def test_tftp_rrq_transfer_repeat_ack(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
         for block, offset in enumerate(range(0, 4096, 512), start=1):
@@ -289,6 +291,7 @@ def test_tftp_rrq_transfer_future_ack(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -319,6 +322,7 @@ def test_tftp_rrq_transfer_resend(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -353,6 +357,7 @@ def test_tftp_rrq_transfer_with_options(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
             tftp_server.server_address)
@@ -393,6 +398,7 @@ def test_tftp_rrq_transfer_resend_and_die(tftp_server, caplog):
 
         # We're using a ludicrously short timeout below (the minimum permitted)
         # just to keep the test quick
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'utimeout': '10000'})),
             tftp_server.server_address)
@@ -434,6 +440,7 @@ def test_tftp_rrq_transfer_bad_options(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '1'})),
             tftp_server.server_address)
@@ -458,6 +465,7 @@ def test_tftp_rrq_transfer_bad_filename(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('foo.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -483,6 +491,7 @@ def test_tftp_rrq_unknown_error(tftp_server, caplog):
         assert not tftp_server.subs._alive
         do_rrq.side_effect = TypeError('something weird happened')
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -505,6 +514,7 @@ def test_tftp_rrq_os_error(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('a.dir', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -528,6 +538,7 @@ def test_tftp_rrq_transfer_permission_error1(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('unreadable.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -551,6 +562,7 @@ def test_tftp_rrq_transfer_permission_error2(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('../private/elmer.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -575,6 +587,7 @@ def test_tftp_wrq_transfer(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(WRQPacket('cmdline.txt', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -600,6 +613,7 @@ def test_tftp_client_error1(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(ERRORPacket(Error.UNDEFINED)), tftp_server.server_address)
         # If client sends an error on the main connection, it's simply
@@ -618,6 +632,7 @@ def test_tftp_client_error2(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(
             bytes(RRQPacket('initrd.img', 'octet')), tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
@@ -644,6 +659,7 @@ def test_tftp_bad_request(tftp_server, caplog):
     ):
         assert not tftp_server.subs._alive
 
+        client.settimeout(10)
         client.sendto(b'\x00\x08\x00\x00\x00', tftp_server.server_address)
         buf, addr = client.recvfrom(1500)
         pkt = Packet.from_bytes(buf)
@@ -668,6 +684,7 @@ def test_tftp_bad_client(tftp_server, caplog):
         assert not tftp_server.subs._alive
 
         # Start a valid transfer from client1...
+        client1.settimeout(10)
         client1.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
             tftp_server.server_address)
@@ -681,6 +698,7 @@ def test_tftp_bad_client(tftp_server, caplog):
         # Now have client2 hijack the ephemeral port of client1 and try to
         # talk to the server with an otherwise valid response. This should be
         # ignored by the server...
+        client2.settimeout(10)
         client2.sendto(bytes(ACKPacket(0)), addr)
         # ...client1 should be able to talk, however
         client1.sendto(bytes(ACKPacket(0)), addr)
@@ -721,6 +739,7 @@ def test_tftp_shuts_down_transfers(tftp_root, cmdline_txt):
         assert not server.subs._alive
 
         # Start a valid transfer from client1...
+        client1.settimeout(10)
         client1.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
             server.server_address)
@@ -730,6 +749,7 @@ def test_tftp_shuts_down_transfers(tftp_root, cmdline_txt):
         assert pkt.options == {'blksize': '128'}
 
         # Start another valid transfer from client2...
+        client2.settimeout(10)
         client2.sendto(
             bytes(RRQPacket('cmdline.txt', 'octet', {'blksize': '128'})),
             server.server_address)
