@@ -1,5 +1,5 @@
 ==============
-nobodd.main
+nobodd.server
 ==============
 
 .. module:: nobodd.server

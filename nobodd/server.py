@@ -7,13 +7,25 @@ NBD) for netbooting Raspberry Pis.
 import os
 import sys
 import logging
+import argparse
 from pathlib import Path
 from socketserver import ThreadingMixIn
 
-from . import config
 from .disk import DiskImage
 from .fs import FatFileSystem
 from .tftpd import TFTPBaseHandler, TFTPBaseServer
+from .config import (
+    CONFIG_LOCATIONS,
+    ConfigArgumentParser,
+    Board,
+    port,
+)
+
+# NOTE: Remove except when compatibility moves beyond Python 3.8
+try:
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
 
 
 class BootHandler(TFTPBaseHandler):
@@ -86,9 +98,50 @@ def get_parser():
     :func:`~nobodd.config.get_config` and :func:`~nobodd.config.get_parser` for
     more information.
     """
-    defaults = config.get_config()
-    parser = config.get_parser(defaults, description=__doc__)
+
+    parser = ConfigArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--version', action='version', version=version('nobodd'))
+
+    tftp_section = parser.add_argument_group('tftp', section='tftp')
+    tftp_section.add_argument(
+        '--listen',
+        key='listen', type=str, metavar='ADDR',
+        help="the address on which to listen for connections "
+        "(default: %(default)s)")
+    tftp_section.add_argument(
+        '--port',
+        key='port', type=port, metavar='PORT',
+        help="the port on which to listen for connections "
+        "(default: %(default)s)")
+    tftp_section.add_argument(
+        '--includedir',
+        key='includedir', type=Path, metavar='PATH',
+        help=argparse.SUPPRESS)
+
+    parser.add_argument(
+        '--board', dest='boards', type=Board.from_string, action='append',
+        metavar='SERIAL,FILENAME[,PART[,IP]]', default=[],
+        help="can be specified multiple times to define boards which are to "
+        "be served boot images over TFTP; if PART is omitted the default is "
+        "1; if IP is omitted the IP address will not be checked")
+
+    # Reading the config twice is ... inelegant, but it's the simplest way to
+    # handle the include path and avoid double-parsing values. The first pass
+    # reads the default locations; the second pass re-reads the default
+    # locations and whatever includes are found
+    defaults = parser.read_configs(CONFIG_LOCATIONS)
+    defaults = parser.read_configs(CONFIG_LOCATIONS + tuple(
+        p for p in Path(defaults['tftp'].pop('includedir')).glob('*.conf')
+    ))
+
+    # Fix-up defaults for [board:*] sections
     parser.set_defaults_from(defaults)
+    parser.set_defaults(boards=parser.get_default('boards') + [
+        Board.from_section(defaults, section)
+        for section in defaults
+        if section.startswith('board:')
+    ])
     return parser
 
 

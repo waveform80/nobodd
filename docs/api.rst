@@ -60,8 +60,8 @@ Command line applications
 =========================
 
 The :mod:`nobodd.server` module contains the primary classes,
-:class:`~nobodd.main.BootServer` and :class:`~nobodd.main.BootHandler` which
-define a TFTP server (:program:`nobodd-server`) that reads files from FAT
+:class:`~nobodd.server.BootServer` and :class:`~nobodd.server.BootHandler`
+which define a TFTP server (:program:`nobodd-server`) that reads files from FAT
 file-systems contained in OS images. The :mod:`nobodd.prep` module contains the
 implementation of the :program:`nobodd-prep` command, which customizes images
 prior to first net boot.

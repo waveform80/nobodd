@@ -21,14 +21,6 @@ Board
 .. autoclass:: Board
 
 
-Configuration Functions
-=======================
-
-.. autofunction:: get_parser
-
-.. autofunction:: get_config
-
-
 Conversion Functions
 ====================
 

@@ -18,9 +18,10 @@ def fqdn():
 
 
 def get_parser():
-    defaults = config.get_config()
+    parser = config.ConfigArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--version', action='version', version=version('nobodd'))
 
-    parser = config.ConfigArgumentParser()
     parser.add_argument(
         'template', type=Path,
         help="The template image to copy")
@@ -50,7 +51,8 @@ def get_parser():
         '--root-partition', type=int, default=None,
         help="Which partition is the root partition within the template "
         "image; default is the first non-FAT partition found in the image")
-    parser.set_defaults_from(defaults)
+
+    parser.set_defaults_from(parser.read_configs())
     return parser
 
 
