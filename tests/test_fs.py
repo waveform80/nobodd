@@ -72,20 +72,20 @@ def find_non_empty_file(fat_dir):
     assert False, 'failed to find non-empty file'
 
 
-def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_init(fat12_disk_r, fat16_disk_r, fat32_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert fs.fat_type == 'fat12'
             assert fs.label == 'NOBODD---12'
             assert fs.sfn_encoding == 'iso-8859-1'
             assert not fs.atime
-    with DiskImage(fat16_disk) as img:
+    with DiskImage(fat16_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert fs.fat_type == 'fat16'
             assert fs.label == 'NOBODD---16'
             assert fs.sfn_encoding == 'iso-8859-1'
             assert not fs.atime
-    with DiskImage(fat32_disk) as img:
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert fs.fat_type == 'fat32'
             assert fs.label == 'NOBODD---32'
@@ -107,8 +107,8 @@ def test_fs_init_bad(fat16_disk_w):
                 pass
 
 
-def test_ambiguous_headers_fat12(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_ambiguous_headers_fat12(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             ebpb = ExtendedBIOSParameterBlock.from_buffer(
                 part, offset=BIOSParameterBlock._FORMAT.size)
@@ -119,8 +119,8 @@ def test_ambiguous_headers_fat12(fat12_disk):
             assert fs.fat_type == 'fat12'
 
 
-def test_ambiguous_headers_fat32(fat32_disk):
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+def test_ambiguous_headers_fat32(fat32_disk_r):
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -141,8 +141,8 @@ def test_ambiguous_headers_fat32(fat32_disk):
             assert fs.fat_type == 'fat32'
 
 
-def test_ambiguous_headers_huge_fat32(fat32_disk):
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+def test_ambiguous_headers_huge_fat32(fat32_disk_r):
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -163,9 +163,9 @@ def test_ambiguous_headers_huge_fat32(fat32_disk):
             assert fs.fat_type == 'fat32'
 
 
-def test_bad_headers(fat16_disk, fat32_disk):
+def test_bad_headers(fat16_disk_r, fat32_disk_r):
     # Claims to be FAT32, but lacks the FAT32-specific BPB
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             ebpb = ExtendedBIOSParameterBlock.from_buffer(
                 part, offset=BIOSParameterBlock._FORMAT.size)
@@ -175,7 +175,7 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
     # Claims to be FAT16 but has 0 root entries (like FAT32)
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             bpb._replace(max_root_entries=0).to_buffer(part)
@@ -183,7 +183,7 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
     # Claims to be FAT32, but has non-zero root entries (like FAT12/16)
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             bpb._replace(max_root_entries=64).to_buffer(part)
@@ -191,7 +191,7 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
     # Has zero sectors per FAT
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             bpb._replace(sectors_per_fat=0).to_buffer(part)
@@ -199,7 +199,7 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
     # Root directory doesn't fill a sector
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             bpb._replace(max_root_entries=bpb.max_root_entries - 1).to_buffer(part)
@@ -207,7 +207,7 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
     # No fs-label, and extended boot sigs are corrupt
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             ebpb = ExtendedBIOSParameterBlock.from_buffer(
                 part, offset=BIOSParameterBlock._FORMAT.size)
@@ -219,14 +219,14 @@ def test_bad_headers(fat16_disk, fat32_disk):
             FatFileSystem(img.partitions[1].data)
 
 
-def test_fs_repr(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_repr(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert repr(fs) == "<FatFileSystem label='NOBODD---12' fat_type='fat12'>"
 
 
-def test_fs_close_idempotent(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_close_idempotent(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         fs = FatFileSystem(img.partitions[1].data)
         fs.close()
         fs.close()
@@ -235,33 +235,33 @@ def test_fs_close_idempotent(fat12_disk):
         assert fs._root is None
 
 
-def test_fs_readonly(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_READ) as img:
+def test_fs_readonly(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_READ) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert fs.readonly
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert not fs.readonly
 
 
-def test_fs_opendir(fat12_disk, fat16_disk, fat32_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_opendir(fat12_disk_r, fat16_disk_r, fat32_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.open_dir(0), FatDirectory)
-    with DiskImage(fat16_disk) as img:
+    with DiskImage(fat16_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.open_dir(0), FatDirectory)
-    with DiskImage(fat32_disk) as img:
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.open_dir(0), FatDirectory)
-    with DiskImage(fat32_disk) as img:
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             # Cheating by using the root-dir cluster as a sub-directory
             assert isinstance(fs.open_dir(fs._root), FatSubDirectory)
 
 
-def test_fs_open_file(fat32_disk):
-    with DiskImage(fat32_disk) as img:
+def test_fs_open_file(fat32_disk_r):
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             # In FAT32, the root-dir is a sub-directory; opening the root
             # cluster as a file gets us the "file" underlying the root dir
@@ -269,8 +269,8 @@ def test_fs_open_file(fat32_disk):
                 assert isinstance(f, FatFile)
 
 
-def test_fs_open_entry(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_open_entry(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             index = fs.open_dir(0)
             for entry in index.values():
@@ -282,20 +282,20 @@ def test_fs_open_entry(fat12_disk):
                 assert False, 'No file entries found in root'
 
 
-def test_fs_root(fat12_disk, fat16_disk, fat32_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fs_root(fat12_disk_r, fat16_disk_r, fat32_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.root, FatPath)
-    with DiskImage(fat16_disk) as img:
+    with DiskImage(fat16_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.root, FatPath)
-    with DiskImage(fat32_disk) as img:
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             assert isinstance(fs.root, FatPath)
 
 
-def test_fattable_close_idempotent(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fattable_close_idempotent(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             with fs._fat as tab:
                 assert len(tab._tables) == 2
@@ -304,8 +304,8 @@ def test_fattable_close_idempotent(fat12_disk):
             assert not fs._fat._tables
 
 
-def test_fattable_free(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fattable_free(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             for cluster in fs._fat.free():
                 assert cluster > 1
@@ -316,8 +316,8 @@ def test_fattable_free(fat12_disk):
             assert err.value.errno == errno.ENOSPC
 
 
-def test_fattable_free_fat32(fat32_disk, with_fsinfo):
-    with DiskImage(fat32_disk) as img:
+def test_fattable_free_fat32(fat32_disk_r, with_fsinfo):
+    with DiskImage(fat32_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             for cluster in fs._fat.free():
                 assert cluster > 1
@@ -374,8 +374,8 @@ def test_fattable_free_too_large():
         assert err.value.errno == errno.ENOSPC
 
 
-def test_fat12table_sequence(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fat12table_sequence(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -398,8 +398,8 @@ def test_fat12table_sequence(fat12_disk):
                 fs._fat.get_all(4000000000)
 
 
-def test_fat12table_mutate(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fat12table_mutate(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             # Given FAT-12 crosses three-bytes for every two values, it's
             # important to check adjacent values aren't affected by mutation
@@ -422,8 +422,8 @@ def test_fat12table_mutate(fat12_disk):
                 fs._fat[4000000000] = 2
 
 
-def test_fat16table_sequence(fat16_disk):
-    with DiskImage(fat16_disk) as img:
+def test_fat16table_sequence(fat16_disk_r):
+    with DiskImage(fat16_disk_r) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -446,8 +446,8 @@ def test_fat16table_sequence(fat16_disk):
                 fs._fat.get_all(4000000000)
 
 
-def test_fat16table_mutate(fat16_disk):
-    with DiskImage(fat16_disk, access=mmap.ACCESS_COPY) as img:
+def test_fat16table_mutate(fat16_disk_r):
+    with DiskImage(fat16_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             fs._fat[2] = 3
             assert fs._fat[2] == 3
@@ -463,8 +463,8 @@ def test_fat16table_mutate(fat16_disk):
                 fs._fat[4000000000] = 2
 
 
-def test_fat32table_sequence(fat32_disk, with_fsinfo):
-    with DiskImage(fat32_disk) as img:
+def test_fat32table_sequence(fat32_disk_r, with_fsinfo):
+    with DiskImage(fat32_disk_r) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -489,8 +489,8 @@ def test_fat32table_sequence(fat32_disk, with_fsinfo):
                 fs._fat.get_all(4000000000)
 
 
-def test_fat32table_mutate(fat32_disk, with_fsinfo):
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+def test_fat32table_mutate(fat32_disk_r, with_fsinfo):
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             fs._fat[2] = 3
             assert fs._fat[2] == 3
@@ -517,10 +517,10 @@ def test_fat32table_mutate(fat32_disk, with_fsinfo):
                 fs._fat[4000000000] = 2
 
 
-def test_fat32table_alloc_bad(fat32_disk):
+def test_fat32table_alloc_bad(fat32_disk_r):
     # Ignore FSINFO block's free_clusters when allocating and it says there
     # are 0 free clusters left
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -535,7 +535,7 @@ def test_fat32table_alloc_bad(fat32_disk):
             assert fs._fat._info.free_clusters == 0
     # ... and likewise when deallocating; ignore bad info that says
     # everything's free
-    with DiskImage(fat32_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat32_disk_r, access=mmap.ACCESS_COPY) as img:
         with img.partitions[1].data as part, FatFileSystem(part) as fs:
             bpb = BIOSParameterBlock.from_buffer(part)
             f32bpb = FAT32BIOSParameterBlock.from_buffer(
@@ -554,8 +554,8 @@ def test_fat32table_alloc_bad(fat32_disk):
             assert fs._fat._info.free_clusters == len(fs.fat)
 
 
-def test_fatclusters_close_idempotent(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatclusters_close_idempotent(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -566,8 +566,8 @@ def test_fatclusters_close_idempotent(fat12_disk):
             assert not fs._data._mem
 
 
-def test_fatclusters_sequence(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatclusters_sequence(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with img.partitions[1].data as part:
             bpb = BIOSParameterBlock.from_buffer(part)
         with FatFileSystem(img.partitions[1].data) as fs:
@@ -590,8 +590,8 @@ def test_fatclusters_sequence(fat12_disk):
                 fs._data[data_clusters + 2]
 
 
-def test_fatclusters_mutate(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatclusters_mutate(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             zeros = b'\0' * fs._data._cs
             ones = b'\xff' * fs._data._cs
@@ -611,8 +611,8 @@ def test_fatclusters_mutate(fat12_disk):
                 fs._data.insert(2, zeros)
 
 
-def test_fatdirectory_mapping(fat_disks):
-    for fat_disk in fat_disks.values():
+def test_fatdirectory_mapping(fat_disks_r):
+    for fat_disk in fat_disks_r.values():
         with DiskImage(fat_disk) as img:
             with FatFileSystem(img.partitions[1].data) as fs:
                 root = fs.open_dir(0)
@@ -641,8 +641,8 @@ def test_fatdirectory_mapping(fat_disks):
                 )
 
 
-def test_fatdirectory_no_update_atime(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_no_update_atime(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data, atime=True) as fs:
             root = fs.open_dir(0)
             offsets, entries = first_dir(root)
@@ -652,8 +652,8 @@ def test_fatdirectory_no_update_atime(fat12_disk):
             assert len(subdir) > 0
 
 
-def test_fatdirectory_iter_all(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_iter_all(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = first_dir(root)
@@ -668,8 +668,8 @@ def test_fatdirectory_iter_all(fat12_disk):
                 subdir._file.seek(0, io.SEEK_END) // DirectoryEntry._FORMAT.size)
 
 
-def test_fatdirectory_mutate_out_of_range(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_mutate_out_of_range(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             empty = root['empty']
@@ -677,8 +677,8 @@ def test_fatdirectory_mutate_out_of_range(fat12_disk):
                 root._update_entry(128000, empty)
 
 
-def test_fatdirectory_mutate(fat_disks):
-    for fat_disk in fat_disks.values():
+def test_fatdirectory_mutate(fat_disks_r):
+    for fat_disk in fat_disks_r.values():
         with DiskImage(fat_disk, access=mmap.ACCESS_COPY) as img:
             with FatFileSystem(img.partitions[1].data) as fs:
                 root = fs.open_dir(0)
@@ -706,8 +706,8 @@ def test_fatdirectory_mutate(fat_disks):
                     del root['i-dont-exist']
 
 
-def test_fatsubdirectory_mutate(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatsubdirectory_mutate(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = first_dir(root)
@@ -732,8 +732,8 @@ def test_fatsubdirectory_mutate(fat12_disk):
             assert len(subdir._file._map) > map_len
 
 
-def test_fatdirectory_split_entries(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_split_entries(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_lfn_file(root)
@@ -757,8 +757,8 @@ def test_fatdirectory_split_entries(fat12_disk):
             assert (lfn, sfn) == ('abcdefghijkl', 'ABCDEF~1')
 
 
-def test_fatdirectory_prefix_entries(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_prefix_entries(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_lfn_file(root)
@@ -867,8 +867,8 @@ def test_fatdirectory_prefix_entries(fat12_disk):
                 root._prefix_entries('foo' * 255, entry)
 
 
-def test_fatdirectory_bad_lfn(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_bad_lfn(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_lfn_file(root)
@@ -939,8 +939,8 @@ def test_fatdirectory_bad_lfn(fat12_disk):
             assert (lfn, sfn) == ('LOTS-O~1', 'LOTS-O~1')
 
 
-def test_fatdirectory_ignores_deleted(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_ignores_deleted(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             del_offset, entries = find_lfn_file(root)
@@ -959,8 +959,8 @@ def test_fatdirectory_ignores_deleted(fat12_disk):
                 assert offset != del_offset
 
 
-def test_fatdirectory_group_no_eof(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_group_no_eof(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
 
@@ -971,8 +971,8 @@ def test_fatdirectory_group_no_eof(fat12_disk):
             assert list(root._group_entries()) == list(fakeroot._group_entries())
 
 
-def test_fatdirectory_clean(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_clean(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             eof_offset = dir_eof(root)
@@ -995,8 +995,8 @@ def test_fatdirectory_clean(fat12_disk):
             assert dir_eof(root) == new_eof
 
 
-def test_fatdirectory_clean_no_eof(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatdirectory_clean_no_eof(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
 
@@ -1019,8 +1019,8 @@ def test_fatdirectory_clean_no_eof(fat12_disk):
             assert dir_eof(fakeroot) == new_eof
 
 
-def test_fatdirectory_clean_when_out_of_space(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_clean_when_out_of_space(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
 
@@ -1049,8 +1049,8 @@ def test_fatdirectory_clean_when_out_of_space(fat12_disk):
             assert 'FOO.BAR' in fakeroot
 
 
-def test_fatdirectory_really_out_of_space(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_really_out_of_space(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
 
@@ -1075,8 +1075,8 @@ def test_fatdirectory_really_out_of_space(fat12_disk):
             assert 'FOO.BAR' not in fakeroot
 
 
-def test_fatdirectory_get_unique_sfn(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatdirectory_get_unique_sfn(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_lfn_file(root)
@@ -1150,8 +1150,8 @@ def test_fatdirectory_get_unique_sfn(fat12_disk):
             ]
 
 
-def test_fatdirectory_cluster(fat_disks):
-    for fat_type, fat_disk in fat_disks.items():
+def test_fatdirectory_cluster(fat_disks_r):
+    for fat_type, fat_disk in fat_disks_r.items():
         with DiskImage(fat_disk) as img:
             with FatFileSystem(img.partitions[1].data) as fs:
                 root = fs.open_dir(0)
@@ -1161,8 +1161,8 @@ def test_fatdirectory_cluster(fat_disks):
                     assert root.cluster == 0
 
 
-def test_fatfile_readonly(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatfile_readonly(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1197,8 +1197,8 @@ def test_fatfile_readonly(fat12_disk):
                 fs.open_entry(root, entry, mode='r')
 
 
-def test_fatfile_close_idempotent(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatfile_close_idempotent(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1212,8 +1212,8 @@ def test_fatfile_close_idempotent(fat12_disk):
             assert f.closed
 
 
-def test_fatfile_fs_gone(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatfile_fs_gone(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1226,8 +1226,8 @@ def test_fatfile_fs_gone(fat12_disk):
         f.read(1024)
 
 
-def test_fatfile_dir_no_key(fat12_disk):
-    with DiskImage(fat12_disk) as img:
+def test_fatfile_dir_no_key(fat12_disk_r):
+    with DiskImage(fat12_disk_r) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = first_dir(root)
@@ -1237,8 +1237,8 @@ def test_fatfile_dir_no_key(fat12_disk):
                 f._file._get_key()
 
 
-def test_fatfile_writable(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatfile_writable(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1267,8 +1267,8 @@ def test_fatfile_writable(fat12_disk):
                 assert len(f._map) == 2
 
 
-def test_fatfile_write_empty(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatfile_write_empty(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_empty_file(root)
@@ -1286,8 +1286,8 @@ def test_fatfile_write_empty(fat12_disk):
                 assert f._write1(b'') == 0
 
 
-def test_fatfile_atime(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatfile_atime(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data, atime=True) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1298,8 +1298,8 @@ def test_fatfile_atime(fat12_disk):
                 assert f._entry.adate > entry.adate
 
 
-def test_fatfile_mtime(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatfile_mtime(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data, atime=True) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1310,10 +1310,10 @@ def test_fatfile_mtime(fat12_disk):
                 assert f._entry.mdate > entry.mdate
 
 
-def test_fatfile_truncate(fat12_disk):
+def test_fatfile_truncate(fat12_disk_r):
     # Check general truncate functionality (truncate to 0, and implicit
     # truncation to current position)
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1333,7 +1333,7 @@ def test_fatfile_truncate(fat12_disk):
                 assert f._entry.size == 515
 
     # Check truncate with explicit sizes
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1346,7 +1346,7 @@ def test_fatfile_truncate(fat12_disk):
                 assert f._entry.size == 2
 
     # Check truncate with multiple extra clusters
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)
@@ -1358,8 +1358,8 @@ def test_fatfile_truncate(fat12_disk):
                 assert f.tell() == fs.clusters.size * 4 + 3
 
 
-def test_fatfile_empty(fat12_disk):
-    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+def test_fatfile_empty(fat12_disk_r):
+    with DiskImage(fat12_disk_r, access=mmap.ACCESS_COPY) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             root = fs.open_dir(0)
             offset, entries = find_non_empty_file(root)

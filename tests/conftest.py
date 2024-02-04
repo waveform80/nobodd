@@ -70,15 +70,20 @@ def fat12_disk(request, tmp_path_factory):
     with path.open('wb') as output:
         make_disk(output, part_style='mbr', fat_type='fat12')
     path.chmod(0o444)
-    with path.open('rb') as output:
+    return path
+
+
+@pytest.fixture(scope='session')
+def fat12_disk_r(request, fat12_disk):
+    with fat12_disk.open('rb') as output:
         yield output
 
 
 @pytest.fixture()
-def fat12_disk_w(request, tmp_path, fat12_disk):
+def fat12_disk_w(request, tmp_path, fat12_disk_r):
     with (tmp_path / 'fat12-mutable.img').open('w+b') as output:
-        fat12_disk.seek(0)
-        copyfileobj(fat12_disk, output)
+        fat12_disk_r.seek(0)
+        copyfileobj(fat12_disk_r, output)
         output.seek(0)
         yield output
 
@@ -90,15 +95,20 @@ def fat16_disk(request, tmp_path_factory):
     with path.open('wb') as output:
         make_disk(output, part_style='mbr', fat_type='fat16')
     path.chmod(0o444)
-    with path.open('rb') as output:
+    return path
+
+
+@pytest.fixture(scope='session')
+def fat16_disk_r(request, fat16_disk):
+    with fat16_disk.open('rb') as output:
         yield output
 
 
 @pytest.fixture()
-def fat16_disk_w(request, tmp_path, fat16_disk):
+def fat16_disk_w(request, tmp_path, fat16_disk_r):
     with (tmp_path / 'fat16-mutable.img').open('w+b') as output:
-        fat16_disk.seek(0)
-        copyfileobj(fat16_disk, output)
+        fat16_disk_r.seek(0)
+        copyfileobj(fat16_disk_r, output)
         output.seek(0)
         yield output
 
@@ -110,23 +120,28 @@ def fat32_disk(request, tmp_path_factory):
     with path.open('wb') as output:
         make_disk(output, part_style='gpt', fat_type='fat32')
     path.chmod(0o444)
-    with path.open('rb') as output:
+    return path
+
+
+@pytest.fixture(scope='session')
+def fat32_disk_r(request, fat32_disk):
+    with fat32_disk.open('rb') as output:
         yield output
 
 
 @pytest.fixture()
-def fat32_disk_w(request, tmp_path, fat32_disk):
+def fat32_disk_w(request, tmp_path, fat32_disk_r):
     with (tmp_path / 'fat32-mutable.img').open('w+b') as output:
-        fat32_disk.seek(0)
-        copyfileobj(fat32_disk, output)
+        fat32_disk_r.seek(0)
+        copyfileobj(fat32_disk_r, output)
         output.seek(0)
         yield output
 
 
 @pytest.fixture()
-def fat_disks(request, fat12_disk, fat16_disk, fat32_disk):
+def fat_disks_r(request, fat12_disk_r, fat16_disk_r, fat32_disk_r):
     yield {
-        'fat12': fat12_disk,
-        'fat16': fat16_disk,
-        'fat32': fat32_disk,
+        'fat12': fat12_disk_r,
+        'fat16': fat16_disk_r,
+        'fat32': fat32_disk_r,
     }
