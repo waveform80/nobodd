@@ -120,6 +120,15 @@ class TFTPClientState:
         self.started = self.last_recv = time_ns()
         self.last_send = None
 
+    def close(self):
+        """
+        Closes the source file associated with the client state. This method
+        is idempotent.
+        """
+        if self.source is not None:
+            self.source.close()
+            self.source = None
+
     def negotiate(self, options):
         """
         Called with *options*, a mapping of option names to values (both
@@ -644,6 +653,7 @@ class TFTPSubServers(Thread):
         if thread.is_alive():
             raise RuntimeError(
                 f'failed to shutdown thread for {server.server_address}')
+        server.client_state.close()
 
     def run(self):
         """
