@@ -6,10 +6,13 @@ NBD) for netbooting Raspberry Pis.
 
 import os
 import sys
+import signal
+import socket
 import logging
 import argparse
 from pathlib import Path
 from socketserver import ThreadingMixIn
+from selectors import DefaultSelector, EVENT_READ
 
 from .disk import DiskImage
 from .fs import FatFileSystem
@@ -145,6 +148,23 @@ def get_parser():
     return parser
 
 
+# Signal handling; this stuff is declared globally primarily for testing
+# purposes. The exit_write and exit_read sockets can be used by the test suite
+# to simulate signals to the application, and the signals are registered
+# outside of main to ensure this occurs in the Python main thread
+# (signal.signal cannot be called from a subordinate thread)
+exit_write, exit_read = socket.socketpair()
+
+def on_sigint(signal, frame):
+    exit_write.send(b'INT ')
+signal.signal(signal.SIGINT, on_sigint)
+
+
+def on_sigterm(signal, frame):
+    exit_write.send(b'TERM')
+signal.signal(signal.SIGTERM, on_sigterm)
+
+
 def main(args=None):
     """
     The main entry point for the :program:`nobodd` application. Takes *args*,
@@ -155,20 +175,42 @@ def main(args=None):
     exceptions will be printed with a full back-trace. ``DEBUG=2`` will launch
     PDB in port-mortem mode.
     """
-    debug = int(os.environ.get('DEBUG', '0'))
+    try:
+        debug = int(os.environ['DEBUG'])
+    except (KeyError, ValueError):
+        debug = 0
+
     try:
         conf = get_parser().parse_args(args)
         boards = {
             board.serial: board
             for board in conf.boards
         }
-        with BootServer((conf.listen, conf.port), boards) as server:
+        with (
+            BootServer((conf.listen, conf.port), boards) as server,
+            DefaultSelector() as selector
+        ):
             server.logger.addHandler(logging.StreamHandler(sys.stderr))
             server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-            server.serve_forever()
-    except KeyboardInterrupt:
-        print('Interrupted', file=sys.stderr)
-        return 2
+            server.logger.info('Ready')
+            selector.register(exit_read, EVENT_READ)
+            selector.register(server, EVENT_READ)
+            while True:
+                for key, events in selector.select():
+                    if key.fileobj == exit_read:
+                        code = exit_read.recv(4)
+                        if code == b'INT ':
+                            server.logger.warning('Interrupted')
+                            return 2
+                        elif code == b'TERM':
+                            server.logger.warning('Terminated')
+                            return 0
+                        else:
+                            assert False, 'internal error'
+                    elif key.fileobj == server:
+                        server.handle_request()
+                    else:
+                        assert False, 'internal error'
     except Exception as e:
         if not debug:
             print(str(e), file=sys.stderr)
@@ -178,5 +220,3 @@ def main(args=None):
         else:
             import pdb
             pdb.post_mortem()
-    else:
-        return 0
