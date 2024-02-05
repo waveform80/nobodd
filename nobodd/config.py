@@ -74,7 +74,8 @@ class ConfigArgumentParser(ArgumentParser):
         super().__init__(*args, **kwargs)
         if template is not None:
             self._template = self._get_config_parser()
-            self._template.read(template)
+            with template.open('r') as f:
+                self._template.read_file(f)
         else:
             self._template = None
         self._config_map = {}
