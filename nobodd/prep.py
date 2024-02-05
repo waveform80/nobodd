@@ -85,6 +85,11 @@ def get_parser():
 
 
 def prepare_image(conf):
+    """
+    Given the script's configuration in *conf*, an :class:`argparse.Namespace`,
+    resize the target image, and re-write the kernel command line within its
+    boot partition to point to the configured NBD server and share.
+    """
     with conf.image.open('ab') as f:
         size = f.seek(0, os.SEEK_END)
         if size < conf.size:
@@ -120,6 +125,57 @@ def prepare_image(conf):
         cmdline.write_text(' '.join(params))
 
 
+def detect_partitions(conf):
+    """
+    Given the script's configuration in *conf*, an :class:`argparse.Namespace`,
+    open the target image, and attempt to detect the root and/or boot
+    partition.
+    """
+    conf.logger.info('Detecting partitions')
+    with (
+        conf.image.open('rb') as img_file,
+        DiskImage(img_file) as img
+    ):
+        fat_types = (
+            {UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'),
+             UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')}
+            if img.partitions.style == 'gpt' else
+            {0x01, 0x06, 0x0B, 0x0C, 0x0E, 0x0F, 0xEF}
+        )
+        for num, part in img.partitions.items():
+            with part:
+                if part.type in fat_types:
+                    if conf.boot_partition is None:
+                        try:
+                            fs = FatFileSystem(part.data)
+                        except:
+                            continue
+                        else:
+                            conf.boot_partition = num
+                            conf.logger.info(
+                                'Boot partition is %d (%s)',
+                                conf.boot_partition, fs.fat_type)
+                            fs.close()
+                else:
+                    if conf.root_partition is None:
+                        try:
+                            fs = FatFileSystem(part.data)
+                        except:
+                            conf.root_partition = num
+                            conf.logger.info(
+                                'Root partition is %d',
+                                conf.root_partition)
+                        else:
+                            continue
+                if conf.boot_partition is not None:
+                    if conf.root_partition is not None:
+                        break
+    if conf.boot_partition is None:
+        raise ValueError('Unable to detect boot partition')
+    if conf.root_partition is None:
+        raise ValueError('Unable to detect root partition')
+
+
 def main(args=None):
     """
     The main entry point for the :program:`nobodd-prep` application. Takes
@@ -137,35 +193,11 @@ def main(args=None):
 
     try:
         conf = get_parser().parse_args(args)
-        conf.logger = logging.root
+        conf.logger = logging.getLogger('prep')
         conf.logger.addHandler(logging.StreamHandler(sys.stderr))
         conf.logger.setLevel(logging.INFO)
         if conf.boot_partition is None or conf.root_partition is None:
-            conf.logger.info('Detecting partitions')
-            with (
-                conf.image.open('rb') as img_file,
-                DiskImage(img_file) as img
-            ):
-                fat_type = (
-                    UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')
-                    if img.partitions.style == 'gpt' else 12)
-                for num, part in img.partitions.items():
-                    with part:
-                        if conf.boot_partition is None and part.type == fat_type:
-                            conf.boot_partition = num
-                            conf.logger.info(
-                                'Boot partition is %d', conf.boot_partition)
-                        if conf.root_partition is None and part.type != fat_type:
-                            conf.root_partition = num
-                            conf.logger.info(
-                                'Root partition is %d', conf.root_partition)
-                        if conf.boot_partition is not None:
-                            if conf.root_partition is not None:
-                                break
-            if conf.boot_partition is None:
-                raise ValueError('Unable to detect boot partition')
-            if conf.root_partition is None:
-                raise ValueError('Unable to detect root partition')
+            detect_partitions(conf)
         if conf.nbd_host is None:
             conf.nbd_host = socket.getfqdn()
         if conf.nbd_name is None:
