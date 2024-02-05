@@ -1,8 +1,8 @@
 =============
-nobodd-server
+nobodd-prep
 =============
 
-.. program:: nobodd-server
+.. program:: nobodd-prep
 
 Synopsis
 ========

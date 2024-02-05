@@ -9,6 +9,7 @@ Contents
     install
     tutorial
     cli_nobodd
+    cli_prep
     api
     development
     changelog
