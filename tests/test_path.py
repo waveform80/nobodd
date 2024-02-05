@@ -406,6 +406,7 @@ def test_path_compares(fat12_disk):
         with FatFileSystem(img.partitions[1].data) as fs:
             assert [str(p) for p in sorted(fs.root.iterdir())] == [
                 '/a.dir',
+                '/cmdline.txt',
                 '/empty',
                 '/empty.dir',
                 '/lots-of-zeros',
@@ -437,4 +438,3 @@ def test_path_compares(fat12_disk):
                     (fs.root / 'a.dir') == (fs2.root / 'a.dir')
                 with pytest.raises(TypeError):
                     (fs.root / 'a.dir') <= (fs2.root / 'a.dir')
-

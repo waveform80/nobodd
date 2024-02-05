@@ -135,7 +135,7 @@ def test_disk_partitions_repr(gpt_disk):
             'DiskPartitionsGPT({\n'
             "1: <DiskPartition size=8388608 label='big-part' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,\n"
             "2: <DiskPartition size=204800 label='little-part1' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,\n"
-            "5: <DiskPartition size=4194304 label='medium-part' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,\n"
+            "5: <DiskPartition size=4194304 label='medium-part' type=UUID('0fc63daf-8483-4772-8e79-3d69d8477de4')>,\n"
             "6: <DiskPartition size=204800 label='little-part2' type=UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7')>,\n"
             '})')
 
