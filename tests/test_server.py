@@ -84,11 +84,14 @@ def test_sigterm(main_thread, capsys):
     assert main_thread.exit_code == 0
 
 
-def test_error_exit_no_debug(main_thread, capsys):
-    with mock.patch('nobodd.server.get_parser') as get_parser:
+def test_error_exit_no_debug(main_thread, capsys, monkeypatch):
+    with (
+        mock.patch('nobodd.server.get_parser') as get_parser,
+        monkeypatch.context() as m,
+    ):
+        m.delenv('DEBUG', raising=False)
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        os.environ['DEBUG'] = '0'
         main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
         with main_thread:
             pass
@@ -98,34 +101,38 @@ def test_error_exit_no_debug(main_thread, capsys):
         assert main_thread.exit_code == 1
 
 
-def test_error_exit_with_debug(main_thread):
-    with mock.patch('nobodd.server.get_parser') as get_parser:
+def test_error_exit_with_debug(main_thread, monkeypatch):
+    with (
+        mock.patch('nobodd.server.get_parser') as get_parser,
+        monkeypatch.context() as m,
+    ):
+        m.setenv('DEBUG', '1')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        os.environ['DEBUG'] = '1'
         main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
         with main_thread:
             pass
         assert isinstance(main_thread.exception, RuntimeError)
 
 
-def test_error_exit_with_pdb(main_thread, capsys):
+def test_error_exit_with_pdb(main_thread, capsys, monkeypatch):
     with (
         mock.patch('nobodd.server.get_parser') as get_parser,
         mock.patch('pdb.post_mortem') as post_mortem,
+        monkeypatch.context() as m,
     ):
+        m.setenv('DEBUG', '2')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        os.environ['DEBUG'] = '2'
         main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
         with main_thread:
             pass
         assert post_mortem.called
 
 
-def test_regular_operation(fat16_disk, fat16_disk_r, main_thread, capsys):
+def test_regular_operation(fat16_disk, main_thread, capsys):
     with (
-        disk.DiskImage(fat16_disk_r) as img,
+        disk.DiskImage(fat16_disk) as img,
         fs.FatFileSystem(img.partitions[1].data) as boot,
     ):
         expected = (boot.root / 'random').read_bytes()
