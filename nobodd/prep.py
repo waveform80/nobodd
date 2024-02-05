@@ -162,6 +162,7 @@ def detect_partitions(conf):
                                 'Root partition is %d',
                                 conf.root_partition)
                         else:
+                            fs.close()
                             continue
                 if conf.boot_partition is not None:
                     if conf.root_partition is not None:
