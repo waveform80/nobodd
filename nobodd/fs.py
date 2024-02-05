@@ -113,56 +113,66 @@ class FatFileSystem:
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
     def __init__(self, mem, atime=False, encoding='iso-8859-1'):
+        self._fat = None
+        self._data = None
+        self._root = None
         mem = memoryview(mem)
-        self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
-        self._atime = atime
-        self._encoding = encoding
-        # TODO: Replace with root volume label if == b'NO NAME    '
-        self._label = ebpb.volume_label.decode(encoding, 'replace').rstrip(' ')
+        try:
+            self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
+            self._atime = atime
+            self._encoding = encoding
+            # TODO: Replace with root volume label if == b'NO NAME    '
+            self._label = ebpb.volume_label.decode(
+                encoding, 'replace').rstrip(' ')
 
-        total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
-        if total_sectors == 0 and ebpb.extended_boot_sig == 0x29:
-            # FAT32 with >2**32 sectors uses file-system label as an 8-byte int
-            total_sectors, = struct.unpack('<Q', ebpb.file_system)
-        fat_size = (
-            bpb.sectors_per_fat if ebpb_fat32 is None else
-            ebpb_fat32.sectors_per_fat) * bpb.bytes_per_sector
-        if fat_size == 0:
-            raise ValueError(f'{self._fat_type.upper()} sectors per FAT is 0')
-        root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
-        if root_size % bpb.bytes_per_sector:
-            raise ValueError(
-                f'Max. root entries, {bpb.max_root_entries} creates a root '
-                f'directory region that is not a multiple of sector size, '
-                f'{bpb.bytes_per_sector}')
-        info_offset = (
-            ebpb_fat32.info_sector * bpb.bytes_per_sector
-            if ebpb_fat32 is not None
-            and ebpb_fat32.info_sector not in (0, 0xFFFF)
-            else None)
-        end_offset = total_sectors * bpb.bytes_per_sector
-        fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
-        root_offset = fat_offset + (fat_size * bpb.fat_count)
-        data_offset = root_offset + root_size
-
-        self._fat = {
-            'fat12': Fat12Table,
-            'fat16': Fat16Table,
-            'fat32': Fat32Table,
-        }[self._fat_type](
-            mem[fat_offset:root_offset], fat_size,
-            mem[info_offset:info_offset + bpb.bytes_per_sector]
-            if info_offset is not None else None)
-        self._data = FatClusters(
-            mem[data_offset:end_offset],
-            bpb.bytes_per_sector * bpb.sectors_per_cluster)
-        if self._fat_type == 'fat32':
-            if ebpb_fat32 is None:
+            total_sectors = bpb.fat16_total_sectors or bpb.fat32_total_sectors
+            if total_sectors == 0 and ebpb.extended_boot_sig == 0x29:
+                # FAT32 with >2**32 sectors uses file-system label as an 8-byte
+                # int
+                total_sectors, = struct.unpack('<Q', ebpb.file_system)
+            fat_size = (
+                bpb.sectors_per_fat if ebpb_fat32 is None else
+                ebpb_fat32.sectors_per_fat) * bpb.bytes_per_sector
+            if fat_size == 0:
                 raise ValueError(
-                    'File-system claims to be FAT32 but has no FAT32 EBPB')
-            self._root = ebpb_fat32.root_dir_cluster
-        else:
-            self._root = mem[root_offset:root_offset + root_size]
+                    f'{self._fat_type.upper()} sectors per FAT is 0')
+            root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
+            if root_size % bpb.bytes_per_sector:
+                raise ValueError(
+                    f'Max. root entries, {bpb.max_root_entries} creates a root '
+                    f'directory region that is not a multiple of sector size, '
+                    f'{bpb.bytes_per_sector}')
+            info_offset = (
+                ebpb_fat32.info_sector * bpb.bytes_per_sector
+                if ebpb_fat32 is not None
+                and ebpb_fat32.info_sector not in (0, 0xFFFF)
+                else None)
+            end_offset = total_sectors * bpb.bytes_per_sector
+            fat_offset = bpb.reserved_sectors * bpb.bytes_per_sector
+            root_offset = fat_offset + (fat_size * bpb.fat_count)
+            data_offset = root_offset + root_size
+
+            self._fat = {
+                'fat12': Fat12Table,
+                'fat16': Fat16Table,
+                'fat32': Fat32Table,
+            }[self._fat_type](
+                mem[fat_offset:root_offset], fat_size,
+                mem[info_offset:info_offset + bpb.bytes_per_sector]
+                if info_offset is not None else None)
+            self._data = FatClusters(
+                mem[data_offset:end_offset],
+                bpb.bytes_per_sector * bpb.sectors_per_cluster)
+            if self._fat_type == 'fat32':
+                if ebpb_fat32 is None:
+                    raise ValueError(
+                        'File-system claims to be FAT32 but has no FAT32 EBPB')
+                self._root = ebpb_fat32.root_dir_cluster
+            else:
+                self._root = mem[root_offset:root_offset + root_size]
+        except:
+            self.close()
+            raise
 
         # Check the root directory is structured as expected. Apparently some
         # "non-mainstream" operating systems can use a variable-sized root
@@ -208,11 +218,13 @@ class FatFileSystem:
         """
         if self._fat is not None:
             self._fat.close()
+            self._fat = None
+        if self._data is not None:
             self._data.close()
+            self._data = None
+        if self._root is not None:
             if self._fat_type != 'fat32':
                 self._root.release()
-            self._fat = None
-            self._data = None
             self._root = None
 
     @property
@@ -410,7 +422,7 @@ def fat_type(mem):
         fat_type = fat_type_from_count(bpb, ebpb, ebpb_fat32)
         return fat_type, bpb, ebpb, ebpb_fat32
     raise ValueError(
-        'Could not find file-system type or extended boot signature')
+        'Could not find FAT file-system type or extended boot signature')
 
 
 def fat_type_from_count(bpb, ebpb, ebpb_fat32):
