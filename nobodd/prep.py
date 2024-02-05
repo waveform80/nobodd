@@ -144,7 +144,7 @@ def detect_partitions(conf):
                     if conf.boot_partition is None:
                         try:
                             fs = FatFileSystem(part.data)
-                        except:
+                        except ValueError:
                             continue
                         else:
                             conf.boot_partition = num
@@ -156,7 +156,7 @@ def detect_partitions(conf):
                     if conf.root_partition is None:
                         try:
                             fs = FatFileSystem(part.data)
-                        except:
+                        except ValueError:
                             conf.root_partition = num
                             conf.logger.info(
                                 'Root partition is %d',
@@ -198,9 +198,9 @@ def main(args=None):
             conf.nbd_name = conf.image.stem
 
         prepare_image(conf)
-    except KeyboardInterrupt:
+    except Exception as e:
         if not debug:
-            print('Interrupted', file=sys.stderr)
+            print(str(e), file=sys.stderr)
             return 1
         elif debug == 1:
             raise
