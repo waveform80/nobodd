@@ -8,16 +8,16 @@ from nobodd.disk import *
 
 
 def test_disk_init_file(gpt_disk):
-    with DiskImage(gpt_disk) as disk:
+    with gpt_disk.open('rb') as source, DiskImage(gpt_disk) as disk:
         assert repr(disk) == (
-            f"<DiskImage file={gpt_disk!r} style='gpt' "
-            f"signature=UUID('733b49a8-6918-4e44-8d3d-47ed9b481335')>")
+            f"<DiskImage file=<_io.BufferedReader name={str(gpt_disk)!r}> "
+            f"style='gpt' signature=UUID('733b49a8-6918-4e44-8d3d-47ed9b481335')>")
 
 
 def test_disk_init_path(gpt_disk):
-    with DiskImage(Path(gpt_disk.name)) as disk:
+    with DiskImage(gpt_disk) as disk:
         assert repr(disk) == (
-            f"<DiskImage file=<_io.BufferedReader name={gpt_disk.name!r}> "
+            f"<DiskImage file=<_io.BufferedReader name={str(gpt_disk)!r}> "
             f"style='gpt' signature=UUID('733b49a8-6918-4e44-8d3d-47ed9b481335')>")
 
 
@@ -33,65 +33,67 @@ def test_disk_close_idempotency(gpt_disk):
 
 
 def test_bad_disks_gpt(gpt_disk_w):
-    m = mmap.mmap(gpt_disk_w.fileno(), 0, access=mmap.ACCESS_WRITE)
-    h = GPTHeader.from_buffer(m, offset=512)
-    # Corrupted signature
-    m[512:512 + h._FORMAT.size] = bytes(h._replace(signature=b'EPICFART'))
-    with DiskImage(gpt_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    # Unrecognized revision
-    m[512:512 + h._FORMAT.size] = bytes(h._replace(revision=0x20000))
-    with DiskImage(gpt_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    # Unrecognized header size
-    m[512:512 + h._FORMAT.size] = bytes(h._replace(header_size=20))
-    with DiskImage(gpt_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    # Bad CRC32
-    m[512:512 + h._FORMAT.size] = bytes(h._replace(header_crc32=1))
-    with DiskImage(gpt_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
+    with gpt_disk_w.open('r+b') as source:
+        m = mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_WRITE)
+        h = GPTHeader.from_buffer(m, offset=512)
+        # Corrupted signature
+        m[512:512 + h._FORMAT.size] = bytes(h._replace(signature=b'EPICFART'))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        # Unrecognized revision
+        m[512:512 + h._FORMAT.size] = bytes(h._replace(revision=0x20000))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        # Unrecognized header size
+        m[512:512 + h._FORMAT.size] = bytes(h._replace(header_size=20))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        # Bad CRC32
+        m[512:512 + h._FORMAT.size] = bytes(h._replace(header_crc32=1))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
 
 
 def test_bad_disks_mbr(mbr_disk_w):
-    m = mmap.mmap(mbr_disk_w.fileno(), 0, access=mmap.ACCESS_WRITE)
-    h = MBRHeader.from_buffer(m)
-    # Corrupted boot signature
-    m[:h._FORMAT.size] = bytes(h._replace(boot_sig=0xDEAD))
-    with DiskImage(mbr_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    # Zero field isn't
-    m[:h._FORMAT.size] = bytes(h._replace(zero=1))
-    with DiskImage(mbr_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    p = MBRPartition.from_bytes(h.partition_3)
-    offset = p.first_lba * 512
-    h2 = MBRHeader.from_buffer(m, offset=offset)
-    # Corrupted boot signature in EBR
-    m[:h._FORMAT.size] = bytes(h)
-    m[offset:offset + h2._FORMAT.size] = bytes(h2._replace(boot_sig=0xDEAD))
-    with DiskImage(mbr_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    p2 = MBRPartition.from_bytes(h2.partition_2)
-    # Partition type of second partition of EBR isn't terminal or another EBR
-    m[offset:offset + h2._FORMAT.size] = bytes(
-        h2._replace(partition_2=bytes(p2._replace(part_type=1))))
-    with DiskImage(mbr_disk_w) as disk:
-        with pytest.raises(ValueError):
-            disk.partitions
-    # Two EBRs in primary
-    m[offset:offset + h2._FORMAT.size] = bytes(h2)
-    m[:h._FORMAT.size] = bytes(h._replace(partition_4=h.partition_3))
-    with DiskImage(mbr_disk_w) as disk:
-        with pytest.warns(UserWarning):
-            disk.partitions
+    with mbr_disk_w.open('r+b') as source:
+        m = mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_WRITE)
+        h = MBRHeader.from_buffer(m)
+        # Corrupted boot signature
+        m[:h._FORMAT.size] = bytes(h._replace(boot_sig=0xDEAD))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        # Zero field isn't
+        m[:h._FORMAT.size] = bytes(h._replace(zero=1))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        p = MBRPartition.from_bytes(h.partition_3)
+        offset = p.first_lba * 512
+        h2 = MBRHeader.from_buffer(m, offset=offset)
+        # Corrupted boot signature in EBR
+        m[:h._FORMAT.size] = bytes(h)
+        m[offset:offset + h2._FORMAT.size] = bytes(h2._replace(boot_sig=0xDEAD))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        p2 = MBRPartition.from_bytes(h2.partition_2)
+        # Partition type of second partition of EBR isn't terminal or another EBR
+        m[offset:offset + h2._FORMAT.size] = bytes(
+            h2._replace(partition_2=bytes(p2._replace(part_type=1))))
+        with DiskImage(source) as disk:
+            with pytest.raises(ValueError):
+                disk.partitions
+        # Two EBRs in primary
+        m[offset:offset + h2._FORMAT.size] = bytes(h2)
+        m[:h._FORMAT.size] = bytes(h._replace(partition_4=h.partition_3))
+        with DiskImage(source) as disk:
+            with pytest.warns(UserWarning):
+                disk.partitions
 
 
 def test_disk_gpt_attr(gpt_disk):

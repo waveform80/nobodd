@@ -21,23 +21,19 @@ def test_help(capsys):
     assert capture.out.startswith('usage:')
 
 
-def test_regular_operation(fat_disks_r, tmp_path):
-    for fat_type, fat_disk in fat_disks_r.items():
-        test_path = tmp_path / 'test.img'
-        with test_path.open('w+b') as test_file:
-            fat_disk.seek(0)
-            copyfileobj(fat_disk, test_file)
+def test_regular_operation(fat_disks_w, tmp_path):
+    for fat_disk in fat_disks_w.values():
+        assert fat_disk.stat().st_size < 100 * 1048576
         assert main([
             '--size', '100MB',
             '--boot-partition', '1',
             '--nbd-host', 'myserver',
             '--nbd-name', 'myshare',
-            str(test_path)
+            str(fat_disk)
         ]) == 0
-        assert test_path.stat().st_size == 100 * 1048576
+        assert fat_disk.stat().st_size == 100 * 1048576
         with (
-            test_path.open('r+b') as test_file,
-            DiskImage(test_file) as img,
+            DiskImage(fat_disk) as img,
             FatFileSystem(img.partitions[1].data) as fs,
         ):
             assert (fs.root / 'cmdline.txt').read_text() == (
@@ -45,3 +41,22 @@ def test_regular_operation(fat_disks_r, tmp_path):
                 'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
                 'rootfstype=ext4 rootwait fixrtc quiet splash')
 
+
+def test_already_big_enough(fat16_disk_w, tmp_path, caplog):
+    with caplog.at_level(logging.INFO):
+        with fat16_disk_w.open('r+b') as f:
+            f.seek(120 * 1048576)
+            f.truncate()
+
+        assert main([
+            '--size', '100MB',
+            '--boot-partition', '1',
+            '--nbd-host', 'myserver',
+            '--nbd-name', 'myshare',
+            str(fat16_disk_w)
+        ]) == 0
+        assert fat16_disk_w.stat().st_size == 120 * 1048576
+        msg = (
+            f'Skipping resize; {fat16_disk_w} is already '
+            f'{100 * 1048576} bytes or larger')
+        assert ('prep', logging.INFO, msg) in caplog.record_tuples
