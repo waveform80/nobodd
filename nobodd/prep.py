@@ -34,10 +34,6 @@ except ImportError:
     from importlib_metadata import version
 
 
-def fqdn():
-    return 'localhost'
-
-
 def get_parser():
     """
     Returns the command line parser for the application, pre-configured with
@@ -57,7 +53,7 @@ def get_parser():
         '--size', type=size, default='16GB',
         help="The size to expand the image to; default: %(default)s")
     parser.add_argument(
-        '--nbd-host', type=str, default=fqdn(),
+        '--nbd-host', type=str, default=socket.getfqdn(),
         help="The hostname of the nbd server to connect to for the root "
         "device; defaults to the local machine's FQDN")
     parser.add_argument(
@@ -198,8 +194,6 @@ def main(args=None):
         conf.logger.setLevel(logging.INFO)
         if conf.boot_partition is None or conf.root_partition is None:
             detect_partitions(conf)
-        if conf.nbd_host is None:
-            conf.nbd_host = socket.getfqdn()
         if conf.nbd_name is None:
             conf.nbd_name = conf.image.stem
 
