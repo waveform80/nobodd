@@ -15,6 +15,4 @@ Application Functions
 
 .. autofunction:: get_parser
 
-.. autofunction:: prepare_cmdline
-
 .. autofunction:: prepare_image
