@@ -18,6 +18,15 @@ from .disk import DiskImage
 from .fs import FatFileSystem
 from .config import CONFIG_LOCATIONS, ConfigArgumentParser, size
 
+# NOTE: The fallback comes first here as Python 3.7 incorporates
+# importlib.resources but at a version incompatible with our requirements.
+# Ultimately the try clause should be removed in favour of the except clause
+# once compatibility moves beyond Python 3.9
+try:
+    import importlib_resources as resources
+except ImportError:
+    from importlib import resources
+
 # NOTE: Remove except when compatibility moves beyond Python 3.8
 try:
     from importlib.metadata import version
@@ -35,7 +44,9 @@ def get_parser():
     defaults from the application's configuration file(s). See
     :func:`~nobodd.config.ConfigArgumentParser` for more information.
     """
-    parser = ConfigArgumentParser(description=__doc__)
+    parser = ConfigArgumentParser(
+        description=__doc__,
+        template=resources.files('nobodd') / 'default.conf')
     parser.add_argument(
         '--version', action='version', version=version('nobodd'))
 

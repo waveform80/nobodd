@@ -12,15 +12,6 @@ from argparse import ArgumentParser, SUPPRESS
 from ipaddress import ip_address
 from copy import deepcopy
 
-# NOTE: The fallback comes first here as Python 3.7 incorporates
-# importlib.resources but at a version incompatible with our requirements.
-# Ultimately the try clause should be removed in favour of the except clause
-# once compatibility moves beyond Python 3.9
-try:
-    import importlib_resources as resources
-except ImportError:
-    from importlib import resources
-
 
 # The locations to attempt to read the configuration from
 XDG_CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', '~/.config'))
