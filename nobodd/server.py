@@ -98,10 +98,8 @@ def get_parser():
     """
     Returns the command line parser for the application, pre-configured with
     defaults from the application's configuration file(s). See
-    :func:`~nobodd.config.get_config` and :func:`~nobodd.config.get_parser` for
-    more information.
+    :func:`~nobodd.config.ConfigArgumentParser` for more information.
     """
-
     parser = ConfigArgumentParser(description=__doc__)
     parser.add_argument(
         '--version', action='version', version=version('nobodd'))
@@ -167,9 +165,9 @@ signal.signal(signal.SIGTERM, on_sigterm)
 
 def main(args=None):
     """
-    The main entry point for the :program:`nobodd` application. Takes *args*,
-    the sequence of command line arguments to parse. Returns the exit code of
-    the application (0 for a normal exit, and non-zero otherwise).
+    The main entry point for the :program:`nobodd-server` application. Takes
+    *args*, the sequence of command line arguments to parse. Returns the exit
+    code of the application (0 for a normal exit, and non-zero otherwise).
 
     If ``DEBUG=1`` is found in the application's environment, top-level
     exceptions will be printed with a full back-trace. ``DEBUG=2`` will launch
