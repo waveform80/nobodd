@@ -1,5 +1,14 @@
 version: 2
 
+formats: all
+
+python:
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - doc
+
 build:
   os: ubuntu-22.04
   tools:
