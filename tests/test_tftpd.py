@@ -208,10 +208,10 @@ def test_clientstate_transfer(localhost, initrd_img):
 
 
 def test_tftp_rrq_transfer(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         # All tests start with this to ensure previous tests have left the
         # session-scoped server in a "clean" state (see note in the tftp_server
         # fixture above)
@@ -244,10 +244,10 @@ def test_tftp_rrq_transfer(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_repeat_ack(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -285,10 +285,10 @@ def test_tftp_rrq_transfer_repeat_ack(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_future_ack(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -316,10 +316,10 @@ def test_tftp_rrq_transfer_future_ack(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_resend(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -351,10 +351,10 @@ def test_tftp_rrq_transfer_resend(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_with_options(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -390,10 +390,10 @@ def test_tftp_rrq_transfer_with_options(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_resend_and_die(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         # We're using a ludicrously short timeout below (the minimum permitted)
@@ -434,10 +434,10 @@ def test_tftp_rrq_transfer_resend_and_die(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_bad_options(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -459,10 +459,10 @@ def test_tftp_rrq_transfer_bad_options(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_bad_filename(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -483,11 +483,11 @@ def test_tftp_rrq_transfer_bad_filename(tftp_server, caplog):
 
 
 def test_tftp_rrq_unknown_error(tftp_server, caplog):
-    with (
-        mock.patch('nobodd.tftpd.TFTPBaseHandler.do_RRQ') as do_rrq,
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        mock.patch('nobodd.tftpd.TFTPBaseHandler.do_RRQ') as do_rrq, \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
         do_rrq.side_effect = TypeError('something weird happened')
 
@@ -508,10 +508,10 @@ def test_tftp_rrq_unknown_error(tftp_server, caplog):
 
 
 def test_tftp_rrq_os_error(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -532,10 +532,10 @@ def test_tftp_rrq_os_error(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_permission_error1(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -556,10 +556,10 @@ def test_tftp_rrq_transfer_permission_error1(tftp_server, caplog):
 
 
 def test_tftp_rrq_transfer_permission_error2(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -581,10 +581,10 @@ def test_tftp_rrq_transfer_permission_error2(tftp_server, caplog):
 
 
 def test_tftp_wrq_transfer(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -607,10 +607,10 @@ def test_tftp_wrq_transfer(tftp_server, caplog):
 
 
 def test_tftp_client_error1(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -626,10 +626,10 @@ def test_tftp_client_error1(tftp_server, caplog):
 
 
 def test_tftp_client_error2(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -653,10 +653,10 @@ def test_tftp_client_error2(tftp_server, caplog):
 
 
 def test_tftp_bad_request(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         client.settimeout(10)
@@ -676,11 +676,11 @@ def test_tftp_bad_request(tftp_server, caplog):
 
 
 def test_tftp_bad_client(tftp_server, caplog):
-    with (
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client1,
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client2,
-        caplog.at_level(logging.INFO)
-    ):
+    with \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client1, \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client2, \
+        caplog.at_level(logging.INFO):
+
         assert not tftp_server.subs._alive
 
         # Start a valid transfer from client1...
@@ -729,11 +729,11 @@ def test_tftp_bad_client(tftp_server, caplog):
 def test_tftp_shuts_down_transfers(tftp_root, cmdline_txt):
     # Set up our own one-shot SimpleTFTPServer as we need to shut it down
     # during this test...
-    with (
-        SimpleTFTPServer(('127.0.0.1', 0), tftp_root) as server,
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client1,
-        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client2,
-    ):
+    with \
+        SimpleTFTPServer(('127.0.0.1', 0), tftp_root) as server, \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client1, \
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client2: \
+
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
         assert not server.subs._alive

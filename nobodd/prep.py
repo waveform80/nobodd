@@ -96,10 +96,10 @@ def prepare_image(conf):
             conf.logger.info(
                 'Skipping resize; %s is already %d bytes or larger',
                 conf.image, conf.size)
-    with (
-        DiskImage(conf.image, access=mmap.ACCESS_WRITE) as img,
-        FatFileSystem(img.partitions[conf.boot_partition].data) as fs
-    ):
+    with \
+        DiskImage(conf.image, access=mmap.ACCESS_WRITE) as img, \
+        FatFileSystem(img.partitions[conf.boot_partition].data) as fs:
+
         cmdline = fs.root / conf.cmdline
         conf.logger.info(
             'Re-writing %s in partition %d', conf.cmdline, conf.boot_partition)
@@ -128,10 +128,10 @@ def detect_partitions(conf):
     partition.
     """
     conf.logger.info('Detecting partitions')
-    with (
-        conf.image.open('rb') as img_file,
-        DiskImage(img_file) as img
-    ):
+    with \
+        conf.image.open('rb') as img_file, \
+        DiskImage(img_file) as img:
+
         fat_types = (
             {UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'),
              UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')}

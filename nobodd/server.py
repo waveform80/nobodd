@@ -195,10 +195,10 @@ def main(args=None):
             board.serial: board
             for board in conf.boards
         }
-        with (
-            BootServer((conf.listen, conf.port), boards) as server,
-            DefaultSelector() as selector
-        ):
+        with \
+            BootServer((conf.listen, conf.port), boards) as server, \
+            DefaultSelector() as selector:
+
             server.logger.addHandler(logging.StreamHandler(sys.stderr))
             server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
             server.logger.info('Ready')
