@@ -26,10 +26,17 @@ def main_thread():
             self.exit_code = None
             self.exception = None
             self.argv = []
+            self.address = None
 
         def run(self):
+            class MyBootServer(BootServer):
+                def server_bind(slf):
+                    super().server_bind()
+                    self.address = slf.server_address
+
             try:
-                self.exit_code = main(self.argv)
+                with mock.patch('nobodd.server.BootServer', MyBootServer):
+                    self.exit_code = main(self.argv)
             except Exception as e:
                 self.exception = e
 
@@ -72,7 +79,7 @@ def test_help(capsys):
 
 
 def test_ctrl_c(main_thread, capsys):
-    main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
+    main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
     with main_thread:
         os.kill(os.getpid(), signal.SIGINT)
     capture = capsys.readouterr()
@@ -82,7 +89,7 @@ def test_ctrl_c(main_thread, capsys):
 
 
 def test_sigterm(main_thread, capsys):
-    main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
+    main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
     with main_thread:
         os.kill(os.getpid(), signal.SIGTERM)
     capture = capsys.readouterr()
@@ -99,7 +106,7 @@ def test_error_exit_no_debug(main_thread, capsys, monkeypatch):
         m.delenv('DEBUG', raising=False)
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
+        main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
         with main_thread:
             pass
         capture = capsys.readouterr()
@@ -116,7 +123,7 @@ def test_error_exit_with_debug(main_thread, monkeypatch):
         m.setenv('DEBUG', '1')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
+        main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
         with main_thread:
             pass
         assert isinstance(main_thread.exception, RuntimeError)
@@ -131,7 +138,7 @@ def test_error_exit_with_pdb(main_thread, capsys, monkeypatch):
         m.setenv('DEBUG', '2')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
-        main_thread.argv = ['--listen', '127.0.0.1', '--port', '54321']
+        main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
         with main_thread:
             pass
         assert post_mortem.called
@@ -145,7 +152,7 @@ def test_regular_operation(fat16_disk, main_thread, capsys):
         expected = (boot.root / 'random').read_bytes()
 
     main_thread.argv = [
-        '--listen', '127.0.0.1', '--port', '54321',
+        '--listen', '127.0.0.1', '--port', '0',
         '--board', f'1234abcd,{fat16_disk}',
     ]
     with main_thread:
@@ -156,7 +163,7 @@ def test_regular_operation(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('1234abcd/random', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             received = []
             for block, offset in enumerate(range(0, len(expected), 512), start=1):
                 buf, addr = client.recvfrom(1500)
@@ -190,7 +197,7 @@ def test_bad_requests(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('1234abcd/invalid', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             buf, addr = client.recvfrom(1500)
             pkt = tftp.Packet.from_bytes(buf)
             assert isinstance(pkt, tftp.ERRORPacket)
@@ -201,7 +208,7 @@ def test_bad_requests(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('.', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             buf, addr = client.recvfrom(1500)
             pkt = tftp.Packet.from_bytes(buf)
             assert isinstance(pkt, tftp.ERRORPacket)
@@ -212,7 +219,7 @@ def test_bad_requests(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('1234abcd/a.dir', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             buf, addr = client.recvfrom(1500)
             pkt = tftp.Packet.from_bytes(buf)
             assert isinstance(pkt, tftp.ERRORPacket)
@@ -223,7 +230,7 @@ def test_bad_requests(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('deadbeef/random', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             buf, addr = client.recvfrom(1500)
             pkt = tftp.Packet.from_bytes(buf)
             assert isinstance(pkt, tftp.ERRORPacket)
@@ -235,7 +242,7 @@ def test_bad_requests(fat16_disk, main_thread, capsys):
             client.settimeout(10)
             client.sendto(
                 bytes(tftp.RRQPacket('5678abcd/random', 'octet')),
-                ('127.0.0.1', 54321))
+                main_thread.address)
             buf, addr = client.recvfrom(1500)
             pkt = tftp.Packet.from_bytes(buf)
             assert isinstance(pkt, tftp.ERRORPacket)
