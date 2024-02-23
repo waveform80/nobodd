@@ -12,6 +12,7 @@ containing project's setup.cfg under [{SETUP_SECTION}]
 from __future__ import annotations
 
 import os
+import re
 import sys
 assert sys.version_info >= (3, 6), 'Script requires Python 3.6+'
 import tempfile
@@ -38,19 +39,24 @@ def main(args: t.Optional[t.List[str]]=None):
     config = get_config(args)
 
     writer = CopyWriter.from_config(config)
-    for path, copyrights in get_copyrights(config.include, config.exclude):
+    for path, copyrights in get_copyrights(
+        config.include, config.exclude, config.additional
+    ):
         print(f'Re-writing {path}...')
         copyrights = sorted(
             copyrights, reverse=True, key=lambda c: (max(c.years), c.author))
-        with AtomicReplaceFile(path, encoding='utf-8') as target:
-            with path.open('r') as source:
-                for chunk in writer.transform(source, copyrights):
-                    target.write(chunk)
+        with (
+            AtomicReplaceFile(path, encoding='utf-8') as target,
+            path.open('r') as source
+        ):
+            for chunk in writer.transform(source, copyrights):
+                target.write(chunk)
 
 
 def get_config(args: t.List[str]) -> Namespace:
     config = ConfigParser(
         defaults={
+            'additional': '',
             'include': '**/*',
             'exclude': '',
             'license': 'LICENSE.txt',
@@ -69,6 +75,14 @@ def get_config(args: t.List[str]) -> Namespace:
         sect['license'] = str(PROJECT_ROOT / sect['license'])
 
     parser = ArgumentParser(description=__doc__.format(**globals()))
+    parser.add_argument(
+        '-a', '--additional', action='append', metavar='STR',
+        default=sect.getlist('additional'),
+        help="An additional copyright owner to add to all files. This is "
+        "typically used to specify a corporate owner which never appears "
+        "directly in commits, but which ultimately owns a project. If an "
+        "e-mail contact should be included, format the string as "
+        '"name <email>"')
     parser.add_argument(
         '-i', '--include', action='append', metavar='GLOB',
         default=sect.getlist('include'),
@@ -120,7 +134,20 @@ def get_config(args: t.List[str]) -> Namespace:
     ns = parser.parse_args(args)
     ns.include = set(ns.include)
     ns.exclude = set(ns.exclude)
+    ns.additional = [name_and_email(s) for s in ns.additional]
     return ns
+
+
+def name_and_email(s: str) -> t.Tuple[str, str]:
+    """
+    Parse the :class:`str` *s* into a :class:`tuple` of ``(name, email)`` when
+    *s* is formatted as "name <email>", or ``(name, '')`` otherwise.
+    """
+    m = re.match(r'^(?P<name>.*) +<(?P<email>.+)>$', s)
+    if m:
+        return m.group('name'), m.group('email')
+    else:
+        return s, ''
 
 
 class Copyright(t.NamedTuple):
@@ -133,11 +160,15 @@ class Copyright(t.NamedTuple):
             years = f'{min(self.years)}-{max(self.years)}'
         else:
             years = f'{min(self.years)}'
-        return f'{years} {self.author} <{self.email}>'
+        if self.email:
+            return f'{years} {self.author} <{self.email}>'
+        else:
+            return f'{years} {self.author}'
 
 
-def get_copyrights(include: t.Set[str], exclude: t.Set[str])\
-        -> t.Iterator[t.Tuple[Path, t.Iterable[Copyright]]]:
+def get_copyrights(include: t.Set[str], exclude: t.Set[str],
+                   additional: t.Set[t.Tuple[str, str]]
+                  ) -> t.Iterator[t.Tuple[Path, t.Iterable[Copyright]]]:
     sorted_blame = sorted(
         get_contributions(include, exclude),
         key=lambda c: (c.path, c.author, c.email)
@@ -154,6 +185,11 @@ def get_copyrights(include: t.Set[str], exclude: t.Set[str])\
             Copyright(author, email, {y.year for y in years})
             for (author, email), years in it
         ]
+        years = {year for c in copyrights for year in c.years}
+        copyrights.extend([
+            Copyright(author, email, years)
+            for author, email in additional
+        ])
         yield path, copyrights
 
 

@@ -1,3 +1,10 @@
+# nobodd: a boot configuration tool for the Raspberry Pi
+#
+# Copyright (c) 2023-2024 Dave Jones <dave.jones@canonical.com>
+# Copyright (c) 2023-2024 Canonical Ltd.
+#
+# SPDX-License-Identifier: GPL-3.0
+
 """
 A read-only TFTP server capable of reading FAT boot partitions from within
 image files or devices. Intended to be paired with a block-device service (e.g.

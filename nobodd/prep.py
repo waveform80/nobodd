@@ -1,3 +1,10 @@
+# nobodd: a boot configuration tool for the Raspberry Pi
+#
+# Copyright (c) 2023-2024 Dave Jones <dave.jones@canonical.com>
+# Copyright (c) 2023-2024 Canonical Ltd.
+#
+# SPDX-License-Identifier: GPL-3.0
+
 """
 Customizes an OS image to prepare it for netbooting via TFTP. Specifically,
 this expands the image to a specified size (the assumption being the image is a
