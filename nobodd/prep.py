@@ -57,7 +57,7 @@ def get_parser():
         'image', type=Path,
         help="The target image to customize")
     parser.add_argument(
-        '--size', type=size, default='16GB',
+        '-s', '--size', type=size, default='16GB',
         help="The size to expand the image to; default: %(default)s")
     parser.add_argument(
         '--nbd-host', type=str, default=socket.getfqdn(),
