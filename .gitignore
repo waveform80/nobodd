@@ -21,6 +21,7 @@ man
 coverage
 .cache
 .coverage
+.coverage.*
 .tox
 .pytest_cache
 .env
