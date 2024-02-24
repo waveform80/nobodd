@@ -60,24 +60,24 @@ def get_parser():
         '-s', '--size', type=size, default='16GB',
         help="The size to expand the image to; default: %(default)s")
     parser.add_argument(
-        '--nbd-host', type=str, default=socket.getfqdn(),
+        '--nbd-host', type=str, metavar='HOST', default=socket.getfqdn(),
         help="The hostname of the nbd server to connect to for the root "
         "device; defaults to the local machine's FQDN")
     parser.add_argument(
-        '--nbd-name', type=str, default=None,
+        '--nbd-name', type=str, metavar='NAME', default=None,
         help="The name of the nbd share to use as the root device; defaults "
         "to the stem of the *image* name")
     parser.add_argument(
-        '--cmdline', type=str, default='cmdline.txt',
+        '--cmdline', type=str, metavar='NAME', default='cmdline.txt',
         help="The name of the file containing the kernel command line on the "
         "boot partition; default: %(default)s")
     parser.add_argument(
-        '--boot-partition', type=int, default=None,
+        '--boot-partition', type=int, metavar='NUM', default=None,
         help="Which partition is the boot partition within the image; "
         "default is the first FAT partition (identified by partition type) "
         "found in the image")
     parser.add_argument(
-        '--root-partition', type=int, default=None,
+        '--root-partition', type=int, metavar='NUM', default=None,
         help="Which partition is the root partition within the image "
         "default is the first non-FAT partition (identified by partition "
         "type) found in the image")
