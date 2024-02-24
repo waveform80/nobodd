@@ -20,6 +20,7 @@ import logging
 import argparse
 from pathlib import Path
 from uuid import UUID
+from shutil import copyfileobj
 
 from .disk import DiskImage
 from .fs import FatFileSystem
@@ -52,6 +53,14 @@ def get_parser():
         template=resources.files('nobodd') / 'default.conf')
     parser.add_argument(
         '--version', action='version', version=version('nobodd'))
+    parser.add_argument(
+        '-v', '--verbose', dest='log_level',
+        action='store_const', const=logging.INFO,
+        help="Print more output")
+    parser.add_argument(
+        '-q', '--quiet', dest='log_level',
+        action='store_const', const=logging.CRITICAL,
+        help="Print no output")
 
     parser.add_argument(
         'image', type=Path,
@@ -81,8 +90,18 @@ def get_parser():
         help="Which partition is the root partition within the image "
         "default is the first non-FAT partition (identified by partition "
         "type) found in the image")
+    parser.add_argument(
+        '-C', '--copy', type=Path, metavar='PATH', action='append', default=[],
+        help="Copy the specified file or directory into the boot partition. "
+        "This may be given multiple times to specify multiple items to copy")
+    parser.add_argument(
+        '-R', '--remove', type=Path, metavar='PATH', action='append', default=[],
+        help="Remove the specified file or directory from the boot "
+        "partition. This may be given multiple times to specify multiple "
+        "items to delete")
 
     defaults = parser.read_configs(CONFIG_LOCATIONS)
+    parser.set_defaults(log_level=logging.WARNING)
     parser.set_defaults_from(defaults)
     return parser
 
@@ -107,25 +126,104 @@ def prepare_image(conf):
         DiskImage(conf.image, access=mmap.ACCESS_WRITE) as img, \
         FatFileSystem(img.partitions[conf.boot_partition].data) as fs:
 
-        cmdline = fs.root / conf.cmdline
+        remove_items(fs, conf)
+        copy_items(fs, conf)
+        rewrite_cmdline(fs, conf)
+
+
+def remove_items(fs, conf):
+    """
+    In *fs*, a :class:`~nobodd.fs.FatFileSystem`, remove all items in the
+    :class:`list` *conf.remove*, where *conf* is the script's configuration.
+
+    If any item is a directory, it and all files under it will be removed
+    recursively. If an item in *to_remove* does not exist, a warning will be
+    printed, but no error is raised.
+    """
+    for item in conf.remove:
+        item = fs.root / str(item)
+        if item.exists():
+            conf.logger.info(
+                'Removing %s from partition %d', item, conf.boot_partition)
+            if item.is_dir():
+                dirs = []
+                for subitem in item.rglob('*'):
+                    if subitem.is_dir():
+                        dirs.append(subitem)
+                    else:
+                        subitem.unlink()
+                for subitem in dirs:
+                    subitem.rmdir()
+                item.rmdir()
+            else:
+                item.unlink()
+        else:
+            conf.logger.warning(
+                "No such file/dir %s in partition %d", item, conf.boot_partition)
+
+
+def copy_items(fs, conf):
+    """
+    Copy all :class:`~pathlib.Path` items in the :class:`list` *conf.copy* into
+    *fs*, a :class:`~nobodd.fs.FatFileSystem`, where *conf* is the script's
+    configuration.
+
+    If an item is a directory, it and all files under it will be copied
+    recursively. If an item is a hard-link or a sym-link it will be copied as a
+    regular file (since FAT does not support links). If an item does not exist,
+    an :exc:`OSError` will be raised. This is in contrast to :func:`to_remove`
+    since it is assumed that control over the source file-system is under the
+    caller's control, which is not the case in :func:`to_remove`.
+    """
+    for item in conf.copy:
         conf.logger.info(
-            'Re-writing %s in partition %d', conf.cmdline, conf.boot_partition)
-        params = cmdline.read_text()
-        try:
-            params = params[:params.index('\n')]
-        except ValueError:
-            pass # no newline in the file
-        params = [
-            param
-            for param in params.split()
-            if not param.startswith('root=')
-        ]
-        params[:0] = [
-            'ip=dhcp',
-            f'nbdroot={conf.nbd_host}/{conf.nbd_name}',
-            f'root=/dev/nbd0p{conf.root_partition}',
-        ]
-        cmdline.write_text(' '.join(params))
+            'Copying %s into partition %d', item, conf.boot_partition)
+        if item.is_dir():
+            copy_root = fs.root / item.name
+            copy_root.mkdir()
+            for subitem in item.rglob('*'):
+                name = subitem.relative_to(item)
+                if subitem.is_dir():
+                    (copy_root / str(name)).mkdir()
+                else:
+                    with \
+                        subitem.open('rb') as source, \
+                        (copy_root / str(name)).open('wb') as target:
+
+                        copyfileobj(source, target)
+        else:
+            with \
+                item.open('rb') as source, \
+                (fs.root / item.name).open('wb') as target:
+
+                copyfileobj(source, target)
+
+
+def rewrite_cmdline(fs, conf):
+    """
+    Given the script's configuration *conf*, find the file *conf.cmdline*
+    containing the kernel command-line in the :class:`~nobodd.fs.FatFileSystem`
+    *fs*, and re-write it to point the NBD share specified.
+    """
+    cmdline = fs.root / conf.cmdline
+    conf.logger.info(
+        'Re-writing %s in partition %d', conf.cmdline, conf.boot_partition)
+    params = cmdline.read_text()
+    try:
+        params = params[:params.index('\n')]
+    except ValueError:
+        pass # no newline in the file
+    params = [
+        param
+        for param in params.split()
+        if not param.startswith('root=')
+    ]
+    params[:0] = [
+        'ip=dhcp',
+        f'nbdroot={conf.nbd_host}/{conf.nbd_name}',
+        f'root=/dev/nbd0p{conf.root_partition}',
+    ]
+    cmdline.write_text(' '.join(params))
 
 
 def detect_partitions(conf):
@@ -199,7 +297,7 @@ def main(args=None):
         conf = get_parser().parse_args(args)
         conf.logger = logging.getLogger('prep')
         conf.logger.addHandler(logging.StreamHandler(sys.stderr))
-        conf.logger.setLevel(logging.INFO)
+        conf.logger.setLevel(logging.DEBUG if debug else conf.log_level)
         if conf.boot_partition is None or conf.root_partition is None:
             detect_partitions(conf)
         if conf.nbd_name is None:

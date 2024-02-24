@@ -467,6 +467,7 @@ class FatPath:
         if cluster == 0:
             raise OSError(errno.EACCES, 'Cannot remove the root directory')
         for item in self.iterdir():
+            print(repr(item))
             raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
 
         parent = self.resolve(strict=False).parent

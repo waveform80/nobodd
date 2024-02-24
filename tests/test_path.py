@@ -128,6 +128,7 @@ def test_path_unlink(fat12_disk):
             p = fs.root / 'lots-of-zeros'
             assert p.exists()
             p.unlink()
+
             p = fs.root / 'empty'
             assert p.exists()
             p.unlink()
@@ -136,6 +137,15 @@ def test_path_unlink(fat12_disk):
             assert not p.exists()
             with pytest.raises(FileNotFoundError):
                 p.unlink()
+
+            # Testunlinking files in a sub-directory with multiple pages
+            p = fs.root / 'a.dir' / 'many-many-files'
+            assert (p / '000.txt').exists()
+            assert (p / '014.txt').exists()
+            (p / '000.txt').unlink()
+            (p / '014.txt').unlink()
+            assert not (p / '000.txt').exists()
+            assert not (p / '014.txt').exists()
 
 
 def test_path_rename(fat12_disk):
@@ -175,6 +185,8 @@ def test_path_mkdir(fat12_disk):
             assert not p.exists()
             p.mkdir()
             assert p.exists()
+            assert (p / '.').exists()
+            assert (p / '..').exists()
             p.mkdir(exist_ok=True)
             assert p.exists()
             with pytest.raises(FileExistsError):

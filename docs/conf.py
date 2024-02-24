@@ -8,8 +8,6 @@
 #
 # SPDX-License-Identifier: GPL-3.0
 
-# nobodd: A simple TFTP boot server for the Raspberry Pi
-
 import sys
 import os
 import configparser
@@ -61,7 +59,7 @@ autodoc_mock_imports = []
 # -- Intersphinx configuration --------------------------------------------
 
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3.11', None),
+    'python': ('https://docs.python.org/3.12', None),
 }
 
 # -- Options for HTML output ----------------------------------------------
@@ -105,7 +103,20 @@ epub_show_urls = 'no'
 # -- Options for manual page output ---------------------------------------
 
 man_pages = [
-    ('cli_nobodd', 'nobodd', 'nobodd - the TFTP server', [info['author']], 1),
+    (
+        'cli_nobodd',
+        'nobodd-server',
+        'nobodd-server - serve boot partition files over TFTP',
+        [info['author']],
+        1,
+    ),
+    (
+        'cli_prep',
+        'nobodd-prep',
+        'nobodd-prep - prepare an OS image for NBD netboot',
+        [info['author']],
+        1,
+    ),
 ]
 
 man_show_urls = True

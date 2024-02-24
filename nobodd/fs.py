@@ -1404,13 +1404,16 @@ class FatSubDirectory(FatDirectory):
 
     def _iter_entries(self):
         buf = bytearray(self._cs)
+        buf_offset = offset = 0
         self._file.seek(0)
         while self._file.readinto(buf):
-            for offset in range(0, len(buf), DirectoryEntry._FORMAT.size):
-                entry = DirectoryEntry.from_buffer(buf, offset)
+            buf_offset += offset
+            offset = 0
+            for entry in DirectoryEntry.iter_over(buf):
                 if entry.attr == 0x0F:
                     entry = LongFilenameEntry.from_buffer(buf, offset)
-                yield offset, entry
+                yield buf_offset + offset, entry
+                offset += DirectoryEntry._FORMAT.size
 
 
 class Fat12Root(FatRoot):

@@ -14,10 +14,10 @@ import pytest
 def make_disk(output, *, part_style='mbr', part_map={1: 'fat16', 5: 'ext2'}):
     disk, parts = {
         # Both layouts define the following partitions in a 32MB disk:
-        # 1 -- 8MB
-        # 2 -- 200KB
-        # 5 -- 4MB
-        # 6 -- 200KB
+        # 1 -- 8MB   -- FAT32 / Basic Data
+        # 2 -- 200KB -- FAT32 / Basic Data
+        # 5 -- 4MB   -- Linux
+        # 6 -- 200KB -- FAT32 / Basic Data
         'gpt': ('tests/gpt_disk.img.gz', {1: 2048, 2: 18432, 5: 20480, 6: 28672}),
         'mbr': ('tests/mbr_disk.img.gz', {1: 2048, 2: 18432, 5: 22528, 6: 32768}),
     }[part_style]

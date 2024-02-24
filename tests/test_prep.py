@@ -14,6 +14,7 @@ from conftest import make_disk
 
 from nobodd.disk import DiskImage
 from nobodd.fs import FatFileSystem
+from nobodd.mbr import MBRPartition
 from nobodd.prep import *
 
 
@@ -124,6 +125,7 @@ def test_already_big_enough(fat32_disk_w, caplog):
 
     with caplog.at_level(logging.INFO):
         assert main([
+            '--verbose',
             '--size', '50MB',
             '--boot-partition', '1',
             '--root-partition', '5',
@@ -144,11 +146,35 @@ def test_detect_later_boot_partition(tmp_path, caplog):
         make_disk(output, part_style='mbr', part_map={5: 'ext2', 6: 'fat12'})
     with caplog.at_level(logging.INFO):
         assert main([
+            '--verbose',
             '--size', '50MB',
             '--nbd-host', 'myserver',
             '--nbd-name', 'myshare',
             str(disk)
         ]) == 0
+        assert ('prep', logging.INFO, 'Boot partition is 6 (fat12)') in caplog.record_tuples
+
+
+def test_detect_multi_root(tmp_path, caplog):
+    disk = tmp_path / 'weird.img'
+    with disk.open('w+b') as output:
+        make_disk(output, part_style='mbr', part_map={
+            1: 'ext2', 5: 'ext2', 6: 'fat12'})
+        # Re-write partition 1's type to Linux (0x83)
+        output.seek(446)
+        part = MBRPartition.from_bytes(output.read(16))
+        part = part._replace(part_type=0x83)
+        output.seek(446)
+        output.write(MBRPartition._FORMAT.pack(*part))
+    with caplog.at_level(logging.INFO):
+        assert main([
+            '--verbose',
+            '--size', '50MB',
+            '--nbd-host', 'myserver',
+            '--nbd-name', 'myshare',
+            str(disk)
+        ]) == 0
+        assert ('prep', logging.INFO, 'Root partition is 1') in caplog.record_tuples
         assert ('prep', logging.INFO, 'Boot partition is 6 (fat12)') in caplog.record_tuples
 
 
@@ -199,3 +225,95 @@ def test_default_host_share(fat16_disk_w):
             'ip=dhcp nbdroot=louis.prima.org/fat16-mutable root=/dev/nbd0p5 '
             'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
             'rootfstype=ext4 rootwait fixrtc quiet splash')
+
+
+def test_remove_files(fat16_disk_w, caplog):
+    with caplog.at_level(logging.INFO):
+        assert main([
+            '--verbose',
+            '--size', '50MB',
+            '--remove', 'a.dir',
+            '--remove', 'random',
+            '--remove', 'i-dont-exist',
+            str(fat16_disk_w)
+        ]) == 0
+
+    with \
+        DiskImage(fat16_disk_w) as img, \
+        FatFileSystem(img.partitions[1].data) as fs:
+
+        assert not (fs.root / 'a.dir').exists()
+        assert not (fs.root / 'random').exists()
+        assert (
+            'prep', logging.WARNING,
+            'No such file/dir /i-dont-exist in partition 1'
+        ) in caplog.record_tuples
+
+
+def test_bad_copy_files(fat16_disk_w, caplog, tmp_path):
+    assert main([
+        '--verbose',
+        '--size', '50MB',
+        '--copy', 'i-dont-exist',
+        '--copy', 'seed',
+        str(fat16_disk_w)
+    ]) == 1
+
+
+def test_copy_files(fat16_disk_w, caplog, tmp_path):
+    config_txt = """\
+[all]
+arm_64bit=1
+kernel=vmlinuz
+initramfs initrd.img followkernel
+cmdline=cmdline.txt
+"""
+    user_data = """\
+chpasswd:
+    expire: true
+    list:
+    - elmer:WascallyWabbit
+
+# For maximum secuwity!
+ssh_pwauth: true
+"""
+    network_config = """\
+version: 2
+wifis:
+    wlan0:
+        dhcp4: true
+        optional: true
+        access-points:
+            elmerswifi:
+                password: "VewyVewySecwet"
+"""
+
+    (tmp_path / 'seed').mkdir()
+    (tmp_path / 'config.txt').write_text(config_txt)
+    (tmp_path / 'seed' / 'meta-data').touch()
+    (tmp_path / 'seed' / 'user-data').write_text(user_data)
+    (tmp_path / 'seed' / 'network-config').write_text(network_config)
+    (tmp_path / 'seed' / 'foo').mkdir()
+    (tmp_path / 'seed' / 'foo' / 'a foo').touch()
+    (tmp_path / 'seed' / 'foo' / 'a wild foo').touch()
+    with caplog.at_level(logging.INFO):
+        assert main([
+            '--verbose',
+            '--size', '50MB',
+            '--copy', str(tmp_path / 'config.txt'),
+            '--copy', str(tmp_path / 'seed'),
+            str(fat16_disk_w)
+        ]) == 0
+
+    with \
+        DiskImage(fat16_disk_w) as img, \
+        FatFileSystem(img.partitions[1].data) as fs:
+
+        assert (fs.root / 'config.txt').read_text() == config_txt
+        assert (fs.root / 'seed').is_dir()
+        assert (fs.root / 'seed' / 'meta-data').stat().st_size == 0
+        assert (fs.root / 'seed' / 'user-data').read_text() == user_data
+        assert (fs.root / 'seed' / 'network-config').read_text() == network_config
+        assert (fs.root / 'seed' / 'foo').is_dir()
+        assert (fs.root / 'seed' / 'foo' / 'a foo').is_file()
+        assert (fs.root / 'seed' / 'foo' / 'a wild foo').is_file()
