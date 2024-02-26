@@ -770,39 +770,39 @@ def test_fatdirectory_prefix_entries(fat12_disk):
             root = fs.open_dir(0)
             offset, entries = find_non_lfn_file(root)
             lfn, sfn, entry = root._split_entries(entries)
-            assert (lfn, sfn) == ('empty', 'EMPTY')
+            assert (lfn, sfn) == ('cmdline.txt', 'CMDLINE.TXT')
 
             # Ensure we don't generate LFNs when unnecessary
-            assert root._prefix_entries('empty', entry) == entries
+            assert root._prefix_entries('cmdline.txt', entry) == entries
 
             # Short filenames with extension and variety of cases
-            cksum = lfn_checksum(b'EMPTY   ', b'DAT')
-            assert root._prefix_entries('EMPTY.DAT', entry) == [
-                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0)
+            cksum = lfn_checksum(b'CMDLINE ', b'TXT')
+            assert root._prefix_entries('CMDLINE.TXT', entry) == [
+                entry._replace(filename=b'CMDLINE ', ext=b'TXT', attr2=0)
             ]
-            assert root._prefix_entries('empty.dat', entry) == [
-                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b11000)
+            assert root._prefix_entries('cmdline.txt', entry) == [
+                entry._replace(filename=b'CMDLINE ', ext=b'TXT', attr2=0b11000)
             ]
-            assert root._prefix_entries('EMPTY.dat', entry) == [
-                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b10000)
+            assert root._prefix_entries('CMDLINE.txt', entry) == [
+                entry._replace(filename=b'CMDLINE ', ext=b'TXT', attr2=0b10000)
             ]
-            assert root._prefix_entries('empty.DAT', entry) == [
-                entry._replace(filename=b'EMPTY   ', ext=b'DAT', attr2=0b1000)
+            assert root._prefix_entries('cmdline.TXT', entry) == [
+                entry._replace(filename=b'CMDLINE ', ext=b'TXT', attr2=0b1000)
             ]
 
             # Short filename with mixed case, demanding LFN
-            cksum = lfn_checksum(b'EMPTY~1 ', b'DAT')
-            assert root._prefix_entries('Empty.Dat', entry) == [
+            cksum = lfn_checksum(b'CMDLIN~1', b'TXT')
+            assert root._prefix_entries('CmdLine.Txt', entry) == [
                 LongFilenameEntry(
                     sequence=0x41,
-                    name_1=b'E\0m\0p\0t\0y\0',
+                    name_1=b'C\0m\0d\0L\0i\0',
                     attr=0xF,
                     checksum=cksum,
-                    name_2=b'.\0D\0a\0t\0\0\0\xFF\xFF',
+                    name_2=b'n\0e\0.\0T\0x\0t\0',
                     first_cluster=0,
-                    name_3=b'\xFF' * 4,
+                    name_3=b'\0\0\xFF\xFF',
                 ),
-                entry._replace(filename=b'EMPTY~1 ', ext=b'DAT', attr2=0)
+                entry._replace(filename=b'CMDLIN~1', ext=b'TXT', attr2=0)
             ]
 
             # "Special" . and .. entries

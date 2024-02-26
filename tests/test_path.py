@@ -240,9 +240,9 @@ def test_path_glob(fat12_disk):
     with DiskImage(fat12_disk) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
             p = fs.root / 'a.dir' / 'many-many-files'
-            assert sum(1 for f in p.glob('?[0-9][02468].txt')) == 500
-            assert sum(1 for f in fs.root.glob('*/many-many-files/*.txt')) == 1000
-            assert sum(1 for f in fs.root.glob('**/many-*/*.txt')) == 1000
+            assert sum(1 for f in p.glob('?[0-9][02468].txt')) == 50
+            assert sum(1 for f in fs.root.glob('*/many-many-files/*.txt')) == 100
+            assert sum(1 for f in fs.root.glob('**/many-*/*.txt')) == 100
             with pytest.raises(ValueError):
                 list(p.glob(''))
             with pytest.raises(ValueError):
@@ -256,9 +256,9 @@ def test_path_rglob(fat12_disk):
         with FatFileSystem(img.partitions[1].data) as fs:
             p = fs.root / 'a.dir'
             # gpl3.txt + {000..999}.txt
-            assert sum(1 for f in p.rglob('*.txt')) == 1001
+            assert sum(1 for f in p.rglob('*.txt')) == 101
             # gpl3.txt + *[13579].txt
-            assert sum(1 for f in p.rglob('*[13579].txt')) == 501
+            assert sum(1 for f in p.rglob('*[13579].txt')) == 51
             with pytest.raises(ValueError):
                 list(p.rglob(''))
             with pytest.raises(ValueError):
