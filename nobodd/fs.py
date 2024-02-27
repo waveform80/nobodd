@@ -1279,7 +1279,7 @@ class FatDirectory(abc.MutableMapping):
         # from *name*. For existing entries, the existing values will be
         # re-used
         uname = name.upper()
-        offset = 0
+        offset = -DirectoryEntry._FORMAT.size
         for offset, entries in self._group_entries():
             lfn, sfn, old_entry = self._split_entries(entries)
             if lfn.upper() == uname or sfn == uname:
