@@ -180,11 +180,11 @@ def copy_items(fs, conf):
             'Copying %s into partition %d', item, conf.boot_partition)
         if item.is_dir():
             copy_root = fs.root / item.name
-            copy_root.mkdir()
+            copy_root.mkdir(exist_ok=True)
             for subitem in item.rglob('*'):
                 name = subitem.relative_to(item)
                 if subitem.is_dir():
-                    (copy_root / str(name)).mkdir()
+                    (copy_root / str(name)).mkdir(exist_ok=True)
                 else:
                     with \
                         subitem.open('rb') as source, \
@@ -241,7 +241,7 @@ def detect_partitions(conf):
             {UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'),
              UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')}
             if img.partitions.style == 'gpt' else
-            {0x01, 0x06, 0x0B, 0x0C, 0x0E, 0x0F, 0xEF}
+            {0x01, 0x06, 0x0B, 0x0C, 0x0E, 0xEF}
         )
         for num, part in img.partitions.items():
             with part:
