@@ -23,10 +23,9 @@ from copy import deepcopy
 # The locations to attempt to read the configuration from
 XDG_CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', '~/.config'))
 CONFIG_LOCATIONS = (
-    Path('/etc/nobodd/config'),
-    Path('/usr/local/etc/nobodd/config'),
-    Path(XDG_CONFIG_HOME / 'nobodd.conf'),
-    Path('~/.nobodd.conf'),
+    Path('/etc/nobodd/nobodd.conf'),
+    Path('/usr/local/etc/nobodd/nobodd.conf'),
+    Path(XDG_CONFIG_HOME / 'nobodd/nobodd.conf'),
 )
 
 
