@@ -12,7 +12,7 @@ nobodd.server
 .. module:: nobodd.server
 
 This module contains the server and handler classes which make up the main
-:program:`nobodd-server` application, as well as the entry point for the
+:program:`nobodd-tftpd` application, as well as the entry point for the
 application itself.
 
 

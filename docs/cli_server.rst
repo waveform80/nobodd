@@ -8,7 +8,7 @@
 .. include:: subst.rst
 
 =============
-nobodd-server
+nobodd-tftpd
 =============
 
 A read-only TFTP server capable of reading FAT boot partitions from within
@@ -21,14 +21,14 @@ Synopsis
 
 .. code-block:: text
 
-    usage: nobodd-server [-h] [--version] [--listen ADDR] [--port PORT]
-                         [--board SERIAL,FILENAME[,PART[,IP]]]
+    usage: nobodd-tftpd [-h] [--version] [--listen ADDR] [--port PORT]
+                        [--board SERIAL,FILENAME[,PART[,IP]]]
 
 
 Options
 =======
 
-.. program:: nobodd-server
+.. program:: nobodd-tftpd
 
 .. option:: -h, --help
 
@@ -58,11 +58,11 @@ Options
 Configuration
 =============
 
-:program:`nobodd-server` can be configured via the command line, or from
-several configuration files. These are structured as INI-style files with
-bracketed ``[sections]`` containing ``key=value`` lines, and optionally
-#-prefixed comments. The configuration files which are read, and the order they
-are consulted is as follows:
+:program:`nobodd-tftpd` can be configured via the command line, or from several
+configuration files. These are structured as INI-style files with bracketed
+``[sections]`` containing ``key=value`` lines, and optionally #-prefixed
+comments. The configuration files which are read, and the order they are
+consulted is as follows:
 
 1. :file:`/etc/nobodd/nobodd.conf`
 

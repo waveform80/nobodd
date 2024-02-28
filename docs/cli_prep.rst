@@ -88,12 +88,12 @@ Options
 
     Defines the serial number of the Raspberry Pi that will be served this
     image. When this option is given, a board configuration compatible with
-    :program:`nobodd-server` may be output with :option:`--tftpd-conf`
+    :program:`nobodd-tftpd` may be output with :option:`--tftpd-conf`
 
 .. option:: --tftpd-conf FILE
 
     If specified, write a board configuration compatible with
-    :program:`nobodd-server` to the specified file; requires :option:`--serial`
+    :program:`nobodd-tftpd` to the specified file; requires :option:`--serial`
     to be given. If "-" is given, output is written to stdout.
 
 .. option:: --nbd-conf FILE
@@ -267,7 +267,7 @@ See Also
 
 .. only:: man
 
-    :manpage:`nobodd-server(1)`, :manpage:`nbd-server(1)`
+    :manpage:`nobodd-tftpd(1)`, :manpage:`nbd-server(1)`
 
 
 Bugs

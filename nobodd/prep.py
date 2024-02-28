@@ -103,11 +103,11 @@ def get_parser():
         '--serial', type=lambda s: int(s, base=16), metavar='HEX', default=None,
         help="Defines the serial number of the Raspberry Pi that will be "
         "served this image. When this option is given, a board configuration "
-        "compatible with nobodd-server may be output with --tftpd-conf")
+        "compatible with nobodd-tftpd may be output with --tftpd-conf")
     parser.add_argument(
         '--tftpd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
         help="If specified, write a board configuration compatible with "
-        "nobodd-server to the specified file; requires --serial to be given")
+        "nobodd-tftpd to the specified file; requires --serial to be given")
     parser.add_argument(
         '--nbd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
         help="If specified, write a share configuration compatible with "

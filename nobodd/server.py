@@ -183,7 +183,7 @@ signal.signal(signal.SIGTERM, on_sigterm)
 
 def main(args=None):
     """
-    The main entry point for the :program:`nobodd-server` application. Takes
+    The main entry point for the :program:`nobodd-tftpd` application. Takes
     *args*, the sequence of command line arguments to parse. Returns the exit
     code of the application (0 for a normal exit, and non-zero otherwise).
 

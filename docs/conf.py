@@ -105,8 +105,8 @@ epub_show_urls = 'no'
 man_pages = [
     (
         'cli_nobodd',
-        'nobodd-server',
-        'nobodd-server - serve boot partition files over TFTP',
+        'nobodd-tftpd',
+        'nobodd-tftpd - serve boot partition files over TFTP',
         [info['author']],
         1,
     ),
