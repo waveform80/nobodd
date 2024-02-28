@@ -126,7 +126,7 @@ which are not installed:
 
 .. code-block:: console
 
-    $ tox -s
+    $ tox
 
 To execute the test suite under all installed interpreter versions in parallel,
 using as many parallel tasks as there are CPUs, then displaying a combined
@@ -134,7 +134,7 @@ report of coverage from all environments:
 
 .. code-block:: console
 
-    $ tox -p auto -s
+    $ tox -p auto
     $ coverage combine .coverage.py*
     $ coverage report
 
