@@ -15,7 +15,7 @@ Contents
 
     install
     tutorial
-    cli_nobodd
+    cli_server
     cli_prep
     api
     development
