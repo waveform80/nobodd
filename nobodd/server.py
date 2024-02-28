@@ -150,9 +150,9 @@ def get_parser():
     # reads the default locations; the second pass re-reads the default
     # locations and whatever includes are found
     defaults = parser.read_configs(CONFIG_LOCATIONS)
-    defaults = parser.read_configs(CONFIG_LOCATIONS + tuple(
+    defaults = parser.read_configs(CONFIG_LOCATIONS + tuple(sorted(
         p for p in Path(defaults['tftp'].pop('includedir')).glob('*.conf')
-    ))
+    )))
 
     # Fix-up defaults for [board:*] sections
     parser.set_defaults_from(defaults)
