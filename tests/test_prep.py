@@ -70,13 +70,16 @@ def test_error_exit_with_pdb(monkeypatch):
         assert post_mortem.called
 
 
-def test_regular_operation(fat_disks_w):
+def test_regular_operation(fat_disks_w, tmp_path):
     for fat_disk in fat_disks_w.values():
         assert fat_disk.stat().st_size < 50 * 1048576
         assert main([
             '--size', '50MB',
             '--nbd-host', 'myserver',
             '--nbd-name', 'myshare',
+            '--serial', 'abcd1234',
+            '--tftpd-conf', str(tmp_path / 'tftpd.conf'),
+            '--nbd-conf', str(tmp_path / 'nbd.conf'),
             str(fat_disk)
         ]) == 0
         assert fat_disk.stat().st_size == 50 * 1048576
@@ -88,6 +91,15 @@ def test_regular_operation(fat_disks_w):
                 'ip=dhcp nbdroot=myserver/myshare root=/dev/nbd0p5 '
                 'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
                 'rootfstype=ext4 rootwait fixrtc quiet splash')
+            assert (tmp_path / 'tftpd.conf').read_text() == f"""\
+[board:abcd1234]
+image = {fat_disk}
+partition = 1
+"""
+            assert (tmp_path / 'nbd.conf').read_text() == f"""\
+[myshare]
+exportname = {fat_disk}
+"""
 
 
 def test_cmdline_no_newline(fat16_disk_w):

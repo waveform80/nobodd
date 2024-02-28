@@ -371,6 +371,13 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
             ip = ip_address(ip)
         return cls(serial, Path(image), part, ip)
 
+    def __str__(self):
+        return '\n'.join((
+            f"[board:{self.serial:x}]",
+            f"image = {self.image}",
+            f"partition = {self.partition:d}",
+        ) + ((f"ip = {self.ip}",) if self.ip is not None else ()))
+
 
 _SPANS = {
     span: re.compile(fr'(?:(?P<num>[+-]?\d+)\s*{suffix}\b)')

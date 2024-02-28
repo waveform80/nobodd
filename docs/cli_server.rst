@@ -108,8 +108,9 @@ by the serial number of the Raspberry Pi. The serial number can be found in the
 output of ``cat /proc/cpuinfo`` at runtime. For example:
 
 .. code-block:: console
-    :emphasize-lines: 39
+    :emphasize-lines: 40
 
+    $ cat /proc/cpuinfo
     processor       : 0
     BogoMIPS        : 108.00
     Features        : fp asimd evtstrm crc32 cpuid
@@ -165,7 +166,8 @@ partition
 
 ip
     Optionally limits serving any files from this image unless the IP address
-    of the client matches.
+    of the client matches. If this is not specified, any IP address may
+    retrieve files from this share.
 
 For example:
 
@@ -180,6 +182,13 @@ In practice, what this means is that requests from a client with the IP address
 "192.168.0.5", for files under the path "1234abcd/", will be served from the
 FAT file-system on partition 1 of the image stored at
 :file:`/srv/images/ubuntu-24.04-server.img`.
+
+Such definitions can be produced by :program:`nobodd-prep` when it is provided
+with the :option:`nobodd-prep --serial` option.
+
+Boards may also be defined on the command-line with the :option:`--board`
+option. These definitions will augment (and override, where the serial number
+is identical) those definitions provided by the configuration files.
 
 
 See Also

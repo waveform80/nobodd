@@ -24,7 +24,7 @@ from shutil import copyfileobj
 
 from .disk import DiskImage
 from .fs import FatFileSystem
-from .config import CONFIG_LOCATIONS, ConfigArgumentParser, size
+from .config import CONFIG_LOCATIONS, ConfigArgumentParser, size, Board
 
 # NOTE: The fallback comes first here as Python 3.7 incorporates
 # importlib.resources but at a version incompatible with our requirements.
@@ -99,6 +99,19 @@ def get_parser():
         help="Remove the specified file or directory from the boot "
         "partition. This may be given multiple times to specify multiple "
         "items to delete")
+    parser.add_argument(
+        '--serial', type=lambda s: int(s, base=16), metavar='HEX', default=None,
+        help="Defines the serial number of the Raspberry Pi that will be "
+        "served this image. When this option is given, a board configuration "
+        "compatible with nobodd-server may be output with --tftpd-conf")
+    parser.add_argument(
+        '--tftpd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
+        help="If specified, write a board configuration compatible with "
+        "nobodd-server to the specified file; requires --serial to be given")
+    parser.add_argument(
+        '--nbd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
+        help="If specified, write a share configuration compatible with "
+        "nbd-server to the specified file")
 
     defaults = parser.read_configs(CONFIG_LOCATIONS)
     parser.set_defaults(log_level=logging.WARNING)
@@ -304,6 +317,13 @@ def main(args=None):
             conf.nbd_name = conf.image.stem
 
         prepare_image(conf)
+        if conf.tftpd_conf is not None and conf.serial is not None:
+            board = Board(conf.serial, conf.image, conf.boot_partition, None)
+            conf.tftpd_conf.write(str(board))
+            conf.tftpd_conf.write('\n')
+        if conf.nbd_conf is not None:
+            conf.nbd_conf.write(f"[{conf.nbd_name}]\n")
+            conf.nbd_conf.write(f"exportname = {conf.image}\n")
     except Exception as e:
         if not debug:
             print(str(e), file=sys.stderr)

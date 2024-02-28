@@ -84,9 +84,27 @@ Options
     Delete the specified file or directory within the boot partition. This may
     be given multiple times to specify multiple items to delete
 
+.. option:: --serial HEX
 
-Examples
-========
+    Defines the serial number of the Raspberry Pi that will be served this
+    image. When this option is given, a board configuration compatible with
+    :program:`nobodd-server` may be output with :option:`--tftpd-conf`
+
+.. option:: --tftpd-conf FILE
+
+    If specified, write a board configuration compatible with
+    :program:`nobodd-server` to the specified file; requires :option:`--serial`
+    to be given. If "-" is given, output is written to stdout.
+
+.. option:: --nbd-conf FILE
+
+    If specified, write a share configuration compatible with
+    :manpage:`nbd-server(1)` to the specified file. If "-" is given, output is
+    written to stdout.
+
+
+Usage
+=====
 
 Typically :program:`nobodd-prep` is called with a base OS image. For example,
 if :file:`ubuntu-24.04-server.img.xz` is the Ubuntu 24.04 Server for Raspberry
@@ -147,10 +165,10 @@ determine a valid FAT-type).
 
 The root partition is the exact opposite; it is defined as the first partition
 that *doesn't* have a FAT `partition type`_ (on `MBR-partitioned`_ images), or
-`Basic Data`_) or `EFI System`_ partition type (on `GPT-partitioned`_ images),
-which contains something other than a valid FAT file-system (again, the script
-tries to determine the FAT-type of the contained file-system, and only counts
-those partitions on which it *cannot* determine a valid FAT-type).
+`Basic Data`_ or `EFI System`_ partition type (on `GPT-partitioned`_ images),
+which contains something *other than* a valid FAT file-system (again, the
+script tries to determine the FAT-type of the contained file-system, and only
+counts those partitions on which it *cannot* determine a valid FAT-type).
 
 There may be images for which these simplistic definitions do not work. For
 example, images derived from a `NOOBS/PINN`_ install may well have several boot
@@ -181,13 +199,14 @@ partitions for different installed OS'. In this case the boot or root partition
 
 :program:`nobodd-prep` also includes several facilities for customizing the
 boot partition beyond re-writing the kernel's :file:`cmdline.txt`.
-Specifically, the :option:`--remove` and :option:`--copy` options. The
-:option:`--remove` option can be given multiple times, and tells
-:program:`nobodd-prep` to remove the specified files or directories. The
-:option:`--copy` option can also be given multiple times, and tells
-:program:`nobodd-prep` to copy the specified files or directories into the root
-of the boot partition. In both cases, directories that are specified are
-removed or copied recursively.
+Specifically, the :option:`--remove` and :option:`--copy` options.
+
+The :option:`--remove` option can be given multiple times, and tells
+:program:`nobodd-prep` to remove the specified files or directories from the
+boot partition. The :option:`--copy` option can also be given multiple times,
+and tells :program:`nobodd-prep` to copy the specified files or directories
+into the root of the boot partition. In both cases, directories that are
+specified are removed or copied recursively.
 
 The :option:`--copy` option is particularly useful for overwriting the
 `cloud-init`_ seeds on the boot partition of Ubuntu Server images, in case you
@@ -214,10 +233,11 @@ packages to install on first boot:
 
 There is no need to :option:`--remove` files you wish to :option:`--copy`; the
 latter option will overwrite where necessary. The exception to this is copying
-directories; if you are copying a directory that already exists, the content
-will be merged with the existing content. Files under the directory that share
-a name will be overwritten, files the do not will be left in place. If you wish
-to replace the directory wholesale, specify it with :option:`--remove`.
+directories; if you are copying a directory that already exists in the boot
+partition, the new content will be merged with the existing content. Files
+under the directory that share a name will be overwritten, files that do not
+will be left in place. If you wish to replace the directory wholesale, specify
+it with :option:`--remove` as well.
 
 The ordering of options on the command line does *not* affect the order of
 operations in the utility. The order of operations in :program:`nobodd-prep` is
