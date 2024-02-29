@@ -315,6 +315,23 @@ def size(s):
     return result
 
 
+def serial(s):
+    """
+    Convert the string *s*, which must contain a number in hexidecimal format
+    to an :class:`int`. If *s* begins with either "10000000" or "00000000" then
+    these prefixes will be discarded. This is intended to provide a
+    representation of a Raspberry Pi's serial number that is consistent with
+    that used by the TFTP client in the Pi's bootloader.
+    """
+    s = s.strip()
+    if s.startswith('10000000') or s.startswith('00000000'):
+        s = s[8:]
+    value = int(s, base=16)
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError(f'serial number is out of range: {value}')
+    return value
+
+
 class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
     """
     Represents a known board, recording its *serial* number, the *image*
@@ -349,8 +366,8 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
         and IP address. The last two parts (partition number and IP address)
         are optional and default to 1 and :data:`None` respectively.
         """
-        serial, image, *extra = s.split(',')
-        serial = int(serial, base=16)
+        sernum, image, *extra = s.split(',')
+        sernum = serial(sernum)
         ip = part = None
         if len(extra) > 2:
             raise ValueError(
@@ -369,7 +386,7 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
             part = 1
         if ip is not None:
             ip = ip_address(ip)
-        return cls(serial, Path(image), part, ip)
+        return cls(sernum, Path(image), part, ip)
 
     def __str__(self):
         return '\n'.join((

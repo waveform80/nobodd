@@ -24,7 +24,13 @@ from shutil import copyfileobj
 
 from .disk import DiskImage
 from .fs import FatFileSystem
-from .config import CONFIG_LOCATIONS, ConfigArgumentParser, size, Board
+from .config import (
+    CONFIG_LOCATIONS,
+    ConfigArgumentParser,
+    size,
+    serial,
+    Board,
+)
 
 # NOTE: The fallback comes first here as Python 3.7 incorporates
 # importlib.resources but at a version incompatible with our requirements.
@@ -100,7 +106,7 @@ def get_parser():
         "partition. This may be given multiple times to specify multiple "
         "items to delete")
     parser.add_argument(
-        '--serial', type=lambda s: int(s, base=16), metavar='HEX', default=None,
+        '--serial', type=serial, metavar='HEX', default=None,
         help="Defines the serial number of the Raspberry Pi that will be "
         "served this image. When this option is given, a board configuration "
         "compatible with nobodd-tftpd may be output with --tftpd-conf")
