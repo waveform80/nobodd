@@ -191,6 +191,28 @@ option. These definitions will augment (and override, where the serial number
 is identical) those definitions provided by the configuration files.
 
 
+Systemd/Inetd Usage
+===================
+
+The server may inherit its listening socket from a managing process. In the
+case of :manpage:`inetd(8)` where the listening socket is traditionally passed
+as stdin (fd 0), pass "stdin" as the value of :option:`--listen` (or the
+``listen`` option within the ``[tftp]`` section of the configuration file).
+
+In the case of :manpage:`systemd(1)`, where the listening socket(s) are passed
+via the environment, specify "systemd" as the value of :option:`--listen` (or
+the ``listen`` option within the ``[tftp]`` section of the configuration file)
+and the service will expect to find a single socket passed in
+:envvar:`LISTEN_FDS`. This will happen implicitly if the service is declared as
+socket-activated. However, the service must *not* use ``Accept=yes`` as the
+TFTP protocol is connection-less. The example units provided in the source code
+demonstrate using socket-activation with the server.
+
+In both cases, the service manager sets the port that the service will listen
+on, so the :option:`--port` option (and the ``port`` option in the ``[tftp]``
+section of the configuration file) is silently ignored.
+
+
 See Also
 ========
 
