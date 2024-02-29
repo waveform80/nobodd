@@ -103,8 +103,7 @@ class BootServer(ThreadingMixIn, TFTPBaseServer):
         self.boards = boards
         self.images = {}
         if isinstance(server_address, int):
-            st = os.fstat(server_address)
-            if not stat.S_ISSOCK(st.st_mode):
+            if not stat.S_ISSOCK(os.fstat(server_address).st_mode):
                 raise RuntimeError(
                     f'inherited fd {server_address} is not a socket')
             # If we've been passed an fd directly, we don't actually want the
@@ -235,18 +234,18 @@ def main(args=None):
                 board.serial: board
                 for board in conf.boards
             }
+            if not boards:
+                raise RuntimeError('No boards defined')
 
             if conf.listen == 'stdin':
                 # Yes, this should always be zero but ... just in case
                 server_address = sys.stdin.fileno()
-            elif conf.listen == 'stdout':
-                server_address = sys.stdout.fileno()
             elif conf.listen == 'systemd':
                 fds = sd.listen_fds()
                 if len(fds) != 1:
                     raise RuntimeError(
                         f'Expected 1 fd from systemd but got {len(fds)}')
-                server_address = fds.pop()
+                server_address, name = fds.popitem()
             else:
                 server_address = (conf.listen, conf.port)
 
