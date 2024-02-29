@@ -13,6 +13,7 @@ NBD) for netbooting Raspberry Pis.
 
 import os
 import sys
+import stat
 import signal
 import socket
 import logging
@@ -23,6 +24,7 @@ from selectors import DefaultSelector, EVENT_READ
 
 from .disk import DiskImage
 from .fs import FatFileSystem
+from .systemd import get_systemd
 from .tftpd import TFTPBaseHandler, TFTPBaseServer
 from .config import (
     CONFIG_LOCATIONS,
@@ -100,7 +102,24 @@ class BootServer(ThreadingMixIn, TFTPBaseServer):
     def __init__(self, server_address, boards):
         self.boards = boards
         self.images = {}
-        super().__init__(server_address, BootHandler)
+        if isinstance(server_address, int):
+            st = os.fstat(server_address)
+            if not stat.S_ISSOCK(st.st_mode):
+                raise RuntimeError(
+                    f'inherited fd {server_address} is not a socket')
+            # If we've been passed an fd directly, we don't actually want the
+            # super-class to go allocating a socket but we can't avoid it so we
+            # allocate an ephemeral localhost socket, then close it and just
+            # overwrite self.socket
+            super().__init__(
+                ('127.0.0.1', 0), BootHandler, bind_and_activate=False)
+            self.socket.close()
+            self.socket = socket.fromfd(
+                server_address, self.address_family, self.socket_type)
+            # TODO Check family and type?
+            self.server_address = self.socket.getsockname()
+        else:
+            super().__init__(server_address, BootHandler)
 
     def server_close(self):
         super().server_close()
@@ -207,6 +226,7 @@ def main(args=None):
         debug = int(os.environ['DEBUG'])
     except (KeyError, ValueError):
         debug = 0
+    sd = get_systemd()
 
     while True:
         try:
@@ -215,23 +235,41 @@ def main(args=None):
                 board.serial: board
                 for board in conf.boards
             }
+
+            if conf.listen == 'stdin':
+                # Yes, this should always be zero but ... just in case
+                server_address = sys.stdin.fileno()
+            elif conf.listen == 'stdout':
+                server_address = sys.stdout.fileno()
+            elif conf.listen == 'systemd':
+                fds = sd.listen_fds()
+                if len(fds) != 1:
+                    raise RuntimeError(
+                        f'Expected 1 fd from systemd but got {len(fds)}')
+                server_address = fds.pop()
+            else:
+                server_address = (conf.listen, conf.port)
+
             with \
-                BootServer((conf.listen, conf.port), boards) as server, \
+                BootServer(server_address, boards) as server, \
                 DefaultSelector() as selector:
 
                 server.logger.addHandler(logging.StreamHandler(sys.stderr))
                 server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-                server.logger.info('Ready')
                 selector.register(exit_read, EVENT_READ)
                 selector.register(server, EVENT_READ)
+                sd.ready()
+                server.logger.info('Ready')
                 while True:
                     for key, events in selector.select():
                         if key.fileobj == exit_read:
                             code = exit_read.recv(4)
                             if code == b'INT ':
+                                sd.stopping()
                                 server.logger.warning('Interrupted')
                                 return 2
                             elif code == b'TERM':
+                                sd.stopping()
                                 server.logger.warning('Terminated')
                                 return 0
                             elif code == b'HUP ':
@@ -244,8 +282,10 @@ def main(args=None):
                         else:
                             assert False, 'internal error'
         except ReloadConfig:
+            sd.reloading()
             continue
         except Exception as e:
+            sd.stopping()
             if not debug:
                 print(str(e), file=sys.stderr)
                 return 1

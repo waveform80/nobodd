@@ -543,11 +543,11 @@ class TFTPBaseServer(UDPServer):
     allow_reuse_port = True
     logger = logging.getLogger('tftpd')
 
-    def __init__(self, address, handler_class):
+    def __init__(self, address, handler_class, bind_and_activate=True):
         assert issubclass(handler_class, TFTPBaseHandler)
         self.subs = TFTPSubServers()
         self.address_family, address = get_best_family(*address)
-        super().__init__(address, handler_class)
+        super().__init__(address, handler_class, bind_and_activate)
 
     def server_close(self):
         super().server_close()
