@@ -9,289 +9,297 @@
 Tutorial
 ========
 
-nobodd is a confusingly named, but simple TFTP server intended for net-booting
-Raspberry Pis directly from OS images without having to loop-back mount or
-otherwise re-write those images. An initial loop-back mount is usually required
-to customize the boot-sequence in an OS image (to point it at the correct root
-device on the network) but the loop-back mount is not required thereafter.
+nobodd is a confusingly named, but simple :abbr:`TFTP (Trivial File Transfer
+Protocol)` server intended for net-booting Raspberry Pis directly from OS
+images without having to loop-back mount or otherwise re-write those images. In
+order to get started you will need the following pre-requisites:
 
-The following tutorial assumes you have:
+* A Raspberry Pi you wish to netboot. This tutorial will be assuming a Pi 4,
+  but the Pi 2B, 3B, 3B+, 4B, and 5 all support netboot. However, all have
+  different means of configuring their netboot support, and this tutorial will
+  only cover the method for the Pi 4.
 
-* A freshly installed Ubuntu 22.04 server on which you have root authority, and
-  which has at least 20GB of available storage
+* A micro-SD card. This is only required for initial configuration of the Pi 4.
+  If your Pi 4 is already configured for netboot, you can skip this
+  requirement.
 
-  - In the rest of the tutorial, the server's hostname will be ``server``;
-    adjust according to your setup
+* A server that will serve the OS image to be netbooted. This can be another
+  Raspberry Pi, but if you eventually wish to scale to several netbooting
+  clients you probably want something with a lot more I/O bandwidth. We will
+  assume this server is running Ubuntu 24.04, and you have root authority to
+  install new packages.
 
-  - Likewise, your unprivileged user (with ``sudo`` access to root) will be
-    ``ubuntu``; adjust references to this and ``~ubuntu`` according to your
-    setup
+* Ethernet networking connecting the two machines; netboot will *not* operate
+  over WiFi.
 
-* A Raspberry Pi model 3B, 3B+, 4B, 400, or 5
-
-* A micro-SD card at least 16GB in size
-
-* Ethernet networking connecting the two machines (netboot will *not* operate
-  over wifi)
+* The address details of your ethernet network, specifically the network
+  address and mask (e.g. 192.168.1.0/24).
 
 
 Raspberry Pi
 ============
 
-Configure the Raspberry Pi for networking boot. The 3B+ is capable of network
-boot out of the box, but the 3B, 4B, 400, and 5 all require configuration.
-Follow `the instructions <netboot-your-pi_>`_ on the official documentation to
-activate network boot on your device.
+To configure your Pi 4 for netboot, use `rpi-imager`_ to flash Ubuntu Server
+24.04 64-bit to your micro-SD card. Boot your Pi 4 with the micro-SD card and
+wait for cloud-init to finish the initial user configuration. Log in with the
+default user (username "ubuntu", password "ubuntu", unless you specified
+otherwise in rpi-imager, and follow the prompts to set a new password).
 
+Run :command:`sudo rpi-eeprom-config --edit`, and enter your password for
+"sudo". You will find yourself in an editor, with the Pi's boot configuration
+from the EEPROM, which will most likely look something like the following:
 
-OS Images
-=========
+.. code-block:: ini
 
-You will need to obtain an OS image that is compatible with :abbr:`NBD (Network
-Block Device)` boot. Specifically, this is an image which has an initramfs that
-will load the ``nbd`` kernel module and set up ``nbd-client`` pointing at a
-specified server when the kernel command line indicates the root is an NBD
-device. Ubuntu 24.04 (noble) is *intended* to be compatible out of the box when
-it is released in 2024, but for now you should follow these instructions to
-construct one.
+    [all]
+    BOOT_UART=0
+    WAKE_ON_GPIO=1
+    ENABLE_SELF_UPDATE=1
+    BOOT_ORDER=0xf41
 
-Fire up `rpi-imager`_ and flash Ubuntu 22.04 server onto the SD card, then boot
-that SD card on your chosen Pi.
+The value we are concerned with, is ``BOOT_ORDER``. This is a hexidecimal value
+(denoted by the "0x" prefix) in which each hex digit specifies another boot
+source in *reverse order*. The digits that may be specified include:
+
+== ========= ================================================================
+#  Mode      Description
+== ========= ================================================================
+1  SD CARD   Boot from the SD card
+2  NETWORK   Boot from TFTP over ethernet
+4  USB-MSD   Boot from a USB :abbr:`MSD (mass storage device)`
+e  STOP      Stop the boot and display an error pattern
+f  RESTART   Restart the boot from the first mode
+== ========= ================================================================
+
+A `full listing <BOOT_ORDER_>`_ of valid digits can be found in the Raspberry
+Pi documentation. The current setting shown above is "0xf41". Remembering that
+this is in *reversed* order, we can interpret this as "try the SD card first
+(1), then try a USB mass storage device (4), then restart the sequence if
+neither worked (f)".
+
+We'd like to try network booting first, so we need to add the value 2 to the
+end, giving us: "0xf412". Change the "BOOT_ORDER" value to this, save and exit
+the editor.
 
 .. warning::
 
-    Do *not* be tempted to upgrade packages at this point. Specifically, the
-    kernel package must *not* be upgraded yet.
+    You may be tempted to remove values from the boot order to avoid delay
+    (e.g. testing for the presence of an SD card). However, you are strongly
+    advised to leave the value 1 (SD card booting) somewhere in your boot order
+    to permit recovery from an SD card (or future re-configuration).
 
-Install the ``linux-modules-extra-raspi`` package for the currently running
-kernel version. On Ubuntu versions prior to 24.04, the ``nbd`` kernel module
-was moved out of the default ``linux-modules-raspi`` package for efficiency. We
-specifically need the version matching the running kernel version because
-installing this package will regenerate the initramfs (``initrd.img``). We'll
-be copying that regenerated file into the image we're going to netboot and it
-*must* match the kernel version in that image. This is why it was important not
-to upgrade any packages after the first boot.
+Upon exiting, the :command:`rpi-eeprom-config` command should prompt you that
+you need to reboot in order to flash the new configuration onto the boot
+EEPROM. Enter :command:`sudo reboot` to do so, and let the boot complete fully.
 
-We also need to install the NBD client package. This will add the
-``nbd-client`` executable to the initramfs, along with some scripts to call it
-if the kernel command line specifies an NBD device as root:
+Once you are back at a login prompt, log back in with your username and
+password, and then run :command:`sudo rpi-eeprom-config` once more to query the
+boot configuration and make sure your change has taken effect. It should output
+something like:
 
-.. code:: console
+.. code-block:: ini
 
-    $ sudo apt install linux-modules-extra-$(uname -r) nbd-client
+    [all]
+    BOOT_UART=0
+    WAKE_ON_GPIO=1
+    ENABLE_SELF_UPDATE=1
+    BOOT_ORDER=0xf412
 
-We need to gather one piece of information about the client Pi for use later on
-the server: its serial number. We'll store this in a file and copy it and the
-``initrd.img`` to the server. Finally, we'll shut down the Pi and move to the
-server side of things. Adjust the ``ubuntu`` and ``server`` references when
-copying files with ``scp`` below:
-
-.. code:: console
-
-    $ grep Serial /proc/cpuinfo > pi-ident.txt
-    $ cat pi-ident.txt
-    Serial          : 1000000089025d75
-    $ scp -q pi-ident.txt ubuntu@server:
-    $ scp -q /boot/firmware/initrd.img ubuntu@server:
-    $ sudo poweroff
-
-Download the same OS image to the server, verify its content, unpack it, and
-rename it to something more reasonable:
-
-.. code:: console
-
-    $ wget http://cdimage.ubuntu.com/releases/22.04.3/release/ubuntu-22.04.3-preinstalled-server-arm64+raspi.img.xz
-     ...
-    $ wget http://cdimage.ubuntu.com/releases/22.04.3/release/SHA256SUMS
-     ...
-    $ sha256sum --check --ignore-missing SHA256SUMS
-    ubuntu-22.04.3-preinstalled-server-arm64+raspi.img.xz: OK
-    $ rm SHA256SUMS
-    $ mv ubuntu-22.04.3-preinstalled-server-arm64+raspi.img jammy-template.img
-
-Create a loop-device for the image, scanning for partitions. Mount the boot
-partition and replace the ``initrd.img`` file with the one generated from our
-Raspberry Pi. Finally, customize the cloud-init seed to install the same
-packages we installed on the Raspberry Pi:
-
-.. code:: console
-
-    $ sudo losetup --find --show --partscan jammy-template.img
-    /dev/loop66
-    $ mkdir boot
-    $ sudo mount /dev/loop66p1 boot/
-    $ sudo cp initrd.img boot/
-    $ cat << EOF | sudo tee -a boot/user-data
-    package_update: true
-    packages:
-    - avahi-daemon
-    - nbd-client
-    - linux-modules-extra-raspi
-    EOF
-    $ sudo umount boot/
-    $ sudo losetup -d /dev/loop66
-
-Finally, move our template image somewhere more useful:
-
-.. code:: console
-
-    $ sudo mkdir -p /srv/images
-    $ sudo mv jammy-template.img /srv/images/
-
-
-Ubuntu Server
-=============
-
-On the server, install ``nbd-server``, ``dnsmasq``, and ``nobodd``:
-
-.. code:: console
-
-    $ sudo add-apt-repository ppa:waveform/nobodd
-    $ sudo apt install nbd-server dnsmasq nobodd
-
-Configure ``dnsmasq`` to proxy TFTP boot requests on the network. You will need
-to adjust the ``192.168.255.255`` network mask for your local LAN
-configuration if it differs, and the ``eth0`` reference for your local Ethernet
-port.
-
-.. code:: console
-
-    $ sudo -i
-    # cat << EOF >> /etc/dnsmasq.conf
-    interface=eth0
-    bind-interfaces
-    dhcp-range=192.168.255.255,proxy
-    pxe-service=0,"Raspberry Pi Boot"
-    EOF
-    # systemctl restart dnsmasq.service
-
-
-Instance Setup
-==============
-
-Set up some variables; one for the serial number of the netbooting Raspberry
-Pi, another for the filename containing its "disk". You may note that the disk
-has a different filename; don't worry, we'll create this in the next step:
-
-.. code:: console
-
-    # cat ~ubuntu/pi-ident.txt
-    Serial          : 1000000089025d75
-    # piserial=$(sed -e '1s/^Serial.*\([0-9a-f]\{8\}\)$/\1/' ~ubuntu/pi-ident.txt)
-    # echo $piserial
-    89025d75
-    # image=/srv/images/jammy.img
-    # echo $image
-    /srv/images/jammy.img
-
-Copy your template OS image to the "disk" file for the netbooting Raspberry Pi,
-then add configuration for ``nbd-server`` and ``nobodd`` pointing to it:
-
-.. code:: console
-
-    # cd /srv/images
-    # ls
-    jammy-template.img
-    # cp jammy-template.img $image
-    # chown nbd:nbd $image
-    # cat << EOF > /etc/nbd-server.d/jammy.conf
-    [jammy]
-    exportname = $image
-    EOF
-    # cat << EOF >> /etc/nobodd.conf
-    [board:$piserial]
-    image = $image
-    EOF
-
-Finally, customize the image to set the size of its disk, and tell its
-initramfs which NBD share to connect to. The output of ``losetup`` below is
-*very* likely to differ on your system; adjust references to ``/dev/loop67``
-(and its partitions) accordingly:
+Finally, we need the serial number of your Raspberry Pi. This can be found with
+the following command:
 
 .. code-block:: console
-    :emphasize-lines: 11,24-26
 
-    # fallocate -l 8G $image
-    # losetup --find --show --partscan $image
-    /dev/loop67
-    # mkdir -p /mnt/boot
-    # mount /dev/loop67p1 /mnt/boot
-    # cat /mnt/boot/cmdline.txt | tr ' ' '\n' > /tmp/cmdline.txt
-    # cat /tmp/cmdline.txt
-    console=serial0,115200
-    dwc_otg.lpm_enable=0
-    console=tty1
-    root=LABEL=writable
-    rootfstype=ext4
-    rootwait
-    fixrtc
-    quiet
-    splash
-    # sed -i -e '/^root=/ s@=.*$@=/dev/nbd0p2@' /tmp/cmdline.txt
-    # sed -i -e '/^root=/ i ip=dhcp' /tmp/cmdline.txt
-    # sed -i -e '/^root=/ i nbdroot=server/jammy' /tmp/cmdline.txt
-    # cat /tmp/cmdline.txt
-    console=serial0,115200
-    dwc_otg.lpm_enable=0
-    console=tty1
-    ip=dhcp
-    nbdroot=server/jammy
-    root=/dev/nbd0p2
-    rootfstype=ext4
-    rootwait
-    fixrtc
-    quiet
-    splash
-    # paste -s -d ' ' /tmp/cmdline.txt > /mnt/boot/cmdline.txt
-    # rm /tmp/cmdline.txt
-    # umount /mnt/boot
-    # losetup -d /dev/loop67
+    $ grep ^Serial /proc/cpuinfo
+    Serial          : 10000000abcd1234
 
-Naturally, the instance set up can (and should) be automated. This is
-anticipated for future releases. Finally, we tell both ``nbd-server`` and
-``nobodd`` to reload their configurations:
-
-.. code:: console
-
-    # systemctl reload nobodd.service
-    # /etc/init.d/nbd-server reload
+Note this number down somewhere safe as we'll need it for the server
+configuration later. The Raspberry Pi side of the configuration is now
+complete, and we can move on to configuring our netboot server.
 
 
-Troubleshooting
-===============
+Server
+======
 
-At this point, you should be ready to try netbooting your Pi. Ensure there is
-no SD card in the slot, and power it on. After a short delay you should see the
-"rainbow" boot screen appear. This will be followed by a *long* delay on that
-screen. The reason is that your Pi is transferring the initramfs over TFTP
-which is not an efficient protocol without certain extensions, which the Pi’s
-bootloader doesn’t implement. However, eventually you should be greeted by the
-typical Linux kernel log scrolling by and reach a typical booted state the same
-as you would with an SD card.
+As mentioned in the pre-requisites, we will assume the server is running Ubuntu
+24.04, and that you are logged in with a user that has root authority (via
+"sudo"). Firstly, install the packages which will provide our `TFTP`_, `NBD`_,
+and `DHCP`_ proxy servers, along with some tooling to customize images:
+
+.. code-block:: console
+
+    $ sudo apt install nobodd-tftpd nobodd-prep nbd-server xz-utils dnsmasq
+
+The first thing to do is configure :manpage:`dnsmasq(8)` as a DHCP proxy
+server. Find the interface name of your server's primary ethernet interface
+(the one that will talk to the same network as the Raspberry Pi) within the
+output of the :command:`ip addr show up` command. It will probably look
+something like "enp2s0f0":
+
+.. code-block:: console
+    :emphasize-lines: 8,10
+
+    $ ip addr show
+    1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+        link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+        inet 127.0.0.1/8 scope host lo
+           valid_lft forever preferred_lft forever
+        inet6 ::1/128 scope host
+            valid_lft forever preferred_lft forever
+    2: enp2s0f0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+        link/ether 0a:0b:0c:0d:0e:0f brd ff:ff:ff:ff:ff:ff
+        inet 192.168.1.4/16 brd 192.168.1.255 scope global enp2s0f0
+           valid_lft forever preferred_lft forever
+        inet6 fd00:abcd:1234::4/128 scope global noprefixroute
+           valid_lft forever preferred_lft 53017sec
+        inet6 fe80::beef:face:d00d:1234/64 scope link
+            valid_lft forever preferred_lft forever
+    3: enp1s0f1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq master br0 state UP group default qlen 1000
+        link/ether 1a:0b:0c:0d:0e:0f brd ff:ff:ff:ff:ff:ff
+    4: br0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+        link/ether 02:6c:fc:6f:56:5c brd ff:ff:ff:ff:ff:ff
+        inet6 fe80::60d9:48ff:fee3:c955/64 scope link
+           valid_lft forever preferred_lft forever
+    ...
+
+Add the following configuration lines to :file:`/etc/dnsmasq.conf` adjusting
+the ethernet interface name, and the network mask on the highlighted lines to
+your particular setup:
+
+.. code-block:: text
+    :emphasize-lines: 2,7
+
+    # Only listen on the primary ethernet interface
+    interface=enp2s0f0
+    bind-interfaces
+
+    # Perform DHCP proxying on the network, and advertise our
+    # PXE-ish boot service
+    dhcp-range=192.168.1.255,proxy
+    pxe-service=0,"Raspberry Pi Boot"
+
+Re-load the dnsmasq configuration:
+
+.. code-block:: console
+
+    $ sudo systemctl reload dnsmasq.service
+
+Next, we need to obtain an image to boot on our Raspberry Pi. We'll be using
+the Ubuntu 24.04 Server for Raspberry Pi image as this is configured for NBD
+boot out of the box. We will place this image under a :file:`/srv/images`
+directory and unpack it so we can manipulate it:
+
+.. code-block:: console
+
+    $ sudo mkdir /srv/images
+    $ sudo chown ubuntu:ubuntu /srv/images
+    $ cd /srv/images
+    $ wget http://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04-preinstalled-server-arm64+raspi.img.xz
+     ...
+    $ wget http://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS
+     ...
+    $ sha256sum --check --ignore-missing SHA256SUMS
+    $ rm SHA256SUMS
+    $ unxz ubuntu-24.04-preinstalled-server-arm64+raspi.img.xz
+
+We'll use the :program:`nobodd-prep` command to adjust the image so that the
+kernel will try and find its root on our NBD server. At the same time, we'll
+have the utility generate the appropriate configurations for
+:manpage:`nbd-server(1)` and :program:`nobodd-tftpd`.
+
+:program:`nobodd-prep` needs to know several things in order to operate, but
+tries to use sensible defaults where it can:
+
+* The filename of the image to customize; we'll simply provide this on the
+  command line.
+
+* The size we want to expand the image to; this will be size of the "disk" (or
+  "SD card") that the Raspberry Pi sees. The default is 16GB, which is fine for
+  our purposes here.
+
+* The number of the boot partition within the image; the default is the first
+  FAT partition, which is fine in this case.
+
+* The name of the file containing the kernel command line on the boot
+  partition; the default is :file:`cmdline.txt` which is correct for the
+  Ubuntu images.
+
+* The number of the root partition within the image; the default is the first
+  non-FAT partition, which is also fine here.
+
+* The hostname of the server; the default is the output of :command:`hostname
+  --fqdn` but this can be specified manually with :option:`nobodd-prep
+  --nbd-host`.
+
+* The name of the NBD share; the default is the stem of the image filename (the
+  filename without its extensions) which in this case would be
+  "ubuntu-24.04-preinstalled-server-arm64+raspi". That's a bit of a mouthful so
+  we'll override it with :option:`nobodd-prep --nbd-name`.
+
+* The serial number of the Raspberry Pi; there is no default for this, so we'll
+  provide it with :option:`nobodd-prep --serial`.
+
+* The path to write the two configuration files we want to produce; we'll
+  specify these manually with :option:`nobodd-prep --tftpd-conf` and
+  :option:`nobodd-prep --nbd-conf`
+
+Putting all this together we run:
+
+.. code-block:: console
+
+    $ nobodd-prep --nbd-name ubuntu-noble --serial 10000000abcd1234 \
+    > --tftpd-conf tftpd-noble.conf --nbd-conf nbd-noble.conf \
+    > ubuntu-24.04-preinstalled-server-arm64+raspi.img
+
+Now we need to move the generated configuration files to their correct
+locations and ensure they're owned by root (so unprivileged users cannot modify
+them), ensure the modified image is owned by the "nbd" user (so the NBD service
+can read and write to it), and reload the configuration in the relevant
+services:
+
+.. code-block:: console
+
+    $ sudo chown nbd:nbd ubuntu-24.04-preinstalled-server-arm64+raspi.img
+    $ sudo chown root:root tftpd-noble.conf nbd-noble.conf
+    $ sudo mv tftpd-noble.conf /etc/nobodd/conf.d/
+    $ sudo mv nbd-noble.conf /etc/nbd-server/conf.d/
+    $ sudo systemctl reload nobodd-tftpd.service
+    $ sudo systemctl reload nbd-server.service
+
+
+Testing and Troubleshooting
+===========================
+
+At this point your configuration should be ready to test. Ensure there is no SD
+card in the slot, and power it on. After a short delay you should see the
+"rainbow" boot screen appear. This will be followed by an uncharacteristically
+long delay on that screen. The reason is that your Pi is transferring the
+initramfs over TFTP which is not an efficient protocol absent certain
+extensions, which the Pi's bootloader doesn't implement. However, eventually
+you should be greeted by the typical Linux kernel log scrolling by, and reach a
+typical booted state the same as you would with a freshly flashed SD card.
 
 If you hit any snags here, the following things are worth checking:
 
-* Pay attention to any errors shown on the Pi's bootloader screen (only
-  available on the Pi 4 and 5). In particular, you should be able to see the Pi
-  obtaining an IP address via DHCP and various TFTP request attempts.
+* Pay attention to any errors shown on the Pi's bootloader screen. In
+  particular, you should be able to see the Pi obtaining an IP address via DHCP
+  and various TFTP request attempts.
 
-* Run ``journalctl -f --unit nobodd.service`` on your server to follow the
-  nobodd log output. Again, if things are working, you should be seeing
+* Run ``journalctl -f --unit nobodd-tftpd.service`` on your server to follow
+  the TFTP log output. Again, if things are working, you should be seeing
   several TFTP requests here. If you see nothing, double check the network mask
-  is specified correctly in the ``dnsmasq`` configuration, and that any
-  firewall on the server is permitting inbound traffic to port 69 (the TFTP
-  port).
+  is specified correctly in the :manpage:`dnsmasq(8)` configuration, and that
+  any firewall on your server is permitting inbound traffic to port 69 (the
+  default TFTP port).
 
-* You *will* see numerous "Early terminate" TFTP errors in the nobodd log
-  output. This is normal, and appears to be how the Pi's bootloader operates
-  (my guess would be it's attempting to determine the size of a file with the
-  ``tsize`` extension, terminating the transfer, allocating RAM for the file,
-  then starting the transfer again).
+* You *will* see numerous "Early terminate" TFTP errors in the journal output.
+  This is normal, and appears to be how the Pi's bootloader operates (at a
+  guess it's attempting to determine the size of a file with the ``tsize``
+  extension, terminating the transfer, allocating RAM for the file, then
+  starting the transfer again).
 
-* If cloud-init's final phase running ``apt update`` and ``apt install
-  avahi-daemon linux-modules-extra-raspi nbd-client`` fails (which it appears
-  to randomly on some set ups), just login and run them manually.
-
-
-.. _netboot-your-pi: https://www.raspberrypi.com/documentation/computers/remote-access.html#network-boot-your-raspberry-pi
+.. _TFTP: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
+.. _NBD: https://en.wikipedia.org/wiki/Network_block_device
+.. _DHCP: https://en.wikipedia.org/wiki/Dynamic_Host_Configuration_Protocol
 .. _rpi-imager: https://www.raspberrypi.com/software/
+.. _BOOT_ORDER: https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#BOOT_ORDER

@@ -15,6 +15,8 @@ Contents
 
     install
     tutorial
+    howtos
+    explanations
     cli_server
     cli_prep
     api
