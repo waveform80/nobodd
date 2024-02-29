@@ -1,0 +1,17 @@
+msc {
+    hscale = "0.8", arcgradient = "15";
+
+    "client:ephemeral","server:69","server:ephemeral";
+
+    "client:ephemeral"=>"server:69" [label="RRQ(filename)"];
+    "server:69"->"server:ephemeral" [label="alloc port"];
+    "server:ephemeral"=>"client:ephemeral" [label="OACK"];
+    "client:ephemeral"=>"server:ephemeral" [label="ACK(0)"];
+    "server:ephemeral"=>"client:ephemeral" [label="DATA(1)"];
+    "client:ephemeral"=>"server:ephemeral" [label="ACK(1)"];
+    "server:ephemeral"=>"client:ephemeral" [label="DATA(2)"];
+    "client:ephemeral"=>"server:ephemeral" [label="ACK(2)"];
+    ...;
+    "server:ephemeral"=>"client:ephemeral" [label="DATA(n)"];
+    "client:ephemeral"=>"server:ephemeral" [label="ACK(n)"];
+}

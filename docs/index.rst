@@ -17,8 +17,7 @@ Contents
     tutorial
     howtos
     explanations
-    cli_server
-    cli_prep
+    cli
     api
     development
     changelog

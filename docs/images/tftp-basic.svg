@@ -1,0 +1,119 @@
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1"
+ width="480px" height="499px"
+ viewBox="0 0 480 499"
+ xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"
+ stroke-width="1" text-rendering="geometricPrecision">
+<polygon fill="white" points="34,7 124,7 124,16 34,16"/>
+<text x="80" y="16" textLength="88" font-family="Helvetica" font-size="12" fill="black" text-anchor="middle">
+
+client:ephemeral
+</text>
+<polygon fill="white" points="213,7 265,7 265,16 213,16"/>
+<text x="240" y="16" textLength="50" font-family="Helvetica" font-size="12" fill="black" text-anchor="middle">
+
+server:69
+</text>
+<polygon fill="white" points="352,7 446,7 446,16 352,16"/>
+<text x="400" y="16" textLength="93" font-family="Helvetica" font-size="12" fill="black" text-anchor="middle">
+
+server:ephemeral
+</text>
+<line x1="80" y1="22" x2="80" y2="65" stroke="black"/>
+<line x1="240" y1="22" x2="240" y2="65" stroke="black"/>
+<line x1="400" y1="22" x2="400" y2="65" stroke="black"/>
+<line x1="80" y1="33" x2="240" y2="48" stroke="black"/>
+<polygon fill="black" points="240,48 230,54 230,42"/>
+<polygon fill="white" points="118,30 200,30 200,39 118,39"/>
+<text x="119" y="39" textLength="80" font-family="Helvetica" font-size="12" fill="black">
+RRQ(filename)
+</text>
+<line x1="80" y1="65" x2="80" y2="108" stroke="black"/>
+<line x1="240" y1="65" x2="240" y2="108" stroke="black"/>
+<line x1="400" y1="65" x2="400" y2="108" stroke="black"/>
+<line x1="240" y1="76" x2="400" y2="91" stroke="black"/>
+<line x1="400" y1="91" x2="390" y2="97" stroke="black"/>
+<polygon fill="white" points="294,73 345,73 345,82 294,82"/>
+<text x="295" y="82" textLength="49" font-family="Helvetica" font-size="12" fill="black">
+alloc port
+</text>
+<line x1="80" y1="108" x2="80" y2="151" stroke="black"/>
+<line x1="240" y1="108" x2="240" y2="151" stroke="black"/>
+<line x1="400" y1="108" x2="400" y2="151" stroke="black"/>
+<line x1="400" y1="119" x2="80" y2="134" stroke="black"/>
+<polygon fill="black" points="80,134 90,140 90,128"/>
+<polygon fill="white" points="221,116 257,116 257,125 221,125"/>
+<text x="222" y="125" textLength="34" font-family="Helvetica" font-size="12" fill="black">
+OACK
+</text>
+<line x1="80" y1="151" x2="80" y2="194" stroke="black"/>
+<line x1="240" y1="151" x2="240" y2="194" stroke="black"/>
+<line x1="400" y1="151" x2="400" y2="194" stroke="black"/>
+<line x1="80" y1="162" x2="400" y2="177" stroke="black"/>
+<polygon fill="black" points="400,177 390,183 390,171"/>
+<polygon fill="white" points="219,159 260,159 260,168 219,168"/>
+<text x="220" y="168" textLength="39" font-family="Helvetica" font-size="12" fill="black">
+ACK(0)
+</text>
+<line x1="80" y1="194" x2="80" y2="237" stroke="black"/>
+<line x1="240" y1="194" x2="240" y2="237" stroke="black"/>
+<line x1="400" y1="194" x2="400" y2="237" stroke="black"/>
+<line x1="400" y1="205" x2="80" y2="220" stroke="black"/>
+<polygon fill="black" points="80,220 90,226 90,214"/>
+<polygon fill="white" points="215,202 264,202 264,211 215,211"/>
+<text x="216" y="211" textLength="47" font-family="Helvetica" font-size="12" fill="black">
+DATA(1)
+</text>
+<line x1="80" y1="237" x2="80" y2="280" stroke="black"/>
+<line x1="240" y1="237" x2="240" y2="280" stroke="black"/>
+<line x1="400" y1="237" x2="400" y2="280" stroke="black"/>
+<line x1="80" y1="248" x2="400" y2="263" stroke="black"/>
+<polygon fill="black" points="400,263 390,269 390,257"/>
+<polygon fill="white" points="219,245 260,245 260,254 219,254"/>
+<text x="220" y="254" textLength="39" font-family="Helvetica" font-size="12" fill="black">
+ACK(1)
+</text>
+<line x1="80" y1="280" x2="80" y2="323" stroke="black"/>
+<line x1="240" y1="280" x2="240" y2="323" stroke="black"/>
+<line x1="400" y1="280" x2="400" y2="323" stroke="black"/>
+<line x1="400" y1="291" x2="80" y2="306" stroke="black"/>
+<polygon fill="black" points="80,306 90,312 90,300"/>
+<polygon fill="white" points="215,288 264,288 264,297 215,297"/>
+<text x="216" y="297" textLength="47" font-family="Helvetica" font-size="12" fill="black">
+DATA(2)
+</text>
+<line x1="80" y1="323" x2="80" y2="366" stroke="black"/>
+<line x1="240" y1="323" x2="240" y2="366" stroke="black"/>
+<line x1="400" y1="323" x2="400" y2="366" stroke="black"/>
+<line x1="80" y1="334" x2="400" y2="349" stroke="black"/>
+<polygon fill="black" points="400,349 390,355 390,343"/>
+<polygon fill="white" points="219,331 260,331 260,340 219,340"/>
+<text x="220" y="340" textLength="39" font-family="Helvetica" font-size="12" fill="black">
+ACK(2)
+</text>
+<line x1="80" y1="366" x2="80" y2="398" stroke="black" stroke-dasharray="2,2"/>
+<line x1="240" y1="366" x2="240" y2="398" stroke="black" stroke-dasharray="2,2"/>
+<line x1="400" y1="366" x2="400" y2="398" stroke="black" stroke-dasharray="2,2"/>
+<line x1="80" y1="398" x2="80" y2="441" stroke="black"/>
+<line x1="240" y1="398" x2="240" y2="441" stroke="black"/>
+<line x1="400" y1="398" x2="400" y2="441" stroke="black"/>
+<line x1="400" y1="409" x2="80" y2="424" stroke="black"/>
+<polygon fill="black" points="80,424 90,430 90,418"/>
+<polygon fill="white" points="215,406 264,406 264,415 215,415"/>
+<text x="216" y="415" textLength="47" font-family="Helvetica" font-size="12" fill="black">
+DATA(n)
+</text>
+<line x1="80" y1="441" x2="80" y2="484" stroke="black"/>
+<line x1="240" y1="441" x2="240" y2="484" stroke="black"/>
+<line x1="400" y1="441" x2="400" y2="484" stroke="black"/>
+<line x1="80" y1="452" x2="400" y2="467" stroke="black"/>
+<polygon fill="black" points="400,467 390,473 390,461"/>
+<polygon fill="white" points="219,449 260,449 260,458 219,458"/>
+<text x="220" y="458" textLength="39" font-family="Helvetica" font-size="12" fill="black">
+ACK(n)
+</text>
+<line x1="80" y1="463" x2="80" y2="499" stroke="black"/>
+<line x1="240" y1="463" x2="240" y2="499" stroke="black"/>
+<line x1="400" y1="463" x2="400" y2="499" stroke="black"/>
+</svg>

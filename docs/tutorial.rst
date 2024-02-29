@@ -36,7 +36,7 @@ order to get started you will need the following pre-requisites:
   address and mask (e.g. 192.168.1.0/24).
 
 
-Raspberry Pi
+Client Side
 ============
 
 To configure your Pi 4 for netboot, use `rpi-imager`_ to flash Ubuntu Server
@@ -118,8 +118,8 @@ configuration later. The Raspberry Pi side of the configuration is now
 complete, and we can move on to configuring our netboot server.
 
 
-Server
-======
+Server Side
+===========
 
 As mentioned in the pre-requisites, we will assume the server is running Ubuntu
 24.04, and that you are logged in with a user that has root authority (via
