@@ -181,6 +181,18 @@ def on_sigterm(signal, frame):
 signal.signal(signal.SIGTERM, on_sigterm)
 
 
+def on_sighup(signal, frame):
+    exit_write.send(b'HUP ')
+signal.signal(signal.SIGHUP, on_sighup)
+
+
+class ReloadConfig(Exception):
+    """
+    Exception class raised in :func:`main` to cause a reload. Should never
+    propogate outside this routine.
+    """
+
+
 def main(args=None):
     """
     The main entry point for the :program:`nobodd-tftpd` application. Takes
@@ -196,43 +208,50 @@ def main(args=None):
     except (KeyError, ValueError):
         debug = 0
 
-    try:
-        conf = get_parser().parse_args(args)
-        boards = {
-            board.serial: board
-            for board in conf.boards
-        }
-        with \
-            BootServer((conf.listen, conf.port), boards) as server, \
-            DefaultSelector() as selector:
+    while True:
+        try:
+            conf = get_parser().parse_args(args)
+            boards = {
+                board.serial: board
+                for board in conf.boards
+            }
+            with \
+                BootServer((conf.listen, conf.port), boards) as server, \
+                DefaultSelector() as selector:
 
-            server.logger.addHandler(logging.StreamHandler(sys.stderr))
-            server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-            server.logger.info('Ready')
-            selector.register(exit_read, EVENT_READ)
-            selector.register(server, EVENT_READ)
-            while True:
-                for key, events in selector.select():
-                    if key.fileobj == exit_read:
-                        code = exit_read.recv(4)
-                        if code == b'INT ':
-                            server.logger.warning('Interrupted')
-                            return 2
-                        elif code == b'TERM':
-                            server.logger.warning('Terminated')
-                            return 0
+                server.logger.addHandler(logging.StreamHandler(sys.stderr))
+                server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
+                server.logger.info('Ready')
+                selector.register(exit_read, EVENT_READ)
+                selector.register(server, EVENT_READ)
+                while True:
+                    for key, events in selector.select():
+                        if key.fileobj == exit_read:
+                            code = exit_read.recv(4)
+                            if code == b'INT ':
+                                server.logger.warning('Interrupted')
+                                return 2
+                            elif code == b'TERM':
+                                server.logger.warning('Terminated')
+                                return 0
+                            elif code == b'HUP ':
+                                server.logger.info('Reloading configuration')
+                                raise ReloadConfig('SIGHUP')
+                            else:
+                                assert False, 'internal error'
+                        elif key.fileobj == server:
+                            server.handle_request()
                         else:
                             assert False, 'internal error'
-                    elif key.fileobj == server:
-                        server.handle_request()
-                    else:
-                        assert False, 'internal error'
-    except Exception as e:
-        if not debug:
-            print(str(e), file=sys.stderr)
-            return 1
-        elif debug == 1:
-            raise
-        else:
-            import pdb
-            pdb.post_mortem()
+        except ReloadConfig:
+            continue
+        except Exception as e:
+            if not debug:
+                print(str(e), file=sys.stderr)
+                return 1
+            elif debug == 1:
+                raise
+            else:
+                import pdb
+                pdb.post_mortem()
+                return 1
