@@ -82,6 +82,7 @@ these applications.
     api_server
     api_prep
     api_config
+    api_systemd
 
 
 Miscellaneous
