@@ -30,13 +30,14 @@ SUBDIRS:=
 DIST_WHEEL=dist/$(WHEEL_NAME)-$(VER)-py3-none-any.whl
 DIST_TAR=dist/$(NAME)-$(VER).tar.gz
 DIST_ZIP=dist/$(NAME)-$(VER).zip
-MAN_PAGES=man/nobodd.1
+MAN_PAGES=man/nobodd-tftpd.1 man/nobodd-prep.1
 
 
 # Default target
 all:
 	@echo "make install - Install on local system"
 	@echo "make develop - Install symlinks for development"
+	@echo "make i18n - Update translation files"
 	@echo "make test - Run tests"
 	@echo "make doc - Generate HTML and PDF documentation"
 	@echo "make source - Create source package"
@@ -116,8 +117,8 @@ $(DIST_WHEEL): $(PY_SOURCES) $(SUBDIRS)
 release:
 	$(MAKE) clean
 	test -z "$(shell git status --porcelain)"
-	git tag -s release-$(VER) -m "Release $(VER)"
-	git push origin release-$(VER)
+	git tag -s v$(VER) -m "Release $(VER)"
+	git push origin v$(VER)
 
 upload: $(DIST_TAR) $(DIST_WHEEL)
 	$(TWINE) check $(DIST_TAR) $(DIST_WHEEL)
