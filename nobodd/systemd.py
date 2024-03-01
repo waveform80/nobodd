@@ -7,6 +7,8 @@ Provides a simple interface to systemd's notification and watchdog services.
 import os
 import socket
 
+from . import lang
+
 
 class Systemd:
     """
@@ -42,7 +44,8 @@ class Systemd:
         available can call this to assert that notifications will be noticed.
         """
         if self._socket is None:
-            raise RuntimeError("systemd notification socket unavailable")
+            raise RuntimeError(lang._(
+                'systemd notification socket unavailable'))
 
     def notify(self, state):
         """
@@ -151,7 +154,7 @@ class Systemd:
         print(repr(os.environ), flush=True)
         try:
             if int(os.environ['LISTEN_PID']) != os.getpid():
-                raise ValueError('wrong LISTEN_PID')
+                raise ValueError(lang._('wrong LISTEN_PID'))
             fds = int(os.environ['LISTEN_FDS'])
         except (ValueError, KeyError):
             return {}

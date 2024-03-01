@@ -17,6 +17,7 @@ from abc import abstractmethod
 from collections import abc
 from itertools import islice
 
+from . import lang
 from .fat import (
     BIOSParameterBlock,
     ExtendedBIOSParameterBlock,
@@ -141,14 +142,15 @@ class FatFileSystem:
                 bpb.sectors_per_fat if ebpb_fat32 is None else
                 ebpb_fat32.sectors_per_fat) * bpb.bytes_per_sector
             if fat_size == 0:
-                raise ValueError(
-                    f'{self._fat_type.upper()} sectors per FAT is 0')
+                raise ValueError(lang._(
+                    '{fat_type} sectors per FAT is 0'
+                    .format(fat_type=self._fat_type.upper())))
             root_size = bpb.max_root_entries * DirectoryEntry._FORMAT.size
             if root_size % bpb.bytes_per_sector:
-                raise ValueError(
-                    f'Max. root entries, {bpb.max_root_entries} creates a root '
-                    f'directory region that is not a multiple of sector size, '
-                    f'{bpb.bytes_per_sector}')
+                raise ValueError(lang._(
+                    'Max. root entries, {bpb.max_root_entries} creates a root '
+                    'directory region that is not a multiple of sector size, '
+                    '{bpb.bytes_per_sector}'.format(bpb=bpb)))
             info_offset = (
                 ebpb_fat32.info_sector * bpb.bytes_per_sector
                 if ebpb_fat32 is not None
@@ -172,8 +174,8 @@ class FatFileSystem:
                 bpb.bytes_per_sector * bpb.sectors_per_cluster)
             if self._fat_type == 'fat32':
                 if ebpb_fat32 is None:
-                    raise ValueError(
-                        'File-system claims to be FAT32 but has no FAT32 EBPB')
+                    raise ValueError(lang._(
+                        'File-system claims to be FAT32 but has no FAT32 EBPB'))
                 self._root = ebpb_fat32.root_dir_cluster
             else:
                 self._root = mem[root_offset:root_offset + root_size]
@@ -186,11 +188,13 @@ class FatFileSystem:
         # directory on FAT-12/16, but we're not expecting to deal with any of
         # those
         if self._fat_type == 'fat32' and bpb.max_root_entries != 0:
-            raise ValueError(
-                f'Max. root entries must be 0 for {self._fat_type.upper()}')
+            raise ValueError(lang._(
+                'Max. root entries must be 0 for {fat_type}'
+                .format(fat_type=self._fat_type.upper())))
         elif self._fat_type != 'fat32' and bpb.max_root_entries == 0:
-            raise ValueError(
-                f'Max. root entries must be non-zero for {self._fat_type.upper()}')
+            raise ValueError(lang._(
+                'Max. root entries must be non-zero for {fat_type}'
+                .format(fat_type=self._fat_type.upper())))
         # Check the clean and damaged bits; these are only present on FAT-16
         # and FAT-32 volumes
         if self._fat_type != 'fat12':
@@ -201,11 +205,11 @@ class FatFileSystem:
                 (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
                 (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
             if not clean:
-                warnings.warn(DirtyFileSystem(
-                    'File-system has the dirty bit set'))
+                warnings.warn(DirtyFileSystem(lang._(
+                    'File-system has the dirty bit set')))
             if errors:
-                warnings.warn(DamagedFileSystem(
-                    'File-system has the I/O errors bit set'))
+                warnings.warn(DamagedFileSystem(lang._(
+                    'File-system has the I/O errors bit set')))
 
     def __repr__(self):
         return (
@@ -428,8 +432,8 @@ def fat_type(mem):
     if ebpb.extended_boot_sig in (0x28, 0x29):
         fat_type = fat_type_from_count(bpb, ebpb, ebpb_fat32)
         return fat_type, bpb, ebpb, ebpb_fat32
-    raise ValueError(
-        'Could not find FAT file-system type or extended boot signature')
+    raise ValueError(lang._(
+        'Could not find FAT file-system type or extended boot signature'))
 
 
 def fat_type_from_count(bpb, ebpb, ebpb_fat32):
@@ -503,7 +507,7 @@ class FatTable(abc.MutableSequence):
         return len(self._tables[0])
 
     def __delitem__(self, cluster):
-        raise TypeError('FAT length is immutable')
+        raise TypeError(lang._('FAT length is immutable'))
 
     @property
     def readonly(self):
@@ -522,7 +526,7 @@ class FatTable(abc.MutableSequence):
         """
         Raises :exc:`TypeError`; the FAT length is immutable.
         """
-        raise TypeError('FAT length is immutable')
+        raise TypeError(lang._('FAT length is immutable'))
 
     def mark_free(self, cluster):
         """
@@ -602,7 +606,8 @@ class Fat12Table(FatTable):
                     for t in self._tables
                 )
         except struct.error:
-            raise IndexError(f'{offset} out of bounds')
+            raise IndexError(lang._(
+                '{offset} out of bounds'.format(offset=offset)))
 
     def __getitem__(self, cluster):
         try:
@@ -614,11 +619,13 @@ class Fat12Table(FatTable):
                 return struct.unpack_from(
                     '<H', self._tables[0], offset)[0] & 0x0FFF
         except struct.error:
-            raise IndexError(f'{offset} out of bounds')
+            raise IndexError(lang._(
+                '{offset} out of bounds'.format(offset=offset)))
 
     def __setitem__(self, cluster, value):
         if not 0x000 <= value <= 0xFFF:
-            raise ValueError(f'{value} is outside range 0x000..0xFFF')
+            raise ValueError(lang._(
+                '{value} is outside range 0x000..0xFFF'.format(value=value)))
         try:
             offset = cluster + (cluster >> 1)
             if cluster % 2:
@@ -631,7 +638,8 @@ class Fat12Table(FatTable):
             for table in self._tables:
                 struct.pack_into('<H', table, offset, value)
         except struct.error:
-            raise IndexError(f'{offset} out of bounds')
+            raise IndexError(lang._(
+                '{offset} out of bounds'.format(offset=offset)))
 
 
 class Fat16Table(FatTable):
@@ -664,7 +672,8 @@ class Fat16Table(FatTable):
 
     def __setitem__(self, cluster, value):
         if not 0x0000 <= value <= 0xFFFF:
-            raise ValueError(f'{value} is outside range 0x0000..0xFFFF')
+            raise ValueError(lang._(
+                '{value} is outside range 0x0000..0xFFFF'.format(value=value)))
         for table in self._tables:
             table[cluster] = value
 
@@ -743,7 +752,9 @@ class Fat32Table(FatTable):
 
     def __setitem__(self, cluster, value):
         if not 0x00000000 <= value <= 0x0FFFFFFF:
-            raise ValueError(f'{value} is outside range 0x00000000..0x0FFFFFFF')
+            raise ValueError(lang._(
+                '{value} is outside range 0x00000000..0x0FFFFFFF'
+                .format(value=value)))
         old_value = self._tables[0][cluster]
         if not old_value and value:
             self._alloc(cluster)
@@ -810,13 +821,13 @@ class FatClusters(abc.MutableSequence):
         self._mem[offset:offset + self._cs] = value
 
     def __delitem__(self, cluster):
-        raise TypeError('FS length is immutable')
+        raise TypeError(lang._('FS length is immutable'))
 
     def insert(self, cluster, value):
         """
         Raises :exc:`TypeError`; the FS length is immutable.
         """
-        raise TypeError('FS length is immutable')
+        raise TypeError(lang._('FS length is immutable'))
 
 
 class FatDirectory(abc.MutableMapping):
@@ -926,7 +937,8 @@ class FatDirectory(abc.MutableMapping):
             if lfn[-1:] == '\x00':
                 lfn = lfn[:-1]
             if not lfn:
-                warnings.warn(BadLongFilename('empty LongFilenameEntry decoded'))
+                warnings.warn(BadLongFilename(lang._(
+                    'empty LongFilenameEntry decoded')))
                 lfn = None
 
         sfn = entry.filename.rstrip(b' ')
@@ -965,14 +977,14 @@ class FatDirectory(abc.MutableMapping):
             return None
         head, *entries = entries
         if head.first_cluster != 0:
-            warnings.warn(BadLongFilename(
-                f'LongFilenameEntry.first_cluster is non-zero: '
-                f'{head.first_cluster}'))
+            warnings.warn(BadLongFilename(lang._(
+                'LongFilenameEntry.first_cluster is non-zero: '
+                '{head.first_cluster}'.format(head=head))))
             return self._join_lfn_entries(entries, checksum)
         if head.checksum != checksum:
-            warnings.warn(OrphanedLongFilename(
-                f'mismatched LongFilenameEntry.checksum: {checksum} != '
-                f'{head.checksum}'))
+            warnings.warn(OrphanedLongFilename(lang._(
+                'mismatched LongFilenameEntry.checksum: {checksum} != '
+                '{head.checksum}'.format(checksum=checksum, head=head))))
             return self._join_lfn_entries(entries, checksum)
         if head.sequence & 0x40:
             if lfn:
@@ -980,30 +992,31 @@ class FatDirectory(abc.MutableMapping):
                 # processed. All other failures (below) don't need to do this
                 # because they're definitely non-terminal and thus can't start
                 # a valid LongFilenameEntry run
-                warnings.warn(OrphanedLongFilename(
-                    'new terminal LongFilenameEntry'))
+                warnings.warn(OrphanedLongFilename(lang._(
+                    'new terminal LongFilenameEntry')))
                 return self._join_lfn_entries([head] + entries, checksum)
             sequence = head.sequence & 0b11111
             if not sequence:
-                warnings.warn(BadLongFilename(
-                    'LongFilenameEntry.sequence is zero'))
+                warnings.warn(BadLongFilename(lang._(
+                    'LongFilenameEntry.sequence is zero')))
                 return self._join_lfn_entries(entries, checksum)
         elif head.sequence != sequence:
-            warnings.warn(OrphanedLongFilename(
-                f'unexpected LongFilenameEntry.sequence: {sequence} != '
-                f'{head.sequence}'))
+            warnings.warn(OrphanedLongFilename(lang._(
+                'unexpected LongFilenameEntry.sequence: {sequence} != '
+                '{head.sequence}'.format(sequence=sequence, head=head))))
             return self._join_lfn_entries(entries, checksum)
         lfn = head.name_1 + head.name_2 + head.name_3 + lfn
         if sequence == 1:
             if entries:
-                warnings.warn(OrphanedLongFilename(
-                    f'more LongFilenameEntry after sequence: 1'))
+                warnings.warn(OrphanedLongFilename(lang._(
+                    'more LongFilenameEntry after sequence: 1')))
                 return self._join_lfn_entries(entries, checksum)
             return lfn
         else:
             if not entries:
-                warnings.warn(OrphanedLongFilename(
-                    f'missing LongFilenameEntry after sequence: {sequence}'))
+                warnings.warn(OrphanedLongFilename(lang._(
+                    'missing LongFilenameEntry after sequence: {sequence}'
+                    .format(sequence=sequence))))
             return self._join_lfn_entries(entries, checksum, sequence - 1, lfn)
 
     def _prefix_entries(self, filename, entry):
@@ -1107,8 +1120,9 @@ class FatDirectory(abc.MutableMapping):
         else:
             lfn = filename.encode('utf-16le')
             if len(lfn) > 255 * 2:
-                raise ValueError(
-                    f'{filename} is too long (more than 255 UCS-2 characters)')
+                raise ValueError(lang._(
+                    '{filename} is too long (more than 255 UCS-2 characters)'
+                    .format(filename=filename)))
             # NUL terminate if len(result) mod 26
             # result fits perfectly in a LongFilenameEntry)
             if len(lfn) % 26:
@@ -1475,7 +1489,8 @@ class FatFile(io.RawIOBase):
     def __init__(self, fs, start, mode='rb', index=None, entry=None):
         super().__init__()
         if 'b' not in mode:
-            raise ValueError(f'non-binary mode {mode!r} not supported')
+            raise ValueError(lang._(
+                'non-binary mode {mode!r} not supported'.format(mode=mode)))
         self._fs = weakref.ref(fs)
         if start:
             self._map = list(fs.fat.chain(start))
@@ -1539,7 +1554,9 @@ class FatFile(io.RawIOBase):
         """
         fs = self._fs()
         if fs is None:
-            raise ValueError(f'FatFileSystem containing {self!r} is closed')
+            raise ValueError(lang._(
+                'FatFileSystem containing {self!r} is closed'
+                .format(self=self)))
         return fs
 
     def _get_size(self):
@@ -1561,7 +1578,7 @@ class FatFile(io.RawIOBase):
         for updating in the associated directory index.
         """
         if self._entry is None:
-            raise ValueError('no key for entry-less FatFile')
+            raise ValueError(lang._('no key for entry-less FatFile'))
         fs = self._get_fs()
         filename = self._entry.filename.rstrip(b' ')
         assert filename != b'\0' * 8
@@ -1628,7 +1645,7 @@ class FatFile(io.RawIOBase):
 
     def _check_closed(self):
         if self.closed:
-            raise ValueError('I/O operation on closed file')
+            raise ValueError(lang._('I/O operation on closed file'))
 
     def close(self):
         if not self.closed:
@@ -1753,7 +1770,8 @@ class FatFile(io.RawIOBase):
         elif whence == io.SEEK_END:
             pos = self._get_size() + pos
         else:
-            raise ValueError(f'invalid whence: {whence}')
+            raise ValueError(lang._(
+                'invalid whence: {whence}'.format(whence=whence)))
         if pos < 0:
             raise OSError(errno.EINVAL, os.strerror(errno.EINVAL))
         self._pos = pos

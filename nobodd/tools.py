@@ -18,6 +18,8 @@ try:
 except ImportError:
     pairwise = None
 
+from . import lang
+
 
 def labels(desc):
     """
@@ -100,10 +102,10 @@ def get_best_family(host, port):
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_UDP)
     except socket.gaierror as exc:
-        raise ValueError('invalid host and port combination') from exc
+        raise ValueError(lang._('invalid host and port combination')) from exc
     for family, _, _, _, sockaddr in infos:
         return family, sockaddr
-    raise ValueError('invalid host and port combination')
+    raise ValueError(lang._('invalid host and port combination'))
 
 
 def format_address(address):

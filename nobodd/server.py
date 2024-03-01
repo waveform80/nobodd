@@ -22,6 +22,7 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 from selectors import DefaultSelector, EVENT_READ
 
+from . import lang
 from .disk import DiskImage
 from .fs import FatFileSystem
 from .systemd import get_systemd
@@ -76,7 +77,7 @@ class BootHandler(TFTPBaseHandler):
         except (ValueError, KeyError):
             raise FileNotFoundError(filename)
         if board.ip is not None and self.client_address[0] != board.ip:
-            raise PermissionError('IP does not match')
+            raise PermissionError(lang._('IP does not match'))
         boot_filename = Path('').joinpath(*p.parts[1:])
         try:
             image, fs = self.server.images[serial]
@@ -104,8 +105,9 @@ class BootServer(ThreadingMixIn, TFTPBaseServer):
         self.images = {}
         if isinstance(server_address, int):
             if not stat.S_ISSOCK(os.fstat(server_address).st_mode):
-                raise RuntimeError(
-                    f'inherited fd {server_address} is not a socket')
+                raise RuntimeError(lang._(
+                    'inherited fd {server_address} is not a socket'
+                ).format(server_address=server_address))
             # If we've been passed an fd directly, we don't actually want the
             # super-class to go allocating a socket but we can't avoid it so we
             # allocate an ephemeral localhost socket, then close it and just
@@ -144,13 +146,15 @@ def get_parser():
     tftp_section.add_argument(
         '--listen',
         key='listen', type=str, metavar='ADDR',
-        help="the address on which to listen for connections "
-        "(default: %(default)s)")
+        help=lang._(
+            "the address on which to listen for connections (default: "
+            "%(default)s)"))
     tftp_section.add_argument(
         '--port',
         key='port', type=port, metavar='PORT',
-        help="the port on which to listen for connections "
-        "(default: %(default)s)")
+        help=lang._(
+            "the port on which to listen for connections (default: "
+            "%(default)s)"))
     tftp_section.add_argument(
         '--includedir',
         key='includedir', type=Path, metavar='PATH',
@@ -159,9 +163,10 @@ def get_parser():
     parser.add_argument(
         '--board', dest='boards', type=Board.from_string, action='append',
         metavar='SERIAL,FILENAME[,PART[,IP]]', default=[],
-        help="can be specified multiple times to define boards which are to "
-        "be served boot images over TFTP; if PART is omitted the default is "
-        "1; if IP is omitted the IP address will not be checked")
+        help=lang._(
+            "can be specified multiple times to define boards which are to be "
+            "served boot images over TFTP; if PART is omitted the default is "
+            "1; if IP is omitted the IP address will not be checked"))
 
     # Reading the config twice is ... inelegant, but it's the simplest way to
     # handle the include path and avoid double-parsing values. The first pass
@@ -225,6 +230,7 @@ def main(args=None):
         debug = int(os.environ['DEBUG'])
     except (KeyError, ValueError):
         debug = 0
+    lang.init()
     sd = get_systemd()
 
     while True:
@@ -235,7 +241,7 @@ def main(args=None):
                 for board in conf.boards
             }
             if not boards:
-                raise RuntimeError('No boards defined')
+                raise RuntimeError(lang._('No boards defined'))
 
             if conf.listen == 'stdin':
                 # Yes, this should always be zero but ... just in case
@@ -243,8 +249,9 @@ def main(args=None):
             elif conf.listen == 'systemd':
                 fds = sd.listen_fds()
                 if len(fds) != 1:
-                    raise RuntimeError(
-                        f'Expected 1 fd from systemd but got {len(fds)}')
+                    raise RuntimeError(lang._(
+                        'Expected 1 fd from systemd but got {fds}'
+                    ).format(fds=len(fds)))
                 server_address, name = fds.popitem()
             else:
                 server_address = (conf.listen, conf.port)
@@ -258,21 +265,22 @@ def main(args=None):
                 selector.register(exit_read, EVENT_READ)
                 selector.register(server, EVENT_READ)
                 sd.ready()
-                server.logger.info('Ready')
+                server.logger.info(lang._('Ready'))
                 while True:
                     for key, events in selector.select():
                         if key.fileobj == exit_read:
                             code = exit_read.recv(4)
                             if code == b'INT ':
                                 sd.stopping()
-                                server.logger.warning('Interrupted')
+                                server.logger.warning(lang._('Interrupted'))
                                 return 2
                             elif code == b'TERM':
                                 sd.stopping()
-                                server.logger.warning('Terminated')
+                                server.logger.warning(lang._('Terminated'))
                                 return 0
                             elif code == b'HUP ':
-                                server.logger.info('Reloading configuration')
+                                server.logger.info(lang._(
+                                    'Reloading configuration'))
                                 raise ReloadConfig('SIGHUP')
                             else:
                                 assert False, 'internal error'

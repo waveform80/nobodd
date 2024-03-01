@@ -17,6 +17,7 @@ import datetime as dt
 from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
+from . import lang
 from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum, lfn_valid
 from .tools import encode_timestamp, decode_timestamp
 
@@ -60,7 +61,9 @@ class FatPath:
             elif part in ('.', '..'):
                 continue # ignore path components
             elif not lfn_valid(part):
-                raise ValueError(f'invalid name {str(self)!r}')
+                raise ValueError(lang._(
+                    'invalid name {str_self!r}'
+                    .format(str_self=str(self))))
         self._resolved = False
 
     def __repr__(self):
@@ -80,7 +83,9 @@ class FatPath:
         """
         fs = self._fs()
         if fs is None:
-            raise OSError(f'FatFileSystem containing {self!s} is closed')
+            raise OSError(lang._(
+                'FatFileSystem containing {self!s} is closed'
+                .format(self=self)))
         return fs
 
     @classmethod
@@ -129,7 +134,7 @@ class FatPath:
         try:
             head, *parts = self.parts
             if head != self.sep:
-                raise ValueError('relative FatPath cannot be resolved')
+                raise ValueError(lang._('relative FatPath cannot be resolved'))
             fs = self._get_fs()
             path = fs.root
             while parts:
@@ -170,8 +175,9 @@ class FatPath:
             try:
                 self._entry = self._index[self.name]
             except KeyError:
-                raise FileNotFoundError(
-                    f'Directory entry for {self} disappeared')
+                raise FileNotFoundError(lang._(
+                    'Directory entry for {self} disappeared'
+                    .format(self=self)))
         else:
             self._resolve()
 
@@ -182,7 +188,8 @@ class FatPath:
         """
         self._resolve()
         if not self.exists():
-            raise FileNotFoundError(f'No such file or directory: {self}')
+            raise FileNotFoundError(lang._(
+                'No such file or directory: {self}'.format(self=self)))
 
     def _must_not_exist(self):
         """
@@ -191,7 +198,8 @@ class FatPath:
         """
         self._resolve()
         if self.exists():
-            raise FileExistsError(f'File exists: {self}')
+            raise FileExistsError(lang._(
+                'File exists: {self}'.format(self=self)))
 
     def _must_be_dir(self):
         """
@@ -200,7 +208,8 @@ class FatPath:
         """
         self._resolve()
         if not self.is_dir():
-            raise NotADirectoryError(f'Not a directory: {self}')
+            raise NotADirectoryError(lang._(
+                'Not a directory: {self}'.format(self=self)))
 
     def _must_not_be_dir(self):
         """
@@ -209,7 +218,8 @@ class FatPath:
         """
         self._resolve()
         if self.is_dir():
-            raise IsADirectoryError(f'Is a directory: {self}')
+            raise IsADirectoryError(lang._(
+                'Is a directory: {self}'.format(self=self)))
 
     def open(self, mode='r', buffering=-1, encoding=None, errors=None,
              newline=None):
@@ -229,12 +239,14 @@ class FatPath:
         # Check the mode is valid and matches our expectations (can't open a
         # directory, can't read a non-existent file, etc.)
         if set(mode) - set('rwaxb+'):
-            raise ValueError(f'invalid file mode {mode!r}')
+            raise ValueError(lang._(
+                'invalid file mode {mode!r}'.format(mode=mode)))
         if len(set(mode) & set('rwax')) != 1:
-            raise ValueError('must have exactly one of read, write, append, '
-                             'exclusive creation mode')
+            raise ValueError(lang._(
+                'must have exactly one of read, write, append, exclusive '
+                'creation mode'))
         if fs.readonly and set(mode) & set('wax+'):
-            raise PermissionError('fs is read-only')
+            raise PermissionError(lang._('fs is read-only'))
         if 'r' in mode:
             self._must_exist()
         elif 'x' in mode:
@@ -277,15 +289,18 @@ class FatPath:
                         "binary mode, the default buffer size will be used"))
                 buffering = -1
             if encoding is not None:
-                raise ValueError("binary mode doesn't take an encoding argument")
+                raise ValueError(lang._(
+                    "binary mode doesn't take an encoding argument"))
             if errors is not None:
-                raise ValueError("binary mode doesn't take an errors argument")
+                raise ValueError(lang._(
+                    "binary mode doesn't take an errors argument"))
             if newline is not None:
-                raise ValueError("binary mode doesn't take a newline argument")
+                raise ValueError(lang._(
+                    "binary mode doesn't take a newline argument"))
             f = fs.open_entry(self._index, self._entry, mode)
         else:
             if buffering == 0:
-                raise ValueError("can't have unbuffered text I/O")
+                raise ValueError(lang._("can't have unbuffered text I/O"))
             else:
                 line_buffering = buffering == 1
             f = fs.open_entry(self._index, self._entry, mode + 'b')
@@ -363,7 +378,8 @@ class FatPath:
             target = FatPath(fs, target)
         target_fs = target._get_fs()
         if fs is not target_fs:
-            raise ValueError('Cannot rename between FatFileSystem instances')
+            raise ValueError(lang._(
+                'Cannot rename between FatFileSystem instances'))
 
         if target.exists():
             target._must_not_be_dir()
@@ -465,7 +481,8 @@ class FatPath:
         else:
             cluster = 0
         if cluster == 0:
-            raise OSError(errno.EACCES, 'Cannot remove the root directory')
+            raise OSError(errno.EACCES, lang._(
+                'Cannot remove the root directory'))
         for item in self.iterdir():
             print(repr(item))
             raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
@@ -496,7 +513,8 @@ class FatPath:
         """
         fs = self._get_fs()
         if not self.is_absolute():
-            raise ValueError(f'Cannot resolve relative path {self!r}')
+            raise ValueError(lang._(
+                'Cannot resolve relative path {self!r}'.format(self=self)))
         parts = [p for p in self._parts if p != '.']
         while '..' in parts:
             i = parts.index('..')
@@ -561,7 +579,7 @@ class FatPath:
         case-insensitive.
         """
         if not pattern:
-            raise ValueError('empty pattern')
+            raise ValueError(lang._('empty pattern'))
         pat_parts = get_parts(pattern.lower())
         parts = self.parts
         if len(pat_parts) > len(parts):
@@ -607,8 +625,8 @@ class FatPath:
                         yielded.add(path._parts)
                         yield path
             elif '**' in part:
-                raise ValueError(
-                    'invalid pattern: ** can only be an entire component')
+                raise ValueError(lang._(
+                    'invalid pattern: ** can only be an entire component'))
             elif '*' in part or '?' in part or '[' in part:
                 yield from wildcard(parent, part, parts)
             else:
@@ -644,10 +662,10 @@ class FatPath:
         """
         self._must_exist()
         if not pattern:
-            raise ValueError('Unacceptable pattern')
+            raise ValueError(lang._('Unacceptable pattern'))
         pat_parts = get_parts(pattern)
         if pat_parts[:1] == ('',):
-            raise ValueError('Non-relative patterns are not supported')
+            raise ValueError(lang._('Non-relative patterns are not supported'))
         yield from self._search(self, pat_parts)
 
     def rglob(self, pattern):
@@ -657,10 +675,10 @@ class FatPath:
         """
         self._must_exist()
         if not pattern:
-            raise ValueError('Unacceptable pattern')
+            raise ValueError(lang._('Unacceptable pattern'))
         pat_parts = get_parts(pattern)
         if pat_parts[:1] == ('',):
-            raise ValueError('Non-relative patterns are not supported')
+            raise ValueError(lang._('Non-relative patterns are not supported'))
         yield from self._search(self, ('**',) + pat_parts)
 
     def stat(self, *, follow_symlinks=True):
@@ -1003,14 +1021,15 @@ class FatPath:
         *other*. If it's impossible, :exc:`ValueError` is raised.
         """
         if not other:
-            raise TypeError('need at least one argument')
+            raise TypeError(lang._('need at least one argument'))
         fs = self._get_fs()
         to = type(self)(fs, *other)
         n = len(to._parts)
         if self._parts[:n] != to._parts:
-            raise ValueError(
-                f'{self!r} is not in the subpath of {to!r} OR one path is '
-                f'relative and the other is absolute')
+            raise ValueError(lang._(
+                '{self!r} is not in the subpath of {to!r} OR one path is '
+                'relative and the other is absolute'
+                .format(self=self, to=to)))
         return type(self)(fs, *self._parts[n:])
 
     def joinpath(self, *other):
@@ -1041,9 +1060,11 @@ class FatPath:
         """
         fs = self._get_fs()
         if not self.name:
-            raise ValueError(f'{self!r} has an empty name')
+            raise ValueError(lang._(
+                '{self!r} has an empty name'.format(self=self)))
         if not name:
-            raise ValueError(f'invalid name {name!r}')
+            raise ValueError(lang._(
+                'invalid name {name!r}'.format(name=name)))
         return type(self)(fs, *self._parts[:-1], name)
 
     def with_stem(self, stem):
@@ -1060,9 +1081,11 @@ class FatPath:
         *suffix* is an empty string, the original suffix is removed.
         """
         if self.sep in suffix:
-            raise ValueError(f'Invalid suffix {suffix!r}')
+            raise ValueError(lang._(
+                'Invalid suffix {suffix!r}'.format(suffix=suffix)))
         if suffix and not suffix.startswith('.') or suffix == '.':
-            raise ValueError(f'Invalid suffix {suffix!r}')
+            raise ValueError(lang._(
+                'Invalid suffix {suffix!r}'.format(suffix=suffix)))
         name = self.name
         old_suffix = self.suffix
         if not old_suffix:
@@ -1079,9 +1102,10 @@ class FatPath:
         self_fs = self._get_fs()
         other_fs = other._get_fs()
         if self_fs is not other_fs:
-            raise TypeError(
-                f'comparison is not supported between instances of '
-                f'{self.__class__.__name__} with different file-systems')
+            raise TypeError(lang._(
+                'comparison is not supported between instances of '
+                '{self.__class__.__name__} with different file-systems'
+                .format(self=self)))
         return len(self._parts) == len(other._parts) and all(
             sp.lower() == op.lower()
             for sp, op in zip_longest(self._parts, other._parts, fillvalue=''))
@@ -1092,9 +1116,10 @@ class FatPath:
         self_fs = self._get_fs()
         other_fs = other._get_fs()
         if self_fs is not other_fs:
-            raise TypeError(
-                f'comparison is not supported between instances of '
-                f'{self.__class__.__name__} with different file-systems')
+            raise TypeError(lang._(
+                'comparison is not supported between instances of '
+                '{self.__class__.__name__} with different file-systems'
+                .format(self=self)))
         return all(
             sp.lower() <= op.lower()
             for sp, op in zip_longest(self.parts, other.parts, fillvalue=''))

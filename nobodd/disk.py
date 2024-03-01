@@ -12,6 +12,7 @@ import warnings
 from binascii import crc32
 from collections.abc import Mapping
 
+from . import lang
 from .mbr import MBRHeader, MBRPartition
 from .gpt import GPTHeader, GPTPartition
 
@@ -155,9 +156,9 @@ class DiskImage:
                 else:
                     break
             else:
-                raise ValueError(
-                    f'Unable to determine partitioning scheme in use by '
-                    f'{self._file}')
+                raise ValueError(lang._(
+                    'Unable to determine partitioning scheme in use by '
+                    '{self._file}'.format(self=self)))
         return self._partitions
 
 
@@ -246,13 +247,13 @@ class DiskPartitionsGPT(DiskPartitions):
     def __init__(self, mem, sector_size=512):
         header = GPTHeader.from_buffer(mem, sector_size * 1)
         if header.signature != b'EFI PART':
-            raise ValueError('Bad GPT signature')
+            raise ValueError(lang._('Bad GPT signature'))
         if header.revision != 0x10000:
-            raise ValueError('Unrecognized GPT version')
+            raise ValueError(lang._('Unrecognized GPT version'))
         if header.header_size != GPTHeader._FORMAT.size:
-            raise ValueError('Bad GPT header size')
+            raise ValueError(lang._('Bad GPT header size'))
         if crc32(bytes(header._replace(header_crc32=0))) != header.header_crc32:
-            raise ValueError('Bad GPT header CRC32')
+            raise ValueError(lang._('Bad GPT header CRC32'))
         self._mem = mem
         self._header = header
         self._ss = sector_size
@@ -317,14 +318,14 @@ class DiskPartitionsMBR(DiskPartitions):
     def __init__(self, mem, sector_size=512):
         header = MBRHeader.from_buffer(mem, offset=0)
         if header.boot_sig != 0xAA55:
-            raise ValueError('Bad MBR signature')
+            raise ValueError(lang._('Bad MBR signature'))
         if header.zero != 0:
-            raise ValueError('Bad MBR zero field')
+            raise ValueError(lang._('Bad MBR zero field'))
         self._mem = mem
         self._header = header
         self._ss = sector_size
         if len(self) == 1 and self[1].type == 0xEE:
-            raise ValueError('Protective MBR; use GPT instead')
+            raise ValueError(lang._('Protective MBR; use GPT instead'))
 
     @property
     def signature(self):
@@ -335,7 +336,7 @@ class DiskPartitionsMBR(DiskPartitions):
         while True:
             ebr = MBRHeader.from_buffer(self._mem, logical_offset * self._ss)
             if ebr.boot_sig != 0xAA55:
-                raise ValueError('Bad EBR signature')
+                raise ValueError(lang._('Bad EBR signature'))
             # Yield the logical partition
             part = MBRPartition.from_bytes(ebr.partition_1)
             part = part._replace(first_lba=part.first_lba + logical_offset)
@@ -344,9 +345,10 @@ class DiskPartitionsMBR(DiskPartitions):
             if part.part_type == 0x00 and part.first_lba == 0:
                 break
             elif part.part_type not in (0x05, 0x0F):
-                raise ValueError(
-                    'Second partition in EBR at LBA {logical_offset) is not '
-                    'another EBR or a terminal')
+                raise ValueError(lang._(
+                    'Second partition in EBR at LBA {logical_offset} is not '
+                    'another EBR or a terminal'
+                    .format(logical_offset=logical_offset)))
             logical_offset = part.first_lba + ext_offset
 
     def _get_primary(self):
@@ -356,8 +358,8 @@ class DiskPartitionsMBR(DiskPartitions):
             part = MBRPartition.from_bytes(buf)
             if part.part_type in (0x05, 0x0F):
                 if extended:
-                    warnings.warn(
-                        UserWarning('Multiple extended partitions found'))
+                    warnings.warn(UserWarning(lang._(
+                        'Multiple extended partitions found')))
                 extended = True
                 yield from enumerate(self._get_logical(part.first_lba), start=5)
             elif part.part_type != 0x00:

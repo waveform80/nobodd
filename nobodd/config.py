@@ -19,6 +19,8 @@ from argparse import ArgumentParser, SUPPRESS
 from ipaddress import ip_address
 from copy import deepcopy
 
+from . import lang
+
 
 # The locations to attempt to read the configuration from
 XDG_CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', '~/.config'))
@@ -131,7 +133,8 @@ class ConfigArgumentParser(ArgumentParser):
     def _add_config_action(self, *args, method, section, key, **kwargs):
         assert callable(method), 'method must be a callable'
         if (section is None) != (key is None):
-            raise ValueError('section and key must be specified together')
+            raise ValueError(lang._(
+                'section and key must be specified together'))
         try:
             if kwargs['action'] in ('store_true', 'store_false'):
                 type = boolean
@@ -141,9 +144,9 @@ class ConfigArgumentParser(ArgumentParser):
         if key is not None:
             with suppress(KeyError):
                 if self._config_map[action.dest] != (section, key, type):
-                    raise ValueError(
+                    raise ValueError(lang._(
                         'section and key must match for all equivalent dest '
-                        'values')
+                        'values'))
             self._config_map[action.dest] = (section, key, type)
         return action
 
@@ -199,11 +202,13 @@ class ConfigArgumentParser(ArgumentParser):
                         section = {
                             s for s in valid if fnmatchcase(section, s)}.pop()
                     except KeyError:
-                        raise ValueError(
-                            f'{path}: invalid section [{section}]')
+                        raise ValueError(lang._(
+                            '{path}: invalid section [{section}]'
+                            .format(path=path, section=section)))
                     for key in set(keys) - valid[section]:
-                        raise ValueError(
-                            f'{path}: invalid key {key} in [{section}]')
+                        raise ValueError(lang._(
+                            '{path}: invalid key {key} in [{section}]'
+                            .format(path=path, key=key, section=section)))
             # Resolve paths relative to the configuration file just loaded
             for glob, key in path_items:
                 for section in {s for s in config if fnmatchcase(s, glob)}:
@@ -267,7 +272,7 @@ def port(s):
         try:
             return socket.getservbyname(s)
         except OSError:
-            raise ValueError('invalid service name or port number')
+            raise ValueError(lang._('invalid service name or port number'))
 
 
 def boolean(s):
@@ -291,7 +296,7 @@ def boolean(s):
             '1':     True,
         }[str(s).strip().lower()]
     except KeyError:
-        raise ValueError(f'invalid boolean value: {s}')
+        raise ValueError(lang._('invalid boolean value: {s}'.format(s=s)))
 
 
 def size(s):
@@ -328,7 +333,8 @@ def serial(s):
         s = s[8:]
     value = int(s, base=16)
     if not 0 <= value <= 0xFFFFFFFF:
-        raise ValueError(f'serial number is out of range: {value}')
+        raise ValueError(lang._(
+            'serial number is out of range: {value}'.format(value=value)))
     return value
 
 
@@ -348,7 +354,8 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
         section).
         """
         if not section.startswith('board:'):
-            raise ValueError(f'invalid section name: {section}')
+            raise ValueError(lang._(
+                'invalid section name: {section}'.format(section=section)))
         values = config[section]
         sernum = serial(section[len('board:'):])
         image = values['image']
@@ -371,8 +378,9 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
         sernum = serial(sernum)
         ip = part = None
         if len(extra) > 2:
-            raise ValueError(
-                f'expected serial,filename,[part],[ip] instead of {s}')
+            raise ValueError(lang._(
+                'expected serial,filename,[part],[ip] instead of {s}'
+                .format(s=s)))
         elif len(extra) > 1:
             part = extra[0]
             ip = extra[1]
@@ -382,7 +390,8 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
             try:
                 part = int(part)
             except ValueError:
-                raise ValueError(f'invalid partition number {part!r}')
+                raise ValueError(lang._(
+                    'invalid partition number {part!r}'.format(part=part)))
         else:
             part = 1
         if ip is not None:
@@ -444,5 +453,5 @@ def duration(s):
             if not t:
                 break
     if t:
-        raise ValueError(f'invalid duration {s}')
+        raise ValueError(lang._('invalid duration {s}'.format(s=s)))
     return dt.timedelta(**spans)

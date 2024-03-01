@@ -14,7 +14,7 @@ from threading import Thread, Lock, Event
 from socketserver import BaseRequestHandler, UDPServer, ThreadingMixIn
 from time import monotonic_ns as time_ns
 
-from . import netascii
+from . import netascii, lang
 from .tools import BufferedTranscoder, get_best_family, format_address
 from .tftp import (
     TFTP_BINARY,
@@ -321,18 +321,18 @@ class TFTPHandler(BaseRequestHandler):
             response = getattr(self, 'do_' + packet.opcode.name)(packet)
         except AttributeError as exc:
             self.server.logger.warning(
-                '%s - ERROR - unsupported operation; %s',
+                lang._('%s - ERROR - unsupported operation; %s'),
                 format_address(self.client_address), exc)
             response = ERRORPacket(
                 Error.UNDEFINED, f'Unsupported operation, {exc!s}')
         except ValueError as exc:
             self.server.logger.warning(
-                '%s - ERROR - invalid request; %s',
+                lang._('%s - ERROR - invalid request; %s'),
                 format_address(self.client_address), exc)
             response = ERRORPacket(Error.UNDEFINED, f'Invalid request, {exc!s}')
         except Exception as exc:
             self.server.logger.exception(
-                '%s - ERROR - unexpected error; %s',
+                lang._('%s - ERROR - unexpected error; %s'),
                 format_address(self.client_address), exc, exc_info=exc)
             response = ERRORPacket(Error.UNDEFINED, 'Server error')
         finally:
@@ -413,22 +413,22 @@ class TFTPBaseHandler(TFTPHandler):
                 packet = DATAPacket(1, state.get_block(1))
         except BadOptions as exc:
             self.server.logger.info(
-                '%s - ERROR - bad options; %s',
+                lang._('%s - ERROR - bad options; %s'),
                 format_address(self.client_address), exc)
             return ERRORPacket(Error.INVALID_OPT, str(exc))
         except PermissionError:
             self.server.logger.info(
-                '%s - ERROR - permission denied',
+                lang._('%s - ERROR - permission denied'),
                 format_address(self.client_address))
             return ERRORPacket(Error.NOT_AUTH)
         except FileNotFoundError:
             self.server.logger.info(
-                '%s - ERROR - not found',
+                lang._('%s - ERROR - not found'),
                 format_address(self.client_address))
             return ERRORPacket(Error.NOT_FOUND)
         except OSError as exc:
             self.server.logger.info(
-                '%s - ERROR - %s',
+                lang._('%s - ERROR - %s'),
                 format_address(self.client_address), exc)
             return ERRORPacket(Error.UNDEFINED, str(exc))
         else:
@@ -478,7 +478,7 @@ class TFTPSubHandler(TFTPHandler):
         """
         if self.client_address != self.server.client_state.address:
             self.server.logger.warning(
-                '%s - IGNORE - bad client for %s',
+                lang._('%s - IGNORE - bad client for %s'),
                 format_address(self.client_address),
                 format_address(self.server.server_address))
             return None
@@ -516,7 +516,7 @@ class TFTPSubHandler(TFTPHandler):
             now = time_ns()
             duration = (now - state.started) / 1_000_000_000
             self.server.logger.info(
-                '%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s',
+                lang._('%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s'),
                 format_address(self.client_address),
                 duration, state.transferred,
                 state.transferred / duration / 1024)
@@ -585,11 +585,12 @@ class TFTPSubServer(UDPServer):
         if now - state.last_recv > state.timeout:
             if state.last_send is None:
                 # TODO: Not sure this code can be reached?
-                self.logger.error('internal error; timeout without send')
+                self.logger.error(
+                    lang._('internal error; timeout without send'))
                 self.done = True
             elif state.last_send - state.last_recv > state.timeout * 5:
                 self.logger.warning(
-                    '%s - timed out to %s',
+                    lang._('%s - timed out to %s'),
                     format_address(self.client_state.address),
                     format_address(self.server_address))
                 self.done = True
@@ -636,7 +637,7 @@ class TFTPSubServers(Thread):
         thread = Thread(
             target=server.serve_forever, kwargs={'poll_interval': 0.01})
         self.logger.debug(
-            '%s - starting server on %s',
+            lang._('%s - starting server on %s'),
             format_address(server.client_state.address),
             format_address(server.server_address))
         with self._lock:
@@ -652,14 +653,15 @@ class TFTPSubServers(Thread):
         """
         server, thread = self._alive.pop(tid)
         self.logger.debug(
-            '%s - shutting down server on %s',
+            lang._('%s - shutting down server on %s'),
             format_address(server.client_state.address),
             format_address(server.server_address))
         server.shutdown()
         thread.join(timeout=10)
         if thread.is_alive():
-            raise RuntimeError(
-                f'failed to shutdown thread for {server.server_address}')
+            raise RuntimeError(lang._(
+                'failed to shutdown thread for {server.server_address}'
+                .format(server=server)))
         server.client_state.close()
 
     def run(self):
@@ -696,8 +698,9 @@ class SimpleTFTPHandler(TFTPBaseHandler):
         if self.server.base_path in p.parents:
             return p
         else:
-            raise PermissionError(
-                f'{filename} is outside {self.server.base_path}')
+            raise PermissionError(lang._(
+                '{filename} is outside {self.server.base_path}'
+                .format(filename=filename, self=self)))
 
 
 class SimpleTFTPServer(ThreadingMixIn, TFTPBaseServer):

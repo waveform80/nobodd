@@ -9,6 +9,7 @@ import re
 import struct
 from enum import IntEnum, auto
 
+from . import lang
 from .tools import labels, formats, FrozenDict
 
 
@@ -131,7 +132,8 @@ class Packet:
                 OpCode.OACK:  OACKPacket,
             }[opcode]
         except KeyError:
-            raise ValueError(f'invalid packet opcode {opcode}')
+            raise ValueError(lang._(
+                'invalid packet opcode {opcode}'.format(opcode=opcode)))
         else:
             return cls.from_data(s[2:])
 
@@ -193,7 +195,7 @@ class RRQPacket(Packet):
         try:
             filename, mode, suffix = cls.packet_re.match(data).groups()
         except AttributeError:
-            raise ValueError('badly formed RRQ/WRQ packet')
+            raise ValueError(lang._('badly formed RRQ/WRQ packet'))
         # Technically the filename must be in ASCII format (7-bit chars in an
         # 8-bit field), but given ASCII is a strict subset of UTF-8, and that
         # UTF-8 cannot include NUL chars, I see no harm in permitting UTF-8
@@ -201,7 +203,7 @@ class RRQPacket(Packet):
         filename = filename.decode('utf-8')
         mode = mode.decode('ascii').lower()
         if mode not in TFTP_MODES:
-            raise ValueError('unsupported file mode')
+            raise ValueError(lang._('unsupported file mode'))
         options = {
             match.group('name').decode('ascii').lower():
                 match.group('value').decode('ascii').lower()
@@ -288,6 +290,8 @@ class ERRORPacket(Packet):
         self.error = Error(int(error))
         if message is None:
             self.message = {
+                # NOTE: These messages are deliberately *not* marked for
+                # translation as they are sent to the client
                 Error.UNDEFINED:    'Undefined error',
                 Error.NOT_FOUND:    'File not found',
                 Error.NOT_AUTH:     'Access violation',

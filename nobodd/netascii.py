@@ -8,6 +8,8 @@
 import os
 import codecs
 
+from . import lang
+
 
 # The following references were essential in constructing this module; the
 # original TELNET specification [RFC764], and the wikipedia page documenting
@@ -140,13 +142,13 @@ def decode(s, errors='strict', final=False):
 
 def handle_error(errors):
     if errors == 'strict':
-        raise UnicodeError('invalid netascii')
+        raise UnicodeError(lang._('invalid netascii'))
     elif errors == 'ignore':
         return b''
     elif errors == 'replace':
         return b'?'
     else:
-        raise ValueError('invalid errors setting for netascii')
+        raise ValueError(lang._('invalid errors setting for netascii'))
 
 
 class IncrementalEncoder(codecs.BufferedIncrementalEncoder):
