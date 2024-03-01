@@ -324,7 +324,7 @@ def serial(s):
     that used by the TFTP client in the Pi's bootloader.
     """
     s = s.strip()
-    if s.startswith('10000000') or s.startswith('00000000'):
+    if len(s) >= 16 and (s.startswith('10000000') or s.startswith('00000000')):
         s = s[8:]
     value = int(s, base=16)
     if not 0 <= value <= 0xFFFFFFFF:
@@ -347,16 +347,17 @@ class Board(namedtuple('Board', ('serial', 'image', 'partition', 'ip'))):
         *config* (a mapping, e.g. a :class:`~configparser.ConfigParser`
         section).
         """
-        assert section.startswith('board:')
+        if not section.startswith('board:'):
+            raise ValueError(f'invalid section name: {section}')
         values = config[section]
-        serial = int(section[len('board:'):], base=16)
+        sernum = serial(section[len('board:'):])
         image = values['image']
         part = int(values.get('partition', 1))
         try:
             ip = ip_address(values['ip'])
         except KeyError:
             ip = None
-        return cls(serial, Path(image), part, ip)
+        return cls(sernum, Path(image), part, ip)
 
     @classmethod
     def from_string(cls, s):

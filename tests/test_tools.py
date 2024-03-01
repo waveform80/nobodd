@@ -9,6 +9,7 @@ import re
 import socket
 import datetime as dt
 from textwrap import dedent
+from unittest import mock
 
 import pytest
 
@@ -47,6 +48,10 @@ def test_get_best_family():
     assert get_best_family('::1', 8000) == (socket.AF_INET6, ('::1', 8000, 0, 0))
     with pytest.raises(ValueError):
         get_best_family('127.0.0.1', -1)
+    with mock.patch('nobodd.tools.socket.getaddrinfo') as getaddrinfo:
+        getaddrinfo.return_value = []
+        with pytest.raises(ValueError):
+            get_best_family('127.0.0.1', 65538)
 
 
 def test_format_address():
@@ -81,6 +86,13 @@ def test_buffered_transcoder_readinto():
     assert buf == b'abcd\xc3'
     assert utf8_stream.readinto(buf) == 1
     assert buf[:1] == b'\xa9'
+
+
+def test_buffered_transcoder_identity():
+    utf8_stream_1 = io.BytesIO('abcdé'.encode('utf-8'))
+    utf8_stream_2 = BufferedTranscoder(utf8_stream_1, 'utf-8')
+    assert utf8_stream_2.readable()
+    assert utf8_stream_2.readall() == b'abcd\xc3\xa9'
 
 
 def test_frozendict():

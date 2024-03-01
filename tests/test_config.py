@@ -74,10 +74,20 @@ def test_duration():
         duration('2 hours later...')
 
 
+def test_serial():
+    assert serial('1234abcd') == 0x1234abcd
+    assert serial('  deadbeef ') == 0xdeadbeef
+    assert serial('100000001234abcd') == 0x1234abcd
+    with pytest.raises(ValueError):
+        assert serial('foo')
+    with pytest.raises(ValueError):
+        assert serial('ffffffffff')
+
+
 def test_board_from_string():
     assert Board.from_string('1234abcd,ubuntu.img') == (
         0x1234abcd, Path('ubuntu.img'), 1, None)
-    assert Board.from_string('1234abcd,ubuntu.img,2') == (
+    assert Board.from_string('100000001234abcd,ubuntu.img,2') == (
         0x1234abcd, Path('ubuntu.img'), 2, None)
     assert Board.from_string('1234abcd,ubuntu.img,2,192.168.0.5') == (
         0x1234abcd, Path('ubuntu.img'), 2, ip_address('192.168.0.5'))
@@ -85,6 +95,33 @@ def test_board_from_string():
         Board.from_string('a,b,c,d,e')
     with pytest.raises(ValueError):
         Board.from_string('1234abcd,ubuntu.img,foo')
+
+
+def test_board_from_section():
+    assert Board.from_section({
+        'board:1234abcd': {
+            'image': '/srv/images/ubuntu-22.04.img',
+            'partition': '1',
+            'ip': '192.168.0.5',
+        }
+    }, 'board:1234abcd') == (
+        0x1234abcd, Path('/srv/images/ubuntu-22.04.img'), 1,
+        ip_address('192.168.0.5'))
+    assert Board.from_section({
+        'board:100000001234abcd': {
+            'image': '/srv/images/ubuntu-22.04.img',
+        }
+    }, 'board:100000001234abcd') == (
+        0x1234abcd, Path('/srv/images/ubuntu-22.04.img'), 1, None)
+    with pytest.raises(ValueError):
+        Board.from_section({}, 'foo')
+    with pytest.raises(ValueError):
+        Board.from_section({
+            'board:100000001234abcd': {
+                'image': '/srv/images/ubuntu-22.04.img',
+                'partition': 'foo',
+            }
+        }, 'board:100000001234abcd')
 
 
 def test_configargparse_basics(parser):
