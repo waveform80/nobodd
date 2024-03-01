@@ -1,0 +1,15 @@
+[Unit]
+Description=TFTP Server for OS images, geared towards the Raspberry Pi
+Documentation=man:nobodd-tftp(1)
+After=local-fs.target network.target
+
+[Service]
+Type=notify
+User=nbd
+Group=nbd
+Restart=on-failure
+ExecStart=nobodd-tftpd --listen systemd
+ExecReload=kill -HUP $MAINPID
+
+[Install]
+WatnedBy=multi-user.target
