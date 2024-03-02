@@ -114,7 +114,7 @@ output of ``cat /proc/cpuinfo`` at runtime. For example:
 
 If the serial number starts with 10000000 (as in the example above), exclude
 the initial one and all leading zeros. So the above Pi has a serial number of
-1234abcd (in hexidecimal). Within the section the following values are valid:
+1234abcd (in hexadecimal). Within the section the following values are valid:
 
 image
     Specifies the full path to the operating system image to serve to the

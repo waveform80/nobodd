@@ -57,7 +57,7 @@ from the EEPROM, which will most likely look something like the following:
     ENABLE_SELF_UPDATE=1
     BOOT_ORDER=0xf41
 
-The value we are concerned with, is ``BOOT_ORDER``. This is a hexidecimal value
+The value we are concerned with, is ``BOOT_ORDER``. This is a hexadecimal value
 (denoted by the "0x" prefix) in which each hex digit specifies another boot
 source in *reverse order*. The digits that may be specified include:
 
@@ -227,14 +227,14 @@ tries to use sensible defaults where it can:
 * The number of the root partition within the image; the default is the first
   non-FAT partition, which is also fine here.
 
-* The hostname of the server; the default is the output of :command:`hostname
+* The host-name of the server; the default is the output of :command:`hostname
   --fqdn` but this can be specified manually with :option:`nobodd-prep
   --nbd-host`.
 
 * The name of the NBD share; the default is the stem of the image filename (the
   filename without its extensions) which in this case would be
-  "ubuntu-24.04-preinstalled-server-arm64+raspi". That's a bit of a mouthful so
-  we'll override it with :option:`nobodd-prep --nbd-name`.
+  :file:`ubuntu-24.04-preinstalled-server-arm64+raspi`. That's a bit of a
+  mouthful so we'll override it with :option:`nobodd-prep --nbd-name`.
 
 * The serial number of the Raspberry Pi; there is no default for this, so we'll
   provide it with :option:`nobodd-prep --serial`.
