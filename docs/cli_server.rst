@@ -108,49 +108,9 @@ by the serial number of the Raspberry Pi. The serial number can be found in the
 output of ``cat /proc/cpuinfo`` at runtime. For example:
 
 .. code-block:: console
-    :emphasize-lines: 40
 
-    $ cat /proc/cpuinfo
-    processor       : 0
-    BogoMIPS        : 108.00
-    Features        : fp asimd evtstrm crc32 cpuid
-    CPU implementer : 0x41
-    CPU architecture: 8
-    CPU variant     : 0x0
-    CPU part        : 0xd08
-    CPU revision    : 3
-
-    processor       : 1
-    BogoMIPS        : 108.00
-    Features        : fp asimd evtstrm crc32 cpuid
-    CPU implementer : 0x41
-    CPU architecture: 8
-    CPU variant     : 0x0
-    CPU part        : 0xd08
-    CPU revision    : 3
-
-    processor       : 2
-    BogoMIPS        : 108.00
-    Features        : fp asimd evtstrm crc32 cpuid
-    CPU implementer : 0x41
-    CPU architecture: 8
-    CPU variant     : 0x0
-    CPU part        : 0xd08
-    CPU revision    : 3
-
-    processor       : 3
-    BogoMIPS        : 108.00
-    Features        : fp asimd evtstrm crc32 cpuid
-    CPU implementer : 0x41
-    CPU architecture: 8
-    CPU variant     : 0x0
-    CPU part        : 0xd08
-    CPU revision    : 3
-
-    Hardware        : BCM2835
-    Revision        : d03114
+    $ grep ^Serial /proc/cpuinfo
     Serial          : 100000001234abcd
-    Model           : Raspberry Pi 4 Model B Rev 1.4
 
 If the serial number starts with 10000000 (as in the example above), exclude
 the initial one and all leading zeros. So the above Pi has a serial number of
