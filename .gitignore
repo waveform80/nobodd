@@ -5,6 +5,9 @@
 *.vim
 *.swp
 
+# Translations
+*.mo
+
 # Miscellaneous
 tags
 
