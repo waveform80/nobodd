@@ -8,8 +8,8 @@ Type=notify
 User=nbd
 Group=nbd
 Restart=on-failure
-ExecStart=nobodd-tftpd --listen systemd
+ExecStart=nobodd-tftpd
 ExecReload=kill -HUP $MAINPID
 
 [Install]
-WatnedBy=multi-user.target
+WantedBy=multi-user.target

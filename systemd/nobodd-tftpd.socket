@@ -1,0 +1,8 @@
+[Unit]
+Description=TFTP Server for OS images, geared towards the Raspberry Pi
+
+[Socket]
+ListenDatagram=69
+
+[Install]
+WantedBy=sockets.target
