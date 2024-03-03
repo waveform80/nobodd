@@ -158,7 +158,6 @@ class Systemd:
         :class:`dict` mapping each file-descriptor to its name, or the string
         "unknown" if no name was given.
         """
-        print(repr(os.environ), flush=True)
         try:
             if int(os.environ['LISTEN_PID']) != os.getpid():
                 raise ValueError(lang._('wrong LISTEN_PID'))
