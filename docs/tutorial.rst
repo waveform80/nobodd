@@ -106,7 +106,7 @@ something like:
     BOOT_ORDER=0xf412
 
 Finally, we need the serial number of your Raspberry Pi. This can be found with
-the following command:
+the following command.
 
 .. code-block:: console
 
@@ -124,17 +124,17 @@ Server Side
 As mentioned in the pre-requisites, we will assume the server is running Ubuntu
 24.04, and that you are logged in with a user that has root authority (via
 "sudo"). Firstly, install the packages which will provide our `TFTP`_, `NBD`_,
-and `DHCP`_ proxy servers, along with some tooling to customize images:
+and `DHCP`_ proxy servers, along with some tooling to customize images.
 
 .. code-block:: console
 
-    $ sudo apt install nobodd-tftpd nobodd-prep nbd-server xz-utils dnsmasq
+    $ sudo apt install nobodd-tftpd nobodd-tools nbd-server xz-utils dnsmasq
 
 The first thing to do is configure :manpage:`dnsmasq(8)` as a DHCP proxy
 server. Find the interface name of your server's primary ethernet interface
 (the one that will talk to the same network as the Raspberry Pi) within the
 output of the :command:`ip addr show up` command. It will probably look
-something like "enp2s0f0":
+something like "enp2s0f0".
 
 .. code-block:: console
     :emphasize-lines: 8,10
@@ -164,7 +164,7 @@ something like "enp2s0f0":
 
 Add the following configuration lines to :file:`/etc/dnsmasq.conf` adjusting
 the ethernet interface name, and the network mask on the highlighted lines to
-your particular setup:
+your particular setup.
 
 .. code-block:: text
     :emphasize-lines: 2,7
@@ -178,16 +178,17 @@ your particular setup:
     dhcp-range=192.168.1.255,proxy
     pxe-service=0,"Raspberry Pi Boot"
 
-Re-load the dnsmasq configuration:
+Restart dnsmasq to ensure it's listening for DHCP connections (unfortunately
+reload is not sufficient in this case).
 
 .. code-block:: console
 
-    $ sudo systemctl reload dnsmasq.service
+    $ sudo systemctl restart dnsmasq.service
 
 Next, we need to obtain an image to boot on our Raspberry Pi. We'll be using
 the Ubuntu 24.04 Server for Raspberry Pi image as this is configured for NBD
 boot out of the box. We will place this image under a :file:`/srv/images`
-directory and unpack it so we can manipulate it:
+directory and unpack it so we can manipulate it.
 
 .. code-block:: console
 
@@ -243,7 +244,7 @@ tries to use sensible defaults where it can:
   specify these manually with :option:`nobodd-prep --tftpd-conf` and
   :option:`nobodd-prep --nbd-conf`
 
-Putting all this together we run:
+Putting all this together we run,
 
 .. code-block:: console
 
@@ -255,7 +256,7 @@ Now we need to move the generated configuration files to their correct
 locations and ensure they're owned by root (so unprivileged users cannot modify
 them), ensure the modified image is owned by the "nbd" user (so the NBD service
 can read and write to it), and reload the configuration in the relevant
-services:
+services.
 
 .. code-block:: console
 
