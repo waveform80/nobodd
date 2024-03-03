@@ -48,7 +48,7 @@ def test_port():
     try:
         with Path('/etc/services').open('r') as services:
             for line in services:
-                if line.split()[0] == 'tftp':
+                if line.strip() and line.split()[0] == 'tftp':
                     assert port('tftp') == 69
                     break
     except FileNotFoundError:
