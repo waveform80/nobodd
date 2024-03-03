@@ -344,7 +344,8 @@ def main(args=None):
 
         prepare_image(conf)
         if conf.tftpd_conf is not None and conf.serial is not None:
-            board = Board(conf.serial, conf.image, conf.boot_partition, None)
+            board = Board(
+                conf.serial, conf.image.resolve(), conf.boot_partition, None)
             conf.tftpd_conf.write(str(board))
             conf.tftpd_conf.write('\n')
         if conf.nbd_conf is not None:
