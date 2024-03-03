@@ -240,8 +240,6 @@ def main(args=None):
                 board.serial: board
                 for board in conf.boards
             }
-            if not boards:
-                raise RuntimeError(lang._('No boards defined'))
 
             if conf.listen == 'stdin':
                 # Yes, this should always be zero but ... just in case

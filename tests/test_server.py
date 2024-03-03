@@ -122,20 +122,6 @@ def test_sighup(main_thread, capsys):
     assert main_thread.exit_code == 0
 
 
-def test_error_exit_no_boards(main_thread, capsys, monkeypatch):
-    with \
-        monkeypatch.context() as m:
-
-        m.delenv('DEBUG', raising=False)
-        main_thread.argv = ['--listen', '127.0.0.1', '--port', '0']
-        with main_thread:
-            pass
-        capture = capsys.readouterr()
-        assert 'No boards defined' in capture.err
-        assert main_thread.exception is None
-        assert main_thread.exit_code == 1
-
-
 def test_error_exit_no_debug(main_thread, capsys, monkeypatch):
     with \
         mock.patch('nobodd.server.get_parser') as get_parser, \
