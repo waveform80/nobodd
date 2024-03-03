@@ -5,6 +5,11 @@
 ..
 .. SPDX-License-Identifier: GPL-3.0
 
+
+.. Once ubuntu-image works reliably, this should be re-written to just
+.. "generate your custom Ubuntu image, manually seeding nbd-client and
+.. modules-extra with this handy yaml!"
+
 ===========================
 How to netboot Ubuntu 22.04
 ===========================
