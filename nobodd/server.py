@@ -103,34 +103,7 @@ class BootServer(ThreadingMixIn, TFTPBaseServer):
     def __init__(self, server_address, boards):
         self.boards = boards
         self.images = {}
-        if isinstance(server_address, int):
-            fd = server_address
-            if not stat.S_ISSOCK(os.fstat(fd).st_mode):
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not a socket').format(fd=fd))
-            # If we've been passed an fd directly, we don't actually want the
-            # super-class to go allocating a socket but we can't avoid it so we
-            # allocate an ephemeral localhost socket, then close it and just
-            # overwrite self.socket
-            super().__init__(
-                ('127.0.0.1', 0), BootHandler, bind_and_activate=False)
-            self.socket.close()
-            # XXX Using socket's fileno argument in this way isn't guaranteed
-            # to work on all platforms (though it should on Linux); see
-            # https://bugs.python.org/issue28134 for more details
-            self.socket = socket.socket(fileno=fd)
-            self.socket_type = self.socket.type
-            if self.socket_type != socket.SOCK_DGRAM:
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not a datagram socket').format(fd=fd))
-            self.address_family = self.socket.family
-            if self.address_family not in (socket.AF_INET, socket.AF_INET6):
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not an INET or INET6 socket')
-                    .format(fd=fd))
-            self.server_address = self.socket.getsockname()
-        else:
-            super().__init__(server_address, BootHandler)
+        super().__init__(server_address, BootHandler)
 
     def server_close(self):
         super().server_close()
