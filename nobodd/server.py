@@ -19,7 +19,6 @@ import socket
 import logging
 import argparse
 from pathlib import Path
-from socketserver import ThreadingMixIn
 from selectors import DefaultSelector, EVENT_READ
 
 from . import lang
@@ -88,7 +87,7 @@ class BootHandler(TFTPBaseHandler):
         return fs.root / boot_filename
 
 
-class BootServer(ThreadingMixIn, TFTPBaseServer):
+class BootServer(TFTPBaseServer):
     """
     A descendent of :class:`~nobodd.tftpd.TFTPBaseServer` that is configured
     with *boards*, a mapping of Pi serial numbers to
