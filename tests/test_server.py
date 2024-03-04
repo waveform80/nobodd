@@ -30,8 +30,8 @@ def main_thread():
 
         def run(self):
             class MyBootServer(BootServer):
-                def server_bind(slf):
-                    super().server_bind()
+                def __init__(slf, server_address, boards):
+                    super().__init__(server_address, boards)
                     if self.address is None:
                         self.address = slf.server_address
 
@@ -231,40 +231,43 @@ def test_listen_stdin(fat16_disk, main_thread, capsys, monkeypatch):
 
         expected = (boot.root / 'random').read_bytes()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('127.0.0.1', 0))
-    with monkeypatch.context() as m, mock.patch('nobodd.server.sys.stdin', sock):
-        m.delenv('DEBUG', raising=False)
-        main_thread.argv = [
-            '--listen', 'stdin', '--board', f'1234abcd,{fat16_disk}',
-        ]
-        main_thread.address = sock.getsockname()
-        with main_thread:
-            main_thread.wait_for_ready(capsys)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(('127.0.0.1', 0))
+        with monkeypatch.context() as m, \
+                mock.patch('nobodd.server.sys.stdin', sock.dup()):
+            m.delenv('DEBUG', raising=False)
+            main_thread.argv = [
+                '--listen', 'stdin', '--board', f'1234abcd,{fat16_disk}',
+            ]
+            main_thread.address = sock.getsockname()
+            with main_thread:
+                main_thread.wait_for_ready(capsys)
 
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-                # Start a valid transfer from client...
-                client.settimeout(10)
-                client.sendto(
-                    bytes(tftp.RRQPacket('1234abcd/random', 'octet')),
-                    main_thread.address)
-                received = []
-                for block, offset in enumerate(range(0, len(expected), 512), start=1):
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                    # Start a valid transfer from client...
+                    client.settimeout(10)
+                    client.sendto(
+                        bytes(tftp.RRQPacket('1234abcd/random', 'octet')),
+                        main_thread.address)
+                    received = []
+                    for block, offset in enumerate(
+                        range(0, len(expected), 512), start=1
+                    ):
+                        buf, addr = client.recvfrom(1500)
+                        pkt = tftp.Packet.from_bytes(buf)
+                        assert isinstance(pkt, tftp.DATAPacket)
+                        assert pkt.block == block
+                        received.append(pkt.data)
+                        client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
+                    # Because random is a precise multiple of the block size,
+                    # there should be one final (empty) DATA packet
                     buf, addr = client.recvfrom(1500)
                     pkt = tftp.Packet.from_bytes(buf)
                     assert isinstance(pkt, tftp.DATAPacket)
-                    assert pkt.block == block
-                    received.append(pkt.data)
+                    assert pkt.block == block + 1
+                    assert pkt.data == b''
                     client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
-                # Because random is a precise multiple of the block size, there
-                # should be one final (empty) DATA packet
-                buf, addr = client.recvfrom(1500)
-                pkt = tftp.Packet.from_bytes(buf)
-                assert isinstance(pkt, tftp.DATAPacket)
-                assert pkt.block == block + 1
-                assert pkt.data == b''
-                client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
-            assert b''.join(received) == expected
+                assert b''.join(received) == expected
 
 
 def test_bad_listen_systemd(main_thread, capsys, monkeypatch):
@@ -290,43 +293,46 @@ def test_listen_systemd(fat16_disk, main_thread, capsys, monkeypatch):
 
         expected = (boot.root / 'random').read_bytes()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('127.0.0.1', 0))
-    with monkeypatch.context() as m, \
-            mock.patch('nobodd.systemd.Systemd.LISTEN_FDS_START', sock.fileno()):
-        m.delenv('DEBUG', raising=False)
-        m.setenv('LISTEN_PID', str(os.getpid()))
-        m.setenv('LISTEN_FDS', '1')
-        main_thread.argv = [
-            '--listen', 'systemd', '--board', f'1234abcd,{fat16_disk}',
-        ]
-        main_thread.address = sock.getsockname()
-        with main_thread:
-            main_thread.wait_for_ready(capsys)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(('127.0.0.1', 0))
+        with monkeypatch.context() as m, \
+                mock.patch('nobodd.systemd.Systemd.LISTEN_FDS_START',
+                           os.dup(sock.fileno())):
+            m.delenv('DEBUG', raising=False)
+            m.setenv('LISTEN_PID', str(os.getpid()))
+            m.setenv('LISTEN_FDS', '1')
+            main_thread.argv = [
+                '--listen', 'systemd', '--board', f'1234abcd,{fat16_disk}',
+            ]
+            main_thread.address = sock.getsockname()
+            with main_thread:
+                main_thread.wait_for_ready(capsys)
 
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-                # Start a valid transfer from client...
-                client.settimeout(10)
-                client.sendto(
-                    bytes(tftp.RRQPacket('1234abcd/random', 'octet')),
-                    main_thread.address)
-                received = []
-                for block, offset in enumerate(range(0, len(expected), 512), start=1):
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                    # Start a valid transfer from client...
+                    client.settimeout(10)
+                    client.sendto(
+                        bytes(tftp.RRQPacket('1234abcd/random', 'octet')),
+                        main_thread.address)
+                    received = []
+                    for block, offset in enumerate(
+                        range(0, len(expected), 512), start=1
+                    ):
+                        buf, addr = client.recvfrom(1500)
+                        pkt = tftp.Packet.from_bytes(buf)
+                        assert isinstance(pkt, tftp.DATAPacket)
+                        assert pkt.block == block
+                        received.append(pkt.data)
+                        client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
+                    # Because random is a precise multiple of the block size,
+                    # there should be one final (empty) DATA packet
                     buf, addr = client.recvfrom(1500)
                     pkt = tftp.Packet.from_bytes(buf)
                     assert isinstance(pkt, tftp.DATAPacket)
-                    assert pkt.block == block
-                    received.append(pkt.data)
+                    assert pkt.block == block + 1
+                    assert pkt.data == b''
                     client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
-                # Because random is a precise multiple of the block size, there
-                # should be one final (empty) DATA packet
-                buf, addr = client.recvfrom(1500)
-                pkt = tftp.Packet.from_bytes(buf)
-                assert isinstance(pkt, tftp.DATAPacket)
-                assert pkt.block == block + 1
-                assert pkt.data == b''
-                client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
-            assert b''.join(received) == expected
+                assert b''.join(received) == expected
 
 
 def test_bad_requests(fat16_disk, main_thread, capsys):
