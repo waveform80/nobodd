@@ -12,7 +12,7 @@ Changelog
 .. currentmodule:: nobodd
 
 
-Release 0.2 (2024-??-??)
+Release 0.3 (2024-??-??)
 ========================
 
 * Initial release
