@@ -230,11 +230,68 @@ def on_sighup(signal, frame):
 signal.signal(signal.SIGHUP, on_sighup)
 
 
-class ReloadConfig(Exception):
+class ReloadRequest(Exception):
     """
-    Exception class raised in :func:`main` to cause a reload. Should never
-    propogate outside this routine.
+    Exception class raised in :func:`request_loop` to cause a reload. Handled
+    in :func:`main`.
     """
+
+
+class TerminateRequest(Exception):
+    """
+    Exception class raised in :func:`request_loop` to cause service
+    termination. Handled in :func:`main`. Takes the return code of the
+    application as the first argument.
+    """
+    def __init__(self, returncode, message=''):
+        super().__init__(message)
+        self.returncode = returncode
+
+
+def request_loop(server_address, boards):
+    """
+    The application's request loop. Takes the *server_address* to bind to,
+    which may be a ``(address, port)`` tuple, or an :class:`int`
+    file-descriptor passed by a service manager, and the *boards*
+    configuration, a :class:`dict` mapping serial numbers to
+    :class:`~nobodd.config.Board` instances.
+
+    Raises :exc:`ReloadRequest` or :exc:`TerminateRequest` in response to
+    certain signals, but is an infinite loop otherwise.
+    """
+    sd = get_systemd()
+
+    with \
+        BootServer(server_address, boards) as server, \
+        DefaultSelector() as selector:
+
+        selector.register(exit_read, EVENT_READ)
+        selector.register(server, EVENT_READ)
+        sd.ready()
+        server.logger.info(lang._('Ready'))
+        while True:
+            for key, events in selector.select():
+                if key.fileobj == exit_read:
+                    code = exit_read.recv(4)
+                    if code == b'INT ':
+                        sd.stopping()
+                        server.logger.warning(lang._('Interrupted'))
+                        raise TerminateRequest(returncode=2)
+                    elif code == b'TERM':
+                        sd.stopping()
+                        server.logger.warning(lang._('Terminated'))
+                        raise TerminateRequest(returncode=0)
+                    elif code == b'HUP ':
+                        sd.reloading()
+                        server.logger.info(lang._(
+                            'Reloading configuration'))
+                        raise ReloadRequest()
+                    else:
+                        assert False, 'internal error'
+                elif key.fileobj == server:
+                    server.handle_request()
+                else:
+                    assert False, 'internal error'
 
 
 def main(args=None):
@@ -253,6 +310,9 @@ def main(args=None):
         debug = 0
     lang.init()
     sd = get_systemd()
+
+    BootServer.logger.addHandler(logging.StreamHandler(sys.stderr))
+    BootServer.logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
     while True:
         try:
@@ -274,46 +334,15 @@ def main(args=None):
                 server_address, name = fds.popitem()
             else:
                 server_address = (conf.listen, conf.port)
-
-            with \
-                BootServer(server_address, boards) as server, \
-                DefaultSelector() as selector:
-
-                server.logger.addHandler(logging.StreamHandler(sys.stderr))
-                server.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-                selector.register(exit_read, EVENT_READ)
-                selector.register(server, EVENT_READ)
-                sd.ready()
-                server.logger.info(lang._('Ready'))
-                while True:
-                    for key, events in selector.select():
-                        if key.fileobj == exit_read:
-                            code = exit_read.recv(4)
-                            if code == b'INT ':
-                                sd.stopping()
-                                server.logger.warning(lang._('Interrupted'))
-                                return 2
-                            elif code == b'TERM':
-                                sd.stopping()
-                                server.logger.warning(lang._('Terminated'))
-                                return 0
-                            elif code == b'HUP ':
-                                server.logger.info(lang._(
-                                    'Reloading configuration'))
-                                raise ReloadConfig('SIGHUP')
-                            else:
-                                assert False, 'internal error'
-                        elif key.fileobj == server:
-                            server.handle_request()
-                        else:
-                            assert False, 'internal error'
-        except ReloadConfig:
-            sd.reloading()
+            request_loop(server_address, boards)
+        except ReloadRequest:
             continue
-        except Exception as e:
+        except TerminateRequest as err:
+            return err.returncode
+        except Exception as err:
             sd.stopping()
             if not debug:
-                print(str(e), file=sys.stderr)
+                print(str(err), file=sys.stderr)
                 return 1
             elif debug == 1:
                 raise
