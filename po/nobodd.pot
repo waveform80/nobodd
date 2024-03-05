@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2024-03-02 00:26+0000\n"
+"POT-Creation-Date: 2024-03-05 16:36+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -505,62 +505,68 @@ msgstr ""
 msgid "Unable to detect root partition"
 msgstr ""
 
-#: nobodd/server.py:80
+#: nobodd/server.py:79
 msgid "IP does not match"
 msgstr ""
 
-#: nobodd/server.py:109
+#: nobodd/server.py:114
 #, python-brace-format
-msgid "inherited fd {server_address} is not a socket"
+msgid "inherited fd {fd} is not a socket"
 msgstr ""
 
-#: nobodd/server.py:150
+#: nobodd/server.py:125
+#, python-brace-format
+msgid "inherited fd {fd} is not a datagram socket"
+msgstr ""
+
+#: nobodd/server.py:132
+#, python-brace-format
+msgid "inherited fd {fd} is not an INET or INET6 socket"
+msgstr ""
+
+#: nobodd/server.py:171
 #, python-format
 msgid "the address on which to listen for connections (default: %(default)s)"
 msgstr ""
 
-#: nobodd/server.py:156
+#: nobodd/server.py:177
 #, python-format
 msgid "the port on which to listen for connections (default: %(default)s)"
 msgstr ""
 
-#: nobodd/server.py:167
+#: nobodd/server.py:188
 msgid ""
 "can be specified multiple times to define boards which are to be served boot "
 "images over TFTP; if PART is omitted the default is 1; if IP is omitted the "
 "IP address will not be checked"
 msgstr ""
 
-#: nobodd/server.py:244
-msgid "No boards defined"
+#: nobodd/server.py:271
+msgid "Ready"
 msgstr ""
 
-#: nobodd/server.py:253
+#: nobodd/server.py:278
+msgid "Interrupted"
+msgstr ""
+
+#: nobodd/server.py:282
+msgid "Terminated"
+msgstr ""
+
+#: nobodd/server.py:287
+msgid "Reloading configuration"
+msgstr ""
+
+#: nobodd/server.py:332
 #, python-brace-format
 msgid "Expected 1 fd from systemd but got {fds}"
 msgstr ""
 
-#: nobodd/server.py:268
-msgid "Ready"
-msgstr ""
-
-#: nobodd/server.py:275
-msgid "Interrupted"
-msgstr ""
-
-#: nobodd/server.py:279
-msgid "Terminated"
-msgstr ""
-
-#: nobodd/server.py:283
-msgid "Reloading configuration"
-msgstr ""
-
-#: nobodd/systemd.py:48
+#: nobodd/systemd.py:55
 msgid "systemd notification socket unavailable"
 msgstr ""
 
-#: nobodd/systemd.py:157
+#: nobodd/systemd.py:163
 msgid "wrong LISTEN_PID"
 msgstr ""
 
@@ -577,76 +583,76 @@ msgstr ""
 msgid "unsupported file mode"
 msgstr ""
 
-#: nobodd/tftpd.py:324
+#: nobodd/tftpd.py:326
 #, python-format
 msgid "%s - ERROR - unsupported operation; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:330
+#: nobodd/tftpd.py:332
 #, python-format
 msgid "%s - ERROR - invalid request; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:335
+#: nobodd/tftpd.py:337
 #, python-format
 msgid "%s - ERROR - unexpected error; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:416
+#: nobodd/tftpd.py:418
 #, python-format
 msgid "%s - ERROR - bad options; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:421
+#: nobodd/tftpd.py:423
 #, python-format
 msgid "%s - ERROR - permission denied"
 msgstr ""
 
-#: nobodd/tftpd.py:426
+#: nobodd/tftpd.py:428
 #, python-format
 msgid "%s - ERROR - not found"
 msgstr ""
 
-#: nobodd/tftpd.py:431
+#: nobodd/tftpd.py:433
 #, python-format
 msgid "%s - ERROR - %s"
 msgstr ""
 
-#: nobodd/tftpd.py:481
+#: nobodd/tftpd.py:483
 #, python-format
 msgid "%s - IGNORE - bad client for %s"
 msgstr ""
 
-#: nobodd/tftpd.py:519
+#: nobodd/tftpd.py:521
 #, python-format
 msgid "%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s"
 msgstr ""
 
-#: nobodd/tftpd.py:589
+#: nobodd/tftpd.py:591
 msgid "internal error; timeout without send"
 msgstr ""
 
-#: nobodd/tftpd.py:593
+#: nobodd/tftpd.py:595
 #, python-format
 msgid "%s - timed out to %s"
 msgstr ""
 
-#: nobodd/tftpd.py:640
+#: nobodd/tftpd.py:642
 #, python-format
 msgid "%s - starting server on %s"
 msgstr ""
 
-#: nobodd/tftpd.py:656
+#: nobodd/tftpd.py:658
 #, python-format
 msgid "%s - shutting down server on %s"
 msgstr ""
 
-#: nobodd/tftpd.py:663
+#: nobodd/tftpd.py:665
 #, python-brace-format
 msgid "failed to shutdown thread for {server.server_address}"
 msgstr ""
 
-#: nobodd/tftpd.py:702
+#: nobodd/tftpd.py:704
 #, python-brace-format
 msgid "{filename} is outside {self.server.base_path}"
 msgstr ""
