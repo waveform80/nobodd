@@ -376,6 +376,7 @@ def test_listen_systemd(fat16_disk, main_thread, capsys, monkeypatch):
                     assert pkt.data == b''
                     client.sendto(bytes(tftp.ACKPacket(pkt.block)), addr)
                 assert b''.join(received) == expected
+        assert sock.getsockname()
 
 
 def test_bad_requests(fat16_disk, main_thread, capsys):
