@@ -115,23 +115,32 @@ class BootServer(TFTPBaseServer):
             super().__init__(
                 ('127.0.0.1', 0), BootHandler, bind_and_activate=False)
             self.socket.close()
-            # XXX Using socket's fileno argument in this way isn't guaranteed
-            # to work on all platforms (though it should on Linux); see
-            # https://bugs.python.org/issue28134 for more details
-            self.socket = socket.socket(fileno=fd)
-            self.socket_type = self.socket.type
-            if self.socket_type != socket.SOCK_DGRAM:
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not a datagram socket').format(fd=fd))
-            # Setting self.address_family is required because TFTPSubServer
-            # uses this to figure out the family of the ephemeral socket to
-            # allocate for client connections
-            self.address_family = self.socket.family
-            if self.address_family not in (socket.AF_INET, socket.AF_INET6):
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not an INET or INET6 socket')
-                    .format(fd=fd))
-            self.server_address = self.socket.getsockname()
+            try:
+                # XXX Using socket's fileno argument in this way isn't
+                # guaranteed to work on all platforms (though it should on
+                # Linux); see https://bugs.python.org/issue28134 for more
+                # details
+                self.socket = socket.socket(fileno=fd)
+                self.socket_type = self.socket.type
+                if self.socket_type != socket.SOCK_DGRAM:
+                    raise RuntimeError(lang._(
+                        'inherited fd {fd} is not a datagram socket')
+                        .format(fd=fd))
+                # Setting self.address_family is required because TFTPSubServer
+                # uses this to figure out the family of the ephemeral socket to
+                # allocate for client connections
+                self.address_family = self.socket.family
+                if self.address_family not in (socket.AF_INET, socket.AF_INET6):
+                    raise RuntimeError(lang._(
+                        'inherited fd {fd} is not an INET or INET6 socket')
+                        .format(fd=fd))
+                self.server_address = self.socket.getsockname()
+            except:
+                # The server's initialization creates the TFTPSubServers thread
+                # which must be terminated if we abort the initialization at
+                # this point
+                self.server_close()
+                raise
         else:
             self._own_sock = True
             super().__init__(server_address, BootHandler)
@@ -145,10 +154,14 @@ class BootServer(TFTPBaseServer):
             # we're reloading and want to re-create a socket from it again
             self.socket.detach()
         super().server_close()
-        for image, fs in self.images.values():
-            fs.close()
-            image.close()
-        self.images.clear()
+        try:
+            for image, fs in self.images.values():
+                fs.close()
+                image.close()
+            self.images.clear()
+        except AttributeError:
+            # Ignore AttributeError in the case of early termination
+            pass
 
 
 def get_parser():
@@ -283,11 +296,10 @@ def request_loop(server_address, boards):
                         raise TerminateRequest(returncode=0)
                     elif code == b'HUP ':
                         sd.reloading()
-                        server.logger.info(lang._(
-                            'Reloading configuration'))
+                        server.logger.info(lang._('Reloading configuration'))
                         raise ReloadRequest()
                     else:
-                        assert False, 'internal error'
+                        assert False, f'internal error'
                 elif key.fileobj == server:
                     server.handle_request()
                 else:

@@ -209,7 +209,7 @@ def test_regular_operation(fat16_disk, main_thread, capsys, monkeypatch):
             assert b''.join(received) == expected
 
 
-def test_bad_listen_stdin(main_thread, capsys, tmp_path, monkeypatch):
+def test_bad_fd_type_stdin(main_thread, capsys, tmp_path, monkeypatch):
     with (tmp_path / 'foo').open('wb') as f:
         with mock.patch('nobodd.server.sys.stdin', f), monkeypatch.context() as m:
             m.delenv('DEBUG', raising=False)
@@ -237,7 +237,8 @@ def test_listen_stdin(fat16_disk, main_thread, capsys, monkeypatch):
                 mock.patch('nobodd.server.sys.stdin', sock.dup()):
             m.delenv('DEBUG', raising=False)
             main_thread.argv = [
-                '--listen', 'stdin', '--board', f'1234abcd,{fat16_disk}',
+                '--listen', 'stdin',
+                '--board', f'1234abcd,{fat16_disk}',
             ]
             main_thread.address = sock.getsockname()
             with main_thread:
@@ -286,6 +287,47 @@ def test_bad_listen_systemd(main_thread, capsys, monkeypatch):
         assert main_thread.exit_code == 1
 
 
+def test_bad_sock_type_systemd(main_thread, capsys, monkeypatch):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as systemd_sock:
+        systemd_sock.bind(('127.0.0.1', 0))
+        service_sock = systemd_sock.dup()
+        with monkeypatch.context() as m, \
+                mock.patch('nobodd.systemd.Systemd.LISTEN_FDS_START',
+                           service_sock.fileno()):
+            m.delenv('DEBUG', raising=False)
+            m.setenv('LISTEN_PID', str(os.getpid()))
+            m.setenv('LISTEN_FDS', '1')
+            main_thread.argv = [
+                '--listen', 'systemd',
+                '--board', '1234abcd,foo.img',
+            ]
+            with main_thread:
+                pass
+            capture = capsys.readouterr()
+            assert f'inherited fd {service_sock.fileno()} is not a datagram socket' in capture.err
+            assert main_thread.exit_code == 1
+
+
+def test_bad_addr_family_systemd(main_thread, capsys, monkeypatch):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as systemd_sock:
+        service_sock = systemd_sock.dup()
+        with monkeypatch.context() as m, \
+                mock.patch('nobodd.systemd.Systemd.LISTEN_FDS_START',
+                           service_sock.fileno()):
+            m.delenv('DEBUG', raising=False)
+            m.setenv('LISTEN_PID', str(os.getpid()))
+            m.setenv('LISTEN_FDS', '1')
+            main_thread.argv = [
+                '--listen', 'systemd',
+                '--board', '1234abcd,foo.img',
+            ]
+            with main_thread:
+                pass
+            capture = capsys.readouterr()
+            assert f'inherited fd {service_sock.fileno()} is not an INET or INET6 socket' in capture.err
+            assert main_thread.exit_code == 1
+
+
 def test_listen_systemd(fat16_disk, main_thread, capsys, monkeypatch):
     with \
         disk.DiskImage(fat16_disk) as img, \
@@ -302,7 +344,8 @@ def test_listen_systemd(fat16_disk, main_thread, capsys, monkeypatch):
             m.setenv('LISTEN_PID', str(os.getpid()))
             m.setenv('LISTEN_FDS', '1')
             main_thread.argv = [
-                '--listen', 'systemd', '--board', f'1234abcd,{fat16_disk}',
+                '--listen', 'systemd',
+                '--board', f'1234abcd,{fat16_disk}',
             ]
             main_thread.address = sock.getsockname()
             with main_thread:
