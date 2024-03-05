@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from contextlib import suppress
 from threading import Thread, Lock, Event
-from socketserver import BaseRequestHandler, UDPServer, ThreadingMixIn
+from socketserver import BaseRequestHandler, UDPServer
 from time import monotonic_ns as time_ns
 
 from . import netascii, lang
@@ -540,6 +540,18 @@ class TFTPBaseServer(UDPServer):
     :meth:`~TFTPBaseHandler.resolve_path`, then make a descendent of this class
     that calls ``super().__init__`` with the overridden handler class. See
     :class:`SimpleTFTPHandler` and :class:`SimpleTFTPServer` for examples.
+
+    .. note::
+
+        While it is common to combine classes like
+        :class:`~socketserver.UDPServer` and :class:`~socketserver.TCPServer`
+        with the threading or fork-based mixins there is little point in doing
+        so with :class:`TFTPBaseServer`.
+
+        Only the initial packet of a TFTP transaction arrives on the "main"
+        port; every packet after this is handled by a background thread with
+        its own ephemeral port. Thus, multi-threading or multi-processing of
+        the initial connection only applies to a single (minimal) packet.
     """
     allow_reuse_address = True
     allow_reuse_port = True
@@ -705,7 +717,7 @@ class SimpleTFTPHandler(TFTPBaseHandler):
                 .format(filename=filename, self=self)))
 
 
-class SimpleTFTPServer(ThreadingMixIn, TFTPBaseServer):
+class SimpleTFTPServer(TFTPBaseServer):
     """
     A trivial (pun intended) implementation of :class:`TFTPBaseServer` that
     resolves requested paths against *base_path* (a :class:`str` or
