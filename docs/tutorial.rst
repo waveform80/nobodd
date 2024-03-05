@@ -11,17 +11,17 @@ Tutorial
 
 nobodd is a confusingly named, but simple :abbr:`TFTP (Trivial File Transfer
 Protocol)` server intended for net-booting Raspberry Pis directly from OS
-images without having to loop-back mount or otherwise re-write those images. In
-order to get started you will need the following pre-requisites:
+images without having to loop-back mount or otherwise re-write those images.
+
+In order to get started you will need the following pre-requisites:
 
 * A Raspberry Pi you wish to netboot. This tutorial will be assuming a Pi 4,
   but the Pi 2B, 3B, 3B+, 4B, and 5 all support netboot. However, all have
-  different means of configuring their netboot support, and this tutorial will
-  only cover the method for the Pi 4.
+  subtly different means of configuring their netboot support, so in the
+  interests of brevity this tutorial will only cover the method for the Pi 4.
 
-* A micro-SD card. This is only required for initial configuration of the Pi 4.
-  If your Pi 4 is already configured for netboot, you can skip this
-  requirement.
+* A micro-SD card. This is only required for the initial netboot configuration
+  of the Pi 4, and for discovering the serial number of the board.
 
 * A server that will serve the OS image to be netbooted. This can be another
   Raspberry Pi, but if you eventually wish to scale to several netbooting
@@ -32,7 +32,7 @@ order to get started you will need the following pre-requisites:
 * Ethernet networking connecting the two machines; netboot will *not* operate
   over WiFi.
 
-* The address details of your ethernet network, specifically the network
+* The addressing details of your ethernet network, specifically the network
   address and mask (e.g. 192.168.1.0/24).
 
 
@@ -41,15 +41,16 @@ Client Side
 
 To configure your Pi 4 for netboot, use `rpi-imager`_ to flash Ubuntu Server
 24.04 64-bit to your micro-SD card. Boot your Pi 4 with the micro-SD card and
-wait for cloud-init to finish the initial user configuration. Log in with the
-default user (username "ubuntu", password "ubuntu", unless you specified
-otherwise in rpi-imager, and follow the prompts to set a new password).
+wait for `cloud-init`_ to finish the initial user configuration. Log in with
+the default user (username "ubuntu", password "ubuntu", unless you specified
+otherwise in rpi-imager), and follow the prompts to set a new password.
 
 Run :command:`sudo rpi-eeprom-config --edit`, and enter your password for
 "sudo". You will find yourself in an editor, with the Pi's boot configuration
 from the EEPROM, which will most likely look something like the following:
 
 .. code-block:: ini
+    :emphasize-lines: 5
 
     [all]
     BOOT_UART=0
@@ -57,8 +58,16 @@ from the EEPROM, which will most likely look something like the following:
     ENABLE_SELF_UPDATE=1
     BOOT_ORDER=0xf41
 
-The value we are concerned with, is ``BOOT_ORDER``. This is a hexadecimal value
-(denoted by the "0x" prefix) in which each hex digit specifies another boot
+.. note::
+
+    Do not be concerned if several other values appear, or the ordering
+    differs. Various versions of the Raspberry Pi boot EEPROM have had
+    differing defaults for their configuration, and some later ones include a
+    lot more values.
+
+The value we are concerned with is ``BOOT_ORDER`` under the ``[all]`` section,
+which may be the only section in the file. This is a hexadecimal value
+(indicated by the "0x" prefix) in which each digit specifies another boot
 source in *reverse order*. The digits that may be specified include:
 
 == ========= ================================================================
@@ -98,6 +107,7 @@ boot configuration and make sure your change has taken effect. It should output
 something like:
 
 .. code-block:: ini
+    :emphasize-lines: 5
 
     [all]
     BOOT_UART=0
@@ -275,10 +285,10 @@ At this point your configuration should be ready to test. Ensure there is no SD
 card in the slot, and power it on. After a short delay you should see the
 "rainbow" boot screen appear. This will be followed by an uncharacteristically
 long delay on that screen. The reason is that your Pi is transferring the
-initramfs over TFTP which is not an efficient protocol absent certain
-extensions, which the Pi's bootloader doesn't implement. However, eventually
-you should be greeted by the typical Linux kernel log scrolling by, and reach a
-typical booted state the same as you would with a freshly flashed SD card.
+initramfs over TFTP which is not the most efficient protocol [#extensions]_.
+However, eventually you should be greeted by the typical Linux kernel log
+scrolling by, and reach a typical booted state the same as you would with a
+freshly flashed SD card.
 
 If you hit any snags here, the following things are worth checking:
 
@@ -294,13 +304,20 @@ If you hit any snags here, the following things are worth checking:
   default TFTP port).
 
 * You *will* see numerous "Early terminate" TFTP errors in the journal output.
-  This is normal, and appears to be how the Pi's bootloader operates (at a
-  guess it's attempting to determine the size of a file with the ``tsize``
-  extension, terminating the transfer, allocating RAM for the file, then
-  starting the transfer again).
+  This is normal, and appears to be how the Pi's bootloader operates [#tsize]_.
 
 .. _TFTP: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
 .. _NBD: https://en.wikipedia.org/wiki/Network_block_device
 .. _DHCP: https://en.wikipedia.org/wiki/Dynamic_Host_Configuration_Protocol
 .. _rpi-imager: https://www.raspberrypi.com/software/
 .. _BOOT_ORDER: https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#BOOT_ORDER
+.. _cloud-init: https://cloudinit.readthedocs.io/
+
+.. [#extensions] absent certain extensions, which the Pi's bootloader doesn't
+   implement.
+
+.. [#tsize] at a guess it's attempting to determine the size of a file with the
+   ``tsize`` extension, terminating the transfer, allocating RAM for the file,
+   then starting the transfer again. While not *strictly* necessary, remember
+   that the bootloader operates with limited resources and simplicity of
+   operation is the order of the day.

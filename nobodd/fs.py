@@ -101,10 +101,7 @@ class BadLongFilename(FatWarning):
 class FatFileSystem:
     """
     Represents a `FAT`_ file-system, contained at the start of the buffer
-    object *mem*. If *atime* is :data:`False`, the default, then accesses to
-    files will *not* update the atime field in file meta-data (when the
-    underlying *mem* mapping is writable). Finally, *encoding* specifies the
-    character set used for decoding and encoding DOS short filenames.
+    object *mem*.
 
     This class supports the FAT-12, FAT-16, and FAT-32 formats, and will
     automatically determine which to use from the headers found at the start of
@@ -117,6 +114,11 @@ class FatFileSystem:
     context will call the :meth:`close` method implicitly. If certain header
     bits are set, :exc:`DamagedFileSystem` and :exc:`DirtyFileSystem` warnings
     may be generated upon opening.
+
+    If *atime* is :data:`False`, the default, then accesses to files will *not*
+    update the atime field in file meta-data (when the underlying *mem* mapping
+    is writable). Finally, *encoding* specifies the character set used for
+    decoding and encoding DOS short filenames.
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
@@ -837,14 +839,20 @@ class FatDirectory(abc.MutableMapping):
     :class:`~nobodd.fat.DirectoryEntry` instances, but there are several
     oddities to be aware of.
 
-    In VFAT, most files effectively have *two* filenames: the original DOS
+    In VFAT, many files effectively have *two* filenames: the original DOS
     "short" filename (SFN hereafter) and the VFAT "long" filename (LFN
-    hereafter). Even when :class:`~nobodd.fat.LongFilenameEntry` records do
-    *not* precede a :class:`~nobodd.fat.DirectoryEntry`, the file may still
-    have an LFN that differs from the SFN in case only. Naturally, some files
-    still only have one filename because the LFN doesn't vary in case from the
-    SFN, e.g. the special directory entries "." and "..", and anything which
-    conforms to original DOS naming rules like "README.TXT".
+    hereafter). All files have an SFN; any file may optionally have an LFN. The
+    SFN is stored in the :class:`~nobodd.fat.DirectoryEntry` which records
+    details of the file (mode, size, cluster, etc). The optional LFN is stored
+    in leading :class:`~nobodd.fat.LongFilenameEntry` records.
+
+    Even when :class:`~nobodd.fat.LongFilenameEntry` records do *not* precede a
+    :class:`~nobodd.fat.DirectoryEntry`, the file may still have an LFN that
+    differs from the SFN in case only, recorded by flags in the
+    :class:`~nobodd.fat.DirectoryEntry`. Naturally, some files still only have
+    one filename because the LFN doesn't vary in case from the SFN, e.g. the
+    special directory entries "." and "..", and anything which conforms to
+    original DOS naming rules like "README.TXT".
 
     For the purposes of listing files, most FAT implementations (including this
     one) ignore the SFNs. Hence, iterating over this mapping will *not* yield
@@ -1432,7 +1440,7 @@ class FatSubDirectory(FatDirectory):
 
 class Fat12Root(FatRoot):
     """
-    This is a trivial derivative of :class:`FatRoot` which simply declares the
+    Concrete, trivial derivative of :class:`FatRoot` which simply declares the
     root as belonging to a FAT-12 file-system.
 
     .. autoattribute:: fat_type
@@ -1442,7 +1450,7 @@ class Fat12Root(FatRoot):
 
 class Fat16Root(FatRoot):
     """
-    This is a trivial derivative of :class:`FatRoot` which simply declares the
+    Concrete, trivial derivative of :class:`FatRoot` which simply declares the
     root as belonging to a FAT-16 file-system.
 
     .. autoattribute:: fat_type

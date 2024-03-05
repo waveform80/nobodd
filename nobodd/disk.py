@@ -237,10 +237,9 @@ class DiskPartitionsGPT(DiskPartitions):
     Provides a :class:`~collections.abc.Mapping` from partition number to
     :class:`DiskPartition` instances for a `GPT`_.
 
-    *mem* is the buffer covering the whole disk image, and *header* is a
-    :class:`~nobodd.gpt.GPTHeader` instance decoded from the front of the
-    `GPT`_. *sector_size* specifies the sector size of the disk image, which
-    should almost always be left at the default of 512 bytes.
+    *mem* is the buffer covering the whole disk image. *sector_size* specifies
+    the sector size of the disk image, which should almost always be left at
+    the default of 512 bytes.
     """
     style = 'gpt'
 
@@ -308,10 +307,9 @@ class DiskPartitionsMBR(DiskPartitions):
     Provides a :class:`~collections.abc.Mapping` from partition number to
     :class:`DiskPartition` instances for a `MBR`_.
 
-    *mem* is the buffer covering the whole disk image, and *header* is a
-    :class:`~nobodd.mbr.MBRHeader` instance decoded from the front of the
-    `MBR`_. *sector_size* specifies the sector size of the disk image, which
-    should almost always be left at the default of 512 bytes.
+    *mem* is the buffer covering the whole disk image. *sector_size* specifies
+    the sector size of the disk image, which should almost always be left at
+    the default of 512 bytes.
     """
     style = 'mbr'
 

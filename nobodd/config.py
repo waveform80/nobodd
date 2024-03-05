@@ -262,9 +262,9 @@ class ConfigArgumentParser(ArgumentParser):
 def port(s):
     """
     Convert the string *s* into a port number. The string may either contain
-    an integer representation (in which case the conversion is trivial, or
-    a port name, in which case ``getservbyname`` will be used to convert it
-    to a port number (usually via NSS).
+    an integer representation (in which case the conversion is trivial, or a
+    port name, in which case :func:`socket.getservbyname` will be used to
+    convert it to a port number (usually via NSS).
     """
     try:
         return int(s)

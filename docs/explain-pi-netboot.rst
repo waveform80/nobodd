@@ -55,9 +55,14 @@ TFTP
 
 .. TODO Updated bootcode.bin on earlier models? Test on the 2+3
 
-The bootloader's `TFTP`_ client first attempts to locate the :file:`config.txt`
-file that will configure the bootloader throughout the rest of the procedure.
-By default, it looks for this in a directory named after the Pi's serial
+.. note::
+
+    Most of the notes under this section are specific, in some way, to the
+    netboot sequence on the Pi 4. While older and newer models may broadly
+    follow the same sequence, there will be differences.
+
+The bootloader's `TFTP`_ client first attempts to locate the :file:`start4.elf`
+file. By default, it looks for this in a directory named after the Pi's serial
 number. On the Pi 4 and later models, the EEPROM configuration can override
 this behaviour with the `TFTP_PREFIX`_ option, but we will only cover the
 default behaviour here.
@@ -68,18 +73,24 @@ prefix [#no-prefix]_. Hence, when we say the bootloader requests
 within the virtual directory named after the Pi's serial number
 [#long-serial]_.
 
-Once :file:`SERIAL/config.txt` is loaded, the bootloader parses it to discover
-the name of the tertiary bootloader to load [#pi5-eeprom]_, and requests
-:file:`SERIAL/start.elf` or :file:`SERIAL/start4.elf` (depending on the model)
-and the corresponding fix-up file (:file:`SERIAL/fixup.dat` or
+The attempt to retrieve :file:`start4.elf` is immediately aborted when it is
+located, presumably because the intent is to determine the existence of the
+prefix directory, rather than the file itself. Next the bootloader attempts to
+read :file:`SERIAL/config.txt`, which will configure the rest of the boot
+sequence.
+
+Once :file:`SERIAL/config.txt` has been retrieved, the bootloader parses it to
+discover the name of the tertiary bootloader to load [#pi5-eeprom]_, and
+requests :file:`SERIAL/start.elf` or :file:`SERIAL/start4.elf` (depending on
+the model) and the corresponding fix-up file (:file:`SERIAL/fixup.dat` or
 :file:`SERIAL/fixup4.dat` respectively).
 
-The bootloader now executes the tertiary "start.elf" bootloader which
-re-requests :file:`SERIAL/config.txt`. This is re-parsed [#sections]_ and the
-name of the base device-tree, kernel, kernel command line, (optional)
-initramfs, and any (optional) device-tree overlays are determined. These are
-then requested over TFTP, placed in RAM, and finally the bootloader hands over
-control to the kernel.
+The bootloader now executes the tertiary "start.elf" bootloader which requests
+:file:`SERIAL/config.txt` again. This is re-parsed [#sections]_ and the name of
+the base device-tree, kernel, kernel command line, (optional) initramfs, and
+any (optional) device-tree overlays are determined. These are then requested
+over TFTP, placed in RAM, and finally the bootloader hands over control to the
+kernel.
 
 
 TFTP Extensions
@@ -87,7 +98,7 @@ TFTP Extensions
 
 A brief aside on the subject of :abbr:`TFTP (Trivial File Transfer Protocol)`
 extensions (as defined in :rfc:`2347`). The basic TFTP protocol is extremely
-simple (as the name would suggest) and also rather inefficient, being limited
+simple (as the acronym would suggest) and also rather inefficient, being limited
 to 512-byte blocks, in-order, synchronously (each block must be acknowledged
 before another can be sent), with no retry mechanism. Various extensions have
 been proposed to the protocol over the years, including those in :rfc:`2347`,
@@ -102,11 +113,16 @@ However, its use of "tsize" is slightly unusual in that, when it finds the
 server supports it, it frequently starts a transfer with "tsize=0" (requesting
 the size of the file), but when the server responds with, for example,
 "tsize=1234" in the OACK packet (indicating the file to be transferred is 1234
-bytes large), the bootloader then terminates the transfer and restarts it. My
-best guess is that it allocates the RAM for the transfer after the termination,
-then restarts it (though why it does this is a bit of a mystery as it could
-allocate the space and continue the transfer, since the OACK packet doesn't
-contain any of the file data itself).
+bytes large), the bootloader then terminates the transfer.
+
+In the case of the initial request for :file:`start4.elf` (detailed above),
+this is understandable as a test for the existence of a directory, rather than
+an actual attempt to retrieve a file. However, in later requests the bootloader
+terminates the transfer after the initial packet, *then immediately restarts
+it*. My best guess is that it allocates the RAM for the transfer after the
+termination, then restarts it (though why it does this is a bit of a mystery as
+it could allocate the space and continue the transfer, since the OACK packet
+doesn't contain any of the file data itself).
 
 Sadly, the "windowsize" extension (:rfc:`7440`) is not yet implemented which
 means the Pi's netboot, up to the kernel, is quite slow compared to other
@@ -154,19 +170,22 @@ command line are crucial:
    needed to include three trailing spaces, i.e. ``"Raspberry Pi Boot   "``.
    Later versions of the bootloader perform a sub-string match.
 
-.. [#no-prefix] If "config.txt" is not found in the serial-number directory,
-   the bootloader will attempt to load "config.txt" with no directory prefix.
-   If this succeeds, all subsequent requests will have no serial-number
-   directory prefix.
+.. [#no-prefix] If :file:`start4.elf` is not found in the serial-number
+   directory, the bootloader will attempt to lovate :file:`start4.elf` with no
+   directory prefix. If this succeeds, all subsequent requests will have no
+   serial-number directory prefix.
 
 .. [#long-serial] Some Pi serial numbers begin "10000000". This prefix is
    ignored for the purposes of constructing the serial-number directory prefix.
    For example, if the serial number is "10000000abcd1234", the
    :file:`config.txt` file would be requested as :file:`abcd1234/config.txt`.
 
-.. [#pi5-eeprom] This does not happen on the Pi 5, which always loads the
-   tertiary bootloader from its (larger) EEPROM. On all prior models, the
-   tertiary bootloader (start*.elf) loads from the boot medium.
+.. [#pi5-eeprom] This does not happen on the Pi 5, which loads the tertiary
+   bootloader from its (larger) EEPROM. On all prior models, the tertiary
+   bootloader (start*.elf) loads from the boot medium, and the specific file
+   loaded may be customized by :file:`config.txt`.
+
+.. This does not happen *by default* on the Pi 5? Need to investigate further
 
 .. [#sections] The tertiary bootloader operates on all ``[sections]`` in the
    :file:`config.txt`. The secondary bootloader (:file:`bootcode.bin`) only
