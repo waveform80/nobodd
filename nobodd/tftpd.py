@@ -8,7 +8,6 @@
 import io
 import os
 import sys
-import stat
 import socket
 import logging
 from pathlib import Path
@@ -546,49 +545,14 @@ class TFTPBaseServer(UDPServer):
     allow_reuse_port = True
     logger = logging.getLogger('tftpd')
 
-    def __init__(self, address, handler_class):
+    def __init__(self, address, handler_class, bind_and_activate=True):
         assert issubclass(handler_class, TFTPBaseHandler)
-        if isinstance(address, int):
-            fd = address
-            # We're being passed an fd directly. In this case, we don't
-            # actually want the super-class to go allocating a socket but we
-            # can't avoid it so we allocate an ephemeral localhost socket, then
-            # close it and overwrite self.socket. However, we need to remember
-            # we don't *own* the socket, so self.server_close doesn't go
-            # closing it
-            self.own_sock = False
-            if not stat.S_ISSOCK(os.fstat(fd).st_mode):
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not a socket').format(fd=fd))
-            super().__init__(
-                ('127.0.0.1', 0), handler_class, bind_and_activate=False)
-            self.socket.close()
-            # XXX Using socket's fileno argument in this way isn't guaranteed
-            # to work on all platforms (though it should on Linux); see
-            # https://bugs.python.org/issue28134 for more details
-            self.socket = socket.socket(fileno=fd)
-            self.socket_type = self.socket.type
-            if self.socket_type != socket.SOCK_DGRAM:
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not a datagram socket').format(fd=fd))
-            # Setting self.address_family is required because TFTPSubServer
-            # uses this to figure out the family of the ephemeral socket to
-            # allocate for client connections
-            self.address_family = self.socket.family
-            if self.address_family not in (socket.AF_INET, socket.AF_INET6):
-                raise RuntimeError(lang._(
-                    'inherited fd {fd} is not an INET or INET6 socket')
-                    .format(fd=fd))
-            self.server_address = self.socket.getsockname()
-        else:
-            self.own_sock = True
-            self.address_family, address = get_best_family(*address)
-            super().__init__(address, handler_class)
+        self.address_family, address = get_best_family(*address)
+        super().__init__(address, handler_class, bind_and_activate)
         self.subs = TFTPSubServers()
 
     def server_close(self):
-        if self.own_sock:
-            super().server_close()
+        super().server_close()
         self.subs.close()
 
 
