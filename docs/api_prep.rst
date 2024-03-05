@@ -23,3 +23,11 @@ Application Functions
 .. autofunction:: get_parser
 
 .. autofunction:: prepare_image
+
+.. autofunction:: remove_items
+
+.. autofunction:: copy_items
+
+.. autofunction:: rewrite_cmdline
+
+.. autofunction:: detect_partitions

@@ -33,4 +33,14 @@ Application Functions
 
 .. autofunction:: main
 
+.. autofunction:: request_loop
+
 .. autofunction:: get_parser
+
+
+Exceptions
+==========
+
+.. autoexception:: ReloadRequest
+
+.. autoexception:: TerminateRequest
