@@ -45,6 +45,38 @@ Server Classes
 .. autoclass:: SimpleTFTPServer
 
 
+Command Line Use
+================
+
+Just as :mod:`http.server` can be invoked from the command line as a standalone
+server using the interpreter's :option:`-m` option, so :mod:`nobodd.tftpd` can
+too. To serve the current directory as a TFTP server::
+
+    python -m nobodd.tftpd
+
+The server listens to port 6969 by default. This is not the registered port 69
+of TFTP, but as that port requires root privileges by default on UNIX
+platforms, a safer default was selected (the security provenance of this code
+is largely unknown, and certainly untested at higher privilege levels). The
+default port can be overridden by passed the desired port number as an
+argument::
+
+    python -m nobodd.tftpd 1069
+
+By default, the server binds to all interfaces. The option ``-b/--bind``
+specifies an address to which it should bind instead. Both IPv4 and IPv6
+addresses are supported. For example, the following command causes the server
+to bind to localhost only::
+
+    python -m nobodd.tftpd --bind 127.0.0.1
+
+By default, the server uses the current directory. The option
+``-d/--directory`` specifies a directory from which it should serve files
+instead. For example::
+
+    python -m nobodd.tftpd --directory /tmp/
+
+
 Internal Classes and Exceptions
 ===============================
 

@@ -729,3 +729,38 @@ class SimpleTFTPServer(TFTPBaseServer):
     def __init__(self, server_address, base_path):
         self.base_path = Path(base_path).resolve()
         super().__init__(server_address, SimpleTFTPHandler)
+
+
+if __name__ == '__main__':
+    import argparse
+
+    from .config import port
+    from .tools import get_best_family
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--bind', '-b', metavar='ADDR',
+        help="Specify alternate bind address (default: all interfaces)")
+    parser.add_argument(
+        '--directory', '-d', default=os.getcwd(),
+        help="Specify alternate directory (default: current directory)")
+    parser.add_argument(
+        'port', action='store', default=6969, type=port, nargs='?',
+        help="Specify alternate port (default: %(default)s)")
+    conf = parser.parse_args()
+
+    SimpleTFTPServer.address_family, address = get_best_family(
+        conf.bind, conf.port)
+    SimpleTFTPServer.logger.addHandler(logging.StreamHandler(sys.stdout))
+    SimpleTFTPServer.logger.setLevel(logging.INFO)
+    with SimpleTFTPServer(address, conf.directory) as server:
+        host, port = server.socket.getsockname()[:2]
+        url_host = f'[{host}]' if ':' in host else host
+        print(
+            f'Serving TFTP on {host} port {port} '
+            f'(tftp://{url_host}:{port}/<filename>) ...')
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print('\nKeyboard interrupt received, exiting.')
+            sys.exit(0)
