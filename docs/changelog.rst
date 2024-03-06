@@ -12,7 +12,24 @@ Changelog
 .. currentmodule:: nobodd
 
 
-Release 0.3 (2024-??-??)
+Release 0.3 (2024-03-06)
 ========================
 
-* Initial release
+* Fix configuration reload when inheriting the TFTP socket from a service
+  manager (`#8`_)
+
+.. _#8: https://github.com/waveform80/nobodd/issues/8
+
+
+Prototype 0.2 (unreleased)
+==========================
+
+* Add inheritance of the TFTP socket (`#3`_)
+
+.. _#3: https://github.com/waveform80/nobodd/issues/3
+
+
+Prototype 0.1 (unreleased)
+==========================
+
+* Initial tag
