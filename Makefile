@@ -44,8 +44,8 @@ MAN_PAGES=man/nobodd-tftpd.1 man/nobodd-prep.1
 all:
 	@echo "make install - Install on local system"
 	@echo "make develop - Install symlinks for development"
-	@echo "make pot - Update translation template"
-	@echo "make mo - Update translation files"
+	@echo "make pot - Update translation template and sources"
+	@echo "make mo - Generate translation files"
 	@echo "make test - Run tests"
 	@echo "make doc - Generate HTML and PDF documentation"
 	@echo "make source - Create source package"
@@ -80,7 +80,7 @@ tar: $(DIST_TAR)
 
 dist: $(DIST_WHEEL) $(DIST_TAR) $(DIST_ZIP)
 
-pot: $(POT_FILE)
+pot: $(POT_FILE) $(PO_FILES)
 
 mo: $(MO_FILES)
 
