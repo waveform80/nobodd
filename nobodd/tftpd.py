@@ -512,7 +512,7 @@ class TFTPSubHandler(TFTPHandler):
             pass
         except (ValueError, OSError) as exc:
             self.server.done = True
-            return ERRORPacket(Error.UNDEFINED, str(exc))
+            raise
         except TransferDone:
             self.server.done = True
             now = time_ns()

@@ -44,6 +44,8 @@ def test_data_init():
         "DATAPacket(block=1, data=b'" +
         "\\x00" * 512 +
         "')")
+    with pytest.raises(ValueError):
+        DATAPacket(1000000, b'\0' * 512)
 
 
 def test_data_roundtrip():
@@ -56,6 +58,8 @@ def test_data_roundtrip():
 def test_ack_init():
     pkt = ACKPacket('10')
     assert pkt.block == 10
+    with pytest.raises(ValueError):
+        ACKPacket(1000000)
 
 
 def test_ack_roundtrip():

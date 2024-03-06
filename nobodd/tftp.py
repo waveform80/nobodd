@@ -238,6 +238,8 @@ class DATAPacket(Packet):
 
     def __init__(self, block, data):
         self.block = int(block)
+        if not 1 <= self.block <= 65535:
+            raise ValueError(f'invalid block (1..65535): {block}')
         self.data = bytes(data)
 
     def __bytes__(self):
@@ -262,6 +264,8 @@ class ACKPacket(Packet):
 
     def __init__(self, block):
         self.block = int(block)
+        if not 0 <= self.block <= 65535:
+            raise ValueError(f'invalid block (0..65535): {block}')
 
     def __bytes__(self):
         return struct.pack(f'!HH', self.opcode, self.block)
