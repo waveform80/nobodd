@@ -84,6 +84,8 @@ user configuration.
 .. code-block:: console
 
     $ cat << EOF > user-data
+    #cloud-config
+
     chpasswd:
       expire: true
       users:
