@@ -334,6 +334,7 @@ def main(args=None):
 
     try:
         conf = get_parser().parse_args(args)
+        conf.image = conf.image.resolve()
         conf.logger = logging.getLogger('prep')
         conf.logger.addHandler(logging.StreamHandler(sys.stderr))
         conf.logger.setLevel(logging.DEBUG if debug else conf.log_level)
@@ -344,8 +345,7 @@ def main(args=None):
 
         prepare_image(conf)
         if conf.tftpd_conf is not None and conf.serial is not None:
-            board = Board(
-                conf.serial, conf.image.resolve(), conf.boot_partition, None)
+            board = Board(conf.serial, conf.image, conf.boot_partition, None)
             conf.tftpd_conf.write(str(board))
             conf.tftpd_conf.write('\n')
         if conf.nbd_conf is not None:
