@@ -12,6 +12,13 @@ Changelog
 .. currentmodule:: nobodd
 
 
+Release 0.4 (2024-03-07)
+========================
+
+* Use absolute paths for output of nbd-server and tftpd server configurations
+* Include missing ``#cloud-config`` header in the tutorial
+
+
 Release 0.3 (2024-03-06)
 ========================
 
