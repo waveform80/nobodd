@@ -17,7 +17,7 @@ from socketserver import BaseRequestHandler, UDPServer
 from time import monotonic_ns as time_ns
 
 from . import netascii, lang
-from .tools import BufferedTranscoder, get_best_family, format_address
+from .tools import BufferedTranscoder, format_address
 from .tftp import (
     TFTP_BINARY,
     TFTP_NETASCII,
@@ -559,7 +559,6 @@ class TFTPBaseServer(UDPServer):
 
     def __init__(self, address, handler_class, bind_and_activate=True):
         assert issubclass(handler_class, TFTPBaseHandler)
-        self.address_family, address = get_best_family(*address)
         super().__init__(address, handler_class, bind_and_activate)
         self.subs = TFTPSubServers()
 

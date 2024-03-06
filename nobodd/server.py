@@ -26,6 +26,7 @@ from .disk import DiskImage
 from .fs import FatFileSystem
 from .systemd import get_systemd
 from .tftpd import TFTPBaseHandler, TFTPBaseServer
+from .tools import get_best_family
 from .config import (
     CONFIG_LOCATIONS,
     ConfigArgumentParser,
@@ -345,7 +346,8 @@ def main(args=None):
                     ).format(fds=len(fds)))
                 server_address, name = fds.popitem()
             else:
-                server_address = (conf.listen, conf.port)
+                (BootServer.address_family, server_address
+                ) = get_best_family(conf.listen, conf.port)
             request_loop(server_address, boards)
         except ReloadRequest:
             continue
