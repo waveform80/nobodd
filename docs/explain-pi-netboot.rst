@@ -102,11 +102,11 @@ simple (as the acronym would suggest) and also rather inefficient, being limited
 to 512-byte blocks, in-order, synchronously (each block must be acknowledged
 before another can be sent), with no retry mechanism. Various extensions have
 been proposed to the protocol over the years, including those in :rfc:`2347`,
-:rfc:`2348`, and :rfc:`7440`.
+:rfc:`2348`, :rfc:`2349`, and :rfc:`7440`.
 
 The Pi bootloader implements *some* of these extensions. Specifically, it uses
-the "blocksize" extension (:rfc:`2347`) to negotiate a larger size of block to
-transfer, and the "tsize" extension (:rfc:`2348`) to attempt to determine the
+the "blocksize" extension (:rfc:`2348`) to negotiate a larger size of block to
+transfer, and the "tsize" extension (:rfc:`2349`) to attempt to determine the
 size of a transfer prior to it beginning.
 
 However, its use of "tsize" is slightly unusual in that, when it finds the
