@@ -14,7 +14,7 @@ nobodd.tftpd
 Defines several classes for the purposes of constructing TFTP servers. The most
 useful are :class:`TFTPBaseHandler` and :class:`TFTPBaseServer` which are
 abstract base classes for the construction of a TFTP server with an arbitrary
-source of files (these are used by nobodd's :mod:`~nobodd.main` module). In
+source of files (these are used by nobodd's :mod:`~nobodd.server` module). In
 addition, :class:`TFTPSimplerHandler` and :class:`TFTPSimplerServer` are
 provided as a trivial example implementation of a straight-forward TFTP file
 server.
@@ -58,7 +58,7 @@ The server listens to port 6969 by default. This is not the registered port 69
 of TFTP, but as that port requires root privileges by default on UNIX
 platforms, a safer default was selected (the security provenance of this code
 is largely unknown, and certainly untested at higher privilege levels). The
-default port can be overridden by passed the desired port number as an
+default port can be overridden by passing the desired port number as an
 argument::
 
     python -m nobodd.tftpd 1069

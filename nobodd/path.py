@@ -229,11 +229,6 @@ class FatPath:
         *errors* and *newline* options are as for the :func:`~io.open`
         function. If successful, a :class:`~nobodd.fs.FatFile` instance is
         returned.
-
-        .. note::
-
-            This implementation is read-only, so any modes other than "r" and
-            "rb" will fail with :exc:`PermissionError`.
         """
         fs = self._get_fs()
         # Check the mode is valid and matches our expectations (can't open a

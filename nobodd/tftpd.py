@@ -352,7 +352,8 @@ class TFTPHandler(BaseRequestHandler):
 
         .. note::
 
-            In contrast to the usual DatagramRequestHandler, this method does
+            In contrast to the usual
+            :class:`~socketserver.DatagramRequestHandler`, this method does
             *not* send an empty packet in the event that :attr:`wfile` has no
             content, as that confused several TFTP clients.
         """
