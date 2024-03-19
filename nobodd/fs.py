@@ -1500,10 +1500,8 @@ class FatFile(io.RawIOBase):
             raise ValueError(lang._(
                 'non-binary mode {mode!r} not supported'.format(mode=mode)))
         self._fs = weakref.ref(fs)
-        if start:
-            self._map = list(fs.fat.chain(start))
-        else:
-            self._map = []
+        self._map = []
+        self._get_map(fs, start)
         self._index = index
         self._entry = entry
         self._pos = 0
@@ -1553,6 +1551,21 @@ class FatFile(io.RawIOBase):
             :class:`~nobodd.path.FatPath` class.
         """
         return cls(fs, get_cluster(entry, fs.fat_type), mode, index, entry)
+
+    def _get_map(self, fs, start):
+        """
+        Given a *start* cluster, query the FAT for all clusters in the file.
+        This method also ensures that the chain contains no loops.
+        """
+        self._map = []
+        check = set()
+        for cluster in fs.fat.chain(start):
+            if cluster in check:
+                raise ValueError(lang._(
+                    'bad FAT chain; encountered {cluster} twice')
+                    .format(cluster=cluster))
+            check.add(cluster)
+            self._map.append(cluster)
 
     def _get_fs(self):
         """

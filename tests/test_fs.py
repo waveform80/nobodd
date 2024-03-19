@@ -19,6 +19,7 @@ from nobodd.fat import (
     lfn_checksum,
 )
 from nobodd.disk import DiskImage
+from nobodd.path import get_cluster
 from nobodd.fs import *
 
 
@@ -1384,3 +1385,21 @@ def test_fatfile_empty(fat12_disk):
             # last cluster
             assert f._entry.size == 0
             assert not f._map
+
+
+def test_fatfile_fatloop(fat12_disk):
+    with DiskImage(fat12_disk, access=mmap.ACCESS_COPY) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            root = fs.open_dir(0)
+            offset, entries = find_non_empty_file(root)
+            *entries, entry = entries
+
+            # Create a deliberate FAT loop
+            start = get_cluster(entry, 'fat12')
+            end = list(fs.fat.chain(start))[-1]
+            free = next(iter(fs.fat.free()))
+            fs.fat[end] = free
+            fs.fat[free] = free
+
+            with pytest.raises(ValueError):
+                fs.open_entry(root, entry)
