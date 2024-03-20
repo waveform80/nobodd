@@ -199,19 +199,12 @@ class FatFileSystem:
                 .format(fat_type=self._fat_type.upper())))
         # Check the clean and damaged bits; these are only present on FAT-16
         # and FAT-32 volumes
-        if self._fat_type != 'fat12':
-            clean = (
-                (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
-                (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
-            errors = not (
-                (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
-                (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
-            if not clean:
-                warnings.warn(DirtyFileSystem(lang._(
-                    'File-system has the dirty bit set')))
-            if errors:
-                warnings.warn(DamagedFileSystem(lang._(
-                    'File-system has the I/O errors bit set')))
+        if self.dirty:
+            warnings.warn(DirtyFileSystem(lang._(
+                'File-system has the dirty bit set')))
+        if self.damaged:
+            warnings.warn(DamagedFileSystem(lang._(
+                'File-system has the I/O errors bit set')))
 
     def __repr__(self):
         return (
@@ -246,6 +239,62 @@ class FatFileSystem:
         Returns :data:`True` if the underlying buffer is read-only.
         """
         return self._data.readonly
+
+    @property
+    def dirty(self):
+        """
+        Indicates whether the file-system is marked "dirty".
+
+        Note that this bit is only valid on FAT-16 and FAT-32 file-systems; on
+        FAT-12 file-systems this property is always :data:`False`. If the
+        underlying buffer is writable, this attribute can be written to clear
+        or set the dirty state.
+        """
+        return not (
+            (self._fat_type == 'fat12') or
+            (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
+            (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
+
+    @dirty.setter
+    def dirty(self, value):
+        if self._fat_type == 'fat16':
+            bits = 0x8000
+        elif self._fat_type == 'fat32':
+            bits = 0x8000000
+        else:
+            return
+        if value:
+            self._fat[1] = self._fat[1] | bits
+        else:
+            self._fat[1] = self._fat[1] & ~bits
+
+    @property
+    def damaged(self):
+        """
+        Indicates whether the file-system is marked "damaged".
+
+        Note that this bit is only valid on FAT-16 and FAT-32 file-systems; on
+        FAT-12 file-systems this property is always :data:`False`. If the
+        underlying buffer is writable, this attribute can be written to clear
+        or set the damaged state.
+        """
+        return not (
+            (self._fat_type == 'fat12') or
+            (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
+            (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
+
+    @damaged.setter
+    def damaged(self, value):
+        if self._fat_type == 'fat16':
+            bits = 0x4000
+        elif self._fat_type == 'fat32':
+            bits = 0x4000000
+        else:
+            return
+        if value:
+            self._fat[1] = self._fat[1] | bits
+        else:
+            self._fat[1] = self._fat[1] & ~bits
 
     def open_dir(self, cluster):
         """
