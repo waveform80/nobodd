@@ -264,9 +264,9 @@ class FatFileSystem:
         else:
             return
         if value:
-            self._fat[1] = self._fat[1] | bits
-        else:
             self._fat[1] = self._fat[1] & ~bits
+        else:
+            self._fat[1] = self._fat[1] | bits
 
     @property
     def damaged(self):
@@ -292,9 +292,9 @@ class FatFileSystem:
         else:
             return
         if value:
-            self._fat[1] = self._fat[1] | bits
-        else:
             self._fat[1] = self._fat[1] & ~bits
+        else:
+            self._fat[1] = self._fat[1] | bits
 
     def open_dir(self, cluster):
         """
