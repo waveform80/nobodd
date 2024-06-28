@@ -88,9 +88,9 @@ class BadLongFilename(FatWarning):
 # or CP/M-86's user attributes).
 #
 # [3] is extremely useful in some places, though you have to put up with the
-# slighly condescending tone as the author argues that everyone else habitually
-# gets it wrong, and Microsoft's detection algorithms are The One True Way
-# (reading [2] provides a good antidote to this).
+# slightly condescending tone as the author argues that everyone else
+# habitually gets it wrong, and Microsoft's detection algorithms are The One
+# True Way (reading [2] provides a good antidote to this).
 #
 # Unfortunately, in other places [3] is dreadfully vague for a spec (e.g. valid
 # SFN / LFN characters). Refer back to [1] for these. [4] is obviously partly
