@@ -101,18 +101,60 @@ def test_fs_init(fat12_disk, fat16_disk, fat32_disk):
             assert not fs.atime
 
 
-def test_fs_init_bad(fat16_disk_w):
-    # The bad/dirty flags are present on FAT16/32 only, hence using the larger
-    # disk image here
+def test_fs_init_bad_fat12(fat12_disk_w):
+    # The bad/dirty flags are present on FAT16/32 only, hence this slightly
+    # weird test
+    with DiskImage(fat12_disk_w, access=mmap.ACCESS_WRITE) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert not fs.dirty
+            assert not fs.damaged
+            fs.fat[1] = 0x7F
+            assert not fs.dirty
+            fs.damaged = False
+            fs.dirty = False
+            assert fs.fat[1] == 0x7F
+
+
+def test_fs_init_bad_fat16(fat16_disk_w):
     with DiskImage(fat16_disk_w, access=mmap.ACCESS_WRITE) as img:
         with FatFileSystem(img.partitions[1].data) as fs:
-            fs.fat[1] = 0x7FFF
+            assert not fs.dirty
+            assert not fs.damaged
+            assert fs.fat[1] == 0xFFFF
+            fs.dirty = True
+            assert fs.fat[1] == 0x7FFF
+            assert fs.dirty
         with pytest.warns(DirtyFileSystem):
             with FatFileSystem(img.partitions[1].data) as fs:
-                fs.fat[1] = 0xBFFF
+                fs.damaged = True
+                assert fs.fat[1] == 0x3FFF
+                assert fs.damaged
         with pytest.warns(DamagedFileSystem):
             with FatFileSystem(img.partitions[1].data) as fs:
-                pass
+                fs.damaged = False
+                fs.dirty = False
+                assert fs.fat[1] == 0xFFFF
+
+
+def test_fs_init_bad_fat32(fat32_disk_w):
+    with DiskImage(fat32_disk_w, access=mmap.ACCESS_WRITE) as img:
+        with FatFileSystem(img.partitions[1].data) as fs:
+            assert not fs.dirty
+            assert not fs.damaged
+            assert fs.fat[1] == 0xFFFFFFF
+            fs.dirty = True
+            assert fs.fat[1] == 0x7FFFFFF
+            assert fs.dirty
+        with pytest.warns(DirtyFileSystem):
+            with FatFileSystem(img.partitions[1].data) as fs:
+                fs.damaged = True
+                assert fs.fat[1] == 0x3FFFFFF
+                assert fs.damaged
+        with pytest.warns(DamagedFileSystem):
+            with FatFileSystem(img.partitions[1].data) as fs:
+                fs.damaged = False
+                fs.dirty = False
+                assert fs.fat[1] == 0xFFFFFFF
 
 
 def test_ambiguous_headers_fat12(fat12_disk):
