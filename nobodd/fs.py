@@ -1611,7 +1611,7 @@ class FatFile(io.RawIOBase):
         for cluster in fs.fat.chain(start):
             if cluster in check:
                 raise ValueError(lang._(
-                    'bad FAT chain; encountered {cluster} twice')
+                    'bad FAT chain at {start}; encountered {cluster} twice')
                     .format(cluster=cluster))
             check.add(cluster)
             self._map.append(cluster)
