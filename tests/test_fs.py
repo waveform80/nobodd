@@ -129,10 +129,10 @@ def test_fs_init_bad_fat16(fat16_disk_w):
                 fs.damaged = True
                 assert fs.fat[1] == 0x3FFF
                 assert fs.damaged
+                fs.dirty = False
         with pytest.warns(DamagedFileSystem):
             with FatFileSystem(img.partitions[1].data) as fs:
                 fs.damaged = False
-                fs.dirty = False
                 assert fs.fat[1] == 0xFFFF
 
 
@@ -150,10 +150,10 @@ def test_fs_init_bad_fat32(fat32_disk_w):
                 fs.damaged = True
                 assert fs.fat[1] == 0x3FFFFFF
                 assert fs.damaged
+                fs.dirty = False
         with pytest.warns(DamagedFileSystem):
             with FatFileSystem(img.partitions[1].data) as fs:
                 fs.damaged = False
-                fs.dirty = False
                 assert fs.fat[1] == 0xFFFFFFF
 
 
