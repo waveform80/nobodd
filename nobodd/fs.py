@@ -12,10 +12,12 @@ import errno
 import struct
 import weakref
 import warnings
+import threading
 import datetime as dt
 from abc import abstractmethod
 from collections import abc
 from itertools import islice
+from contextlib import contextmanager
 
 from . import lang
 from .fat import (
@@ -126,6 +128,7 @@ class FatFileSystem:
         self._fat = None
         self._data = None
         self._root = None
+        self._lock = threading.RLock()
         mem = memoryview(mem)
         try:
             self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
@@ -295,6 +298,35 @@ class FatFileSystem:
             self._fat[1] = self._fat[1] & ~bits
         else:
             self._fat[1] = self._fat[1] | bits
+
+    @contextmanager
+    def mark_dirty(self):
+        """
+        Context manager that acquires a mutex, remembers the current dirty
+        flag, sets it to True for the duration of the context, then restores it
+        to its prior value on exit.
+
+        This context manager (and its associated mutex) is re-entrant; it can
+        be entered multiple times within the same thread without side-effect.
+        Threads other than those holding the mutex will have to wait until
+        the initial thread has relinquished the mutex.
+
+        .. warning::
+
+            This method is intended for internal use by the
+            :class:`~nobodd.path.FatPath` class. Specifically, any method
+            which writes to the file-system will implicitly use this to
+            wrap its write operations.
+        """
+        with self._lock:
+            save_dirty = self.dirty
+            try:
+                if not save_dirty:
+                    self.dirty = True
+                yield
+            finally:
+                if not save_dirty:
+                    self.dirty = save_dirty
 
     def open_dir(self, cluster):
         """
@@ -1238,9 +1270,9 @@ class FatDirectory(abc.MutableMapping):
 
     def _group_entries(self):
         """
-        Generator which yields an offset, and a sequence of either
-        :class:`~nobodd.fat.LongFilenameEntry` and
-        :class:`~nobodd.fat.DirectoryEntry` instances.
+        Generator which yields an offset, and a sequence of
+        :class:`~nobodd.fat.LongFilenameEntry` instances followed by a
+        single :class:`~nobodd.fat.DirectoryEntry` instance.
 
         Each tuple yielded represents a single (extant, non-deleted) file or
         directory with its long-filename entries at the start, and the
@@ -1357,7 +1389,7 @@ class FatDirectory(abc.MutableMapping):
                 self._update_entry(offset, entry._replace(
                     filename=old_entry.filename, ext=old_entry.ext))
                 return
-        # This isn't *necessarily* the actual EOF. It could be orphaned or
+        # This isn't *necessarily* the actual EOF. There could be orphaned or
         # deleted entries that _group_entries isn't yielding, but that doesn't
         # matter for our purposes. All that matters is that we can safely
         # overwrite these entries
@@ -1612,7 +1644,7 @@ class FatFile(io.RawIOBase):
             if cluster in check:
                 raise ValueError(lang._(
                     'bad FAT chain at {start}; encountered {cluster} twice')
-                    .format(cluster=cluster))
+                    .format(start=start, cluster=cluster))
             check.add(cluster)
             self._map.append(cluster)
 
