@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nobodd"
+version = "0.4"
+description = "A simple TFTP boot server for the Raspberry Pi"
+readme = {file="README.rst", content-type="text/x-rst"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE.txt"]
+keywords = ["raspberry", "pi", "boot", "nbd", "tftp"]
+authors = [
+    {name = "Dave Jones", email="dave.jones@canonical.com"},
+]
+requires-python = ">=3.10"
+dependencies = [
+    "setuptools",
+    "importlib_resources~=1.3; python_version<'3.9'",
+    "importlib_metadata~=1.4; python_version<'3.8'",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
+doc = ["sphinx", "sphinx-rtd-theme"]
+dev = ["sphinx-autobuild"]
+
+[project.urls]
+Documentation = "https://nobodd.readthedocs.io/"
+Repository = "https://github.com/waveform80/nobodd"
+Issues = "https://github.com/waveform80/nobodd/issues"
+
+[project.scripts]
+nobodd-tftpd = "nobodd.server:main"
+nobodd-prep = "nobodd.prep:main"
+
+[tool.setuptools]
+packages = ["nobodd"]
+
+[tool.setuptools.package-data]
+nobodd = ["*.conf"]
+
+[tool.pytest.ini_options]
+addopts = "-rsx --cov --tb=short"
+testpaths = "tests"
+
+[tool.coverage.run]
+source = ["nobodd"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["raise NotImplementedError", "assert False"]
+
+[tool.copyrights.settings]
+include = ["**/*.py", "**/*.rst"]
+exclude = ["docs/examples/*.py", "docs/license.rst"]
+additional = ["Canonical Ltd."]
+license = "LICENSE.txt"
+preamble = [
+  "nobodd: a boot configuration tool for the Raspberry Pi",
+]
+strip-preamble = false
