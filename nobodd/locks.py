@@ -1,5 +1,6 @@
 import threading
 from time import monotonic
+from contextlib import contextmanager
 
 
 class LightSwitch:
@@ -61,6 +62,79 @@ class LightSwitch:
         self.release()
 
 
+class RWLockThread:
+    """
+    State of a thread in :class:`RWLock`. This tracks the number of re-entrant
+    calls a thread has made.
+
+    Consider a hypothetical thread performing a series of operations. The
+    values that its LocksHeld state move through will be as follows:
+
+    +---------------+------+-------+---------+-----------+
+    | Operation     | read | write | ignored | Notes     |
+    +===============+======+=======+=========+===========+
+    |               | 0    | 0     | 0       | start     |
+    +---------------+------+-------+---------+-----------+
+    | read.acquire  | 1    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.acquire  | 2    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.acquire  | 3    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | write.acquire | 3    | 1     | 0       | upgrade   |
+    +---------------+------+-------+---------+-----------+
+    | write.acquire | 3    | 2     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.acquire  | 3    | 2     | 1       | ignore    |
+    +---------------+------+-------+---------+-----------+
+    | read.acquire  | 3    | 2     | 2       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.release  | 3    | 2     | 1       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.release  | 3    | 2     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | write.release | 3    | 1     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | write.release | 3    | 0     | 0       | downgrade |
+    +---------------+------+-------+---------+-----------+
+    | read.release  | 2    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.release  | 1    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+    | read.release  | 0    | 0     | 0       |           |
+    +---------------+------+-------+---------+-----------+
+
+    upgrade
+        At this point this thread holds three re-entrant acquisitions of the
+        read lock, but has requested a write lock (effectively requesting to
+        upgrade its lock). What this actually does is release all the read
+        locks held (actually one lightswitch release), and start a write lock
+        acquisition
+
+    ignore
+        If a thread holds any write locks (whether through upgrade, or because
+        it originally grabbed a write lock) all attempted acquisitions of a
+        read lock are ignored (but counted)
+
+    downgrade
+        Here a thread has released its last write lock while in an upgraded
+        state. The implementation will release the write lock then re-acquire
+        the number of read-locks specified (actually one lightswitch
+        acquisition)
+    """
+    __slots__ = ('read', 'write', 'ignored')
+
+    def __init__(self):
+        self.read = 0
+        self.write = 0
+        self.ignored = 0
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}('
+            f'read={self.read}, write={self.write}, ignored={self.ignored})')
+
+
 class RWLock:
     """
     Synchronization object used in a solution of so-called second
@@ -77,34 +151,81 @@ class RWLock:
        necessary.
 
     The implementation is based on [1]_, secs. 4.2.2, 4.2.6 with modifications
-    for a more "Pythonic" style. The class provides two objects, ``read`` and
-    ``write`` which each support the context manager protocol along with the
-    typical ``acquire`` and ``release`` methods.
+    for a more "Pythonic" style, and re-entrancy. The class provides two
+    objects, ``read`` and ``write`` which each support the context manager
+    protocol along with the typical ``acquire`` and ``release`` methods. Unlike
+    the implementation in the book, both ``read`` and ``write`` are re-entrant
+    (in the book version, ``read`` is re-entrant by virtue of it being shared,
+    but ``write`` is not).
 
     .. [1] A.B. Downey: "The little book of semaphores", Version 2.2.1, 2016
     """
 
     def __init__(self):
+        local = threading.local()
         block_writers = threading.Lock()
         block_readers = threading.Lock()
         read_switch = LightSwitch(block_writers)
-        self.read = _ReadLock(read_switch, block_readers)
-        self.write = _WriteLock(block_readers, block_writers)
+        self.read = _ReadLock(local, read_switch, block_readers)
+        self.write = _WriteLock(local, read_switch, block_readers, block_writers)
 
 
-class _ReadLock:
-    def __init__(self, read_switch, block_readers):
+class _BaseLock:
+    def __init__(self, local):
+        self._local = local
+
+    def _get_state(self):
+        # Retrieve the thread-local RWLockThread instance. NOTE: Because this
+        # is thread-local we never need to worry about locking it (the instance
+        # will be specific to the executing thread and no other thread can
+        # modify it)
+        try:
+            state = self._local.state
+        except AttributeError:
+            state = self._local.state = RWLockThread()
+        return state
+
+
+class _ReadLock(_BaseLock):
+    def __init__(self, local, read_switch, block_readers):
+        super().__init__(local)
         self._read_switch = read_switch
         self._block_readers = block_readers
 
     def acquire(self):
+        state = self._get_state()
+        if state.write > 0:
+            # If this thread already holds a write lock (through upgrade or
+            # original acquisition), ignore (but count) the read acquisition
+            state.ignored += 1
+            return
+        if state.read > 0:
+            # If the thread already holds only read locks, ignore (but count)
+            # the re-entrant attempt. NOTE: This is required to avoid deadlock
+            # when a pending write acquisition is holding _block_readers (to
+            # avoid starvation) but a pre-existing read needs to acquire more
+            # read locks to complete its processing and ultimately release its
+            # original lock
+            state.read += 1
+            return
         # NOTE: The block_readers lock *appears* pointless, but blocks the
         # read lock acquisition when a writer holds it (see _WriteLock.acquire)
         with self._block_readers:
             pass
         self._read_switch.acquire()
+        assert state.write == 0, 'acquired read_switch while a writer'
+        state.read = 1
 
     def release(self):
+        state = self._get_state()
+        if state.write > 0:
+            assert state.ignored > 0, 'released read before releasing write'
+            state.ignored -= 1
+            return
+        assert state.read > 0, 'released read too many times'
+        state.read -= 1
+        if state.read > 0:
+            return
         self._read_switch.release()
 
     def __enter__(self):
@@ -115,18 +236,58 @@ class _ReadLock:
         self.release()
 
 
-class _WriteLock:
-    def __init__(self, block_readers, block_writers):
+class _WriteLock(_BaseLock):
+    def __init__(self, local, read_switch, block_readers, block_writers):
+        super().__init__(local)
+        self._read_switch = read_switch
         self._block_readers = block_readers
         self._block_writers = block_writers
 
     def acquire(self):
+        state = self._get_state()
+        if state.write > 0:
+            # Ignore (but count) re-entrant write attempts
+            state.write += 1
+            return
+        if state.read > 0:
+            # A reader wishes to upgrade to a write lock; (temporarily) release
+            # its hold on _read_switch and begin the wait for a write lock.
+            # NOTE: We don't call _ReadLock.release here because we want to
+            # preserve the thread's state counts
+            assert state.ignored == 0, 'double upgrade'
+            self._read_switch.release()
         # NOTE: The read_switch acquires block_writers. Hence, when 1 or more
         # readers have acquired read_switch, block_writers is acquired also
         self._block_readers.acquire()
         self._block_writers.acquire()
+        assert state.write == 0, 'acquired block_writers while a writer'
+        state.write = 1
 
     def release(self):
+        state = self._get_state()
+        assert state.write > 0, 'released write too many times'
+        state.write -= 1
+        if state.write > 0:
+            return
+        if state.read > 0:
+            # A reader that upgraded to a writer is now downgrading back to
+            # reader. In this case we "hack" the _read_switch to indicate we're
+            # still holding it. We can't acquire it "normally" by calling
+            # LightSwitch.acquire as we already hold _block_writers (which is
+            # not re-entrant), so we hack the internal count to 1 but maintain
+            # our hold on _block_writers.
+            #
+            # NOTE: the read switch count is the number of *distinct threads*
+            # that hold the read switch (which must be 1 in the case of a
+            # downgraded writer), *not* the number of re-entrant read locks
+            # this thread held before upgrade
+            assert state.ignored == 0, 'released write before releasing read'
+            with self._read_switch._mutex:
+                assert self._read_switch._counter == 0, (
+                    'upgraders and readers co-existing')
+                self._read_switch._counter = 1
+            self._block_readers.release()
+            return
         self._block_readers.release()
         self._block_writers.release()
 
