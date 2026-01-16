@@ -315,7 +315,7 @@ def main(args=None):
 
     If ``DEBUG=1`` is found in the application's environment, top-level
     exceptions will be printed with a full back-trace. ``DEBUG=2`` will launch
-    PDB in port-mortem mode.
+    PDB in post-mortem mode.
     """
     try:
         debug = int(os.environ['DEBUG'])

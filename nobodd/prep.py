@@ -9,7 +9,7 @@
 Customizes an OS image to prepare it for netbooting via TFTP. Specifically,
 this expands the image to a specified size (the assumption being the image is a
 copy of a minimally sized template image), then updates the kernel command line
-on the boot partition  to point to an NBD server.
+on the boot partition to point to an NBD server.
 """
 
 import os
@@ -324,7 +324,7 @@ def main(args=None):
 
     If ``DEBUG=1`` is found in the application's environment, top-level
     exceptions will be printed with a full back-trace. ``DEBUG=2`` will launch
-    PDB in port-mortem mode.
+    PDB in post-mortem mode.
     """
     try:
         debug = int(os.environ['DEBUG'])
