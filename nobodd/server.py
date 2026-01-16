@@ -19,6 +19,8 @@ import socket
 import logging
 import argparse
 from pathlib import Path
+from importlib import resources
+from importlib.metadata import version
 from selectors import DefaultSelector, EVENT_READ
 
 from . import lang
@@ -33,21 +35,6 @@ from .config import (
     Board,
     port,
 )
-
-# NOTE: The fallback comes first here as Python 3.7 incorporates
-# importlib.resources but at a version incompatible with our requirements.
-# Ultimately the try clause should be removed in favour of the except clause
-# once compatibility moves beyond Python 3.9
-try:
-    import importlib_resources as resources
-except ImportError:
-    from importlib import resources
-
-# NOTE: Remove except when compatibility moves beyond Python 3.8
-try:
-    from importlib.metadata import version
-except ImportError:
-    from importlib_metadata import version
 
 
 class BootHandler(TFTPBaseHandler):
