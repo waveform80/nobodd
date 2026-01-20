@@ -704,7 +704,7 @@ class FatPath:
         if self._entry is not None and not (self._entry.attr & 0x10):
             self._refresh()
             return os.stat_result((
-                0o444,                                      # mode
+                stat.S_IFREG | (0o666, 0o444)[fs.readonly], # mode
                 get_cluster(self._entry, fs.fat_type),      # inode
                 id(fs),                                     # dev
                 1,                                          # nlink
@@ -722,16 +722,16 @@ class FatPath:
             # NOTE: No need to _refresh as the cluster of a sub-directory can
             # never change
             return os.stat_result((
-                stat.S_IFDIR | 0o555,  # mode
-                self._index.cluster,   # inode
-                id(fs),                # dev
-                0,                     # nlink
-                0,                     # uid
-                0,                     # gid
-                0,                     # size
-                0,                     # atime
-                0,                     # mtime
-                0))                    # ctime
+                stat.S_IFDIR | (0o777, 0o555)[fs.readonly], # mode
+                self._index.cluster,                        # inode
+                id(fs),                                     # dev
+                2,                                          # nlink
+                0,                                          # uid
+                0,                                          # gid
+                0,                                          # size
+                0,                                          # atime
+                0,                                          # mtime
+                0))                                         # ctime
 
     @property
     def fs(self):
