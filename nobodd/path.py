@@ -479,7 +479,6 @@ class FatPath:
             raise OSError(errno.EACCES, lang._(
                 'Cannot remove the root directory'))
         for item in self.iterdir():
-            print(repr(item))
             raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
 
         parent = self.resolve(strict=False).parent
