@@ -490,6 +490,18 @@ def fat_type(mem):
         b'FAT32   ': 'fat32',
     }
     bpb = BIOSParameterBlock.from_buffer(mem)
+    if bpb.bytes_per_sector < 32:
+        raise ValueError(lang._(
+            'Sector size ({bpb.bytes_per_sector}) is invalid (<32)')
+            .format(bpb=bpb))
+    if bpb.bytes_per_sector.bit_count() != 1:
+        raise ValueError(lang._(
+            'Sector size ({bpb.bytes_per_sector}) is invalid (not power of 2)')
+            .format(bpb=bpb))
+    if bpb.sectors_per_cluster.bit_count() != 1:
+        raise ValueError(lang._(
+            'Cluster size ({bpb.sectors_per_cluster}) is invalid (not power '
+            'of 2)').format(bpb=bpb))
     ebpb = ExtendedBIOSParameterBlock.from_buffer(
         mem, BIOSParameterBlock._FORMAT.size)
     try:
