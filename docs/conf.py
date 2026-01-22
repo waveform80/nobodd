@@ -10,21 +10,19 @@
 
 import sys
 import os
-import configparser
+import tomllib
+import datetime as dt
 from pathlib import Path
-from datetime import datetime
-from setuptools.config import read_configuration
 
 on_rtd = os.environ.get('READTHEDOCS', '').lower() == 'true'
-config = configparser.ConfigParser()
-config.read([Path(__file__).parent / '..' / 'setup.cfg'])
-info = config['metadata']
+with (Path(__file__).parent / '..' / 'pyproject.toml').open('r') as f:
+    info = tomllib.load(f)['project']
 
 # -- Project information -----------------------------------------------------
 
 project = info['name']
-author = info['author']
-now = datetime.now()
+author = info['authors'][0]['name']
+now = dt.datetime.now(tz=dt.timezone.utc)
 copyright = (
     f'2023-{now:%Y} {author}' if now.year > 2023 else f'2023 {author}')
 release = info['version']
@@ -107,14 +105,14 @@ man_pages = [
         'cli_server',
         'nobodd-tftpd',
         'nobodd-tftpd - serve boot partition files over TFTP',
-        [info['author']],
+        [author['name'] for author in info['authors']],
         1,
     ),
     (
         'cli_prep',
         'nobodd-prep',
         'nobodd-prep - prepare an OS image for NBD netboot',
-        [info['author']],
+        [author['name'] for author in info['authors']],
         1,
     ),
 ]
