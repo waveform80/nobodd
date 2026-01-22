@@ -89,9 +89,12 @@ Miscellaneous
 =============
 
 The :mod:`nobodd.tools` module contains a variety of utility functions that
-either cross boundaries in the system or are entirely generic.
+either cross boundaries in the system or are entirely generic. Meanwhile,
+:mod:`nobodd.locks` provides an SREW (shared-read, exclusive-write) lock
+implementation with re-entrancy.
 
 .. toctree::
     :maxdepth: 1
 
     api_tools
+    api_locks
