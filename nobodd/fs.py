@@ -120,11 +120,14 @@ class FatFileSystem:
     If *atime* is :data:`False`, the default, then accesses to files will *not*
     update the atime field in file meta-data (when the underlying *mem* mapping
     is writable). Finally, *encoding* specifies the character set used for
-    decoding and encoding DOS short filenames.
+    decoding and encoding DOS short filenames, and *tz* is the
+    :class:`~datetime.timezone` assumed for all timestamps recorded in the
+    file-system (defaults to UTC).
 
     .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
     """
-    def __init__(self, mem, atime=False, encoding='iso-8859-1'):
+    def __init__(self, mem, atime=False, encoding='iso-8859-1',
+                 tz=dt.timezone.utc):
         self._fat = None
         self._data = None
         self._root = None
@@ -134,6 +137,7 @@ class FatFileSystem:
             self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
             self._atime = atime
             self._encoding = encoding
+            self._tz = tz
             # TODO: Replace with root volume label if == b'NO NAME    '
             self._label = ebpb.volume_label.decode(
                 encoding, 'replace').rstrip(' ')
@@ -432,6 +436,16 @@ class FatFileSystem:
         correct codepage for these.
         """
         return self._encoding
+
+    @property
+    def tz(self):
+        """
+        The :class:`~datetime.tzinfo` which all timestamps will be assumed to
+        be within (as set by the optional *tz* parameter upon construction).
+        Timestamps within FAT do not encode a time-zone, so this is must be
+        supplied externally.
+        """
+        return self._tz
 
     @property
     def atime(self):
@@ -1732,7 +1746,8 @@ class FatFile(io.RawIOBase):
         """
         if self._entry is not None:
             if ts is None:
-                ts = dt.datetime.now()
+                fs = self._get_fs()
+                ts = dt.datetime.now(tz=fs.tz)
             adate, _, _ = encode_timestamp(ts)
             # This slightly convoluted logic is because assigning to _index
             # causes writes to the underlying media and can fail for a variety
@@ -1750,7 +1765,8 @@ class FatFile(io.RawIOBase):
         """
         if self._entry is not None:
             if ts is None:
-                ts = dt.datetime.now()
+                fs = self._get_fs()
+                ts = dt.datetime.now(tz=fs.tz)
             mdate, mtime, _ = encode_timestamp(ts)
             # See note above
             entry = self._entry._replace(mdate=mdate, mtime=mtime)

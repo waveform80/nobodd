@@ -10,6 +10,7 @@ import socket
 import datetime as dt
 from textwrap import dedent
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -107,27 +108,36 @@ def test_frozendict():
 
 
 def test_decode_timestamp():
-    assert decode_timestamp(33, 0, 0) == dt.datetime(1980, 1, 1)
-    assert decode_timestamp(0x2999, 0x645c, 0x32) == dt.datetime(
-        2000, 12, 25, 12, 34, 56, 500000)
+    assert decode_timestamp(33, 0, 0) == dt.datetime(
+        1980, 1, 1, tzinfo=dt.timezone.utc)
+    tz = ZoneInfo('America/New_York')
+    assert decode_timestamp(0x2999, 0x645c, 0x32, tz=tz) == dt.datetime(
+        2000, 12, 25, 12, 34, 56, 500000, tzinfo=tz)
 
 
 def test_encode_timestamp():
     with pytest.raises(ValueError):
-        encode_timestamp(dt.datetime(1970, 1, 1))
+        encode_timestamp(dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc))
     assert encode_timestamp(
-        dt.datetime(1980, 1, 1)) == (33, 0, 0)
+        dt.datetime(1980, 1, 1, tzinfo=dt.timezone.utc)) == (33, 0, 0)
+    tz = ZoneInfo('America/New_York')
     assert encode_timestamp(
-        dt.datetime(2000, 12, 25, 12, 34, 56, 500000)) == (0x2999, 0x645c, 0x32)
+        dt.datetime(2000, 12, 25, 12, 34, 56, 500000, tzinfo=tz)
+    ) == (0x2999, 0x645c, 0x32)
 
 
 def test_timestamp_roundtrip():
     # Resolution is limited to 10ms units
-    now = dt.datetime.now()
+    tz = dt.timezone.utc
+    now = dt.datetime.now(tz=tz)
     now = now.replace(
         microsecond=(now.microsecond // 10000) * 10000)
-    print(now)
-    assert decode_timestamp(*encode_timestamp(now)) == now
+    assert decode_timestamp(*encode_timestamp(now), tz=tz) == now
+    tz = ZoneInfo('America/New_York')
+    now = dt.datetime.now(tz=tz)
+    now = now.replace(
+        microsecond=(now.microsecond // 10000) * 10000)
+    assert decode_timestamp(*encode_timestamp(now), tz=tz) == now
 
 
 def test_exclude():

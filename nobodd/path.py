@@ -252,7 +252,7 @@ class FatPath:
         # If self._entry is None at this point, we must be creating a file
         # so get the containing index and make an appropriate DirectoryEntry
         if self._entry is None:
-            date, time, cs = encode_timestamp(dt.datetime.now())
+            date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
             parent = self.parent
             parent._must_exist()
             parent._must_be_dir()
@@ -434,7 +434,7 @@ class FatPath:
                 raise
         parent._must_be_dir()
 
-        date, time, cs = encode_timestamp(dt.datetime.now())
+        date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
         cluster = next(fs.fat.free())
         fs.fat.mark_end(cluster)
 
@@ -712,12 +712,12 @@ class FatPath:
                 0,                                          # gid
                 self._entry.size,                           # size
                 decode_timestamp(                           # atime
-                    self._entry.adate, 0).timestamp(),
+                    self._entry.adate, 0, tz=fs.tz).timestamp(),
                 decode_timestamp(                           # mtime
-                    self._entry.mdate, self._entry.mtime).timestamp(),
+                    self._entry.mdate, self._entry.mtime, tz=fs.tz).timestamp(),
                 decode_timestamp(                           # ctime
                     self._entry.cdate, self._entry.ctime,
-                    self._entry.ctime_cs).timestamp()))
+                    self._entry.ctime_cs, fs.tz).timestamp()))
         else: # self._index is not None is guaranteed by _must_exist
             # NOTE: No need to _refresh as the cluster of a sub-directory can
             # never change

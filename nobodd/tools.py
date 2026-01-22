@@ -250,11 +250,12 @@ if pairwise is None:
         return zip(a, b)
 
 
-def decode_timestamp(date, time, cs=0):
+def decode_timestamp(date, time, cs=0, tz=dt.timezone.utc):
     """
     Given the integers *date*,  *time*, and optionally *cs* (from various
     fields in :class:`~nobodd.fat.DirectoryEntry`), return a
-    :class:`~datetime.datetime` with the decoded timestamp.
+    :class:`~datetime.datetime` with the decoded timestamp. The returned
+    value will have the :class:`~datetime.tzinfo` set by *tz*.
     """
     ms = cs * 10
     return dt.datetime(
@@ -264,7 +265,8 @@ def decode_timestamp(date, time, cs=0):
         hour=(time & 0xF800) >> 11,
         minute=(time & 0x7E0) >> 5,
         second=(time & 0x1F) * 2 + (ms // 1000),
-        microsecond=(ms % 1000) * 1000
+        microsecond=(ms % 1000) * 1000,
+        tzinfo=tz
     )
 
 
@@ -273,7 +275,9 @@ def encode_timestamp(ts):
     Given a :class:`~datetime.datetime`, encode it as a FAT-compatible triple
     of three 16-bit integers representing (date, time, 1/100th seconds).
     """
-    if not dt.datetime(1980, 1, 1) <= ts < dt.datetime(2100, 1, 1):
+    earliest = dt.datetime(1980, 1, 1, tzinfo=ts.tzinfo)
+    latest = dt.datetime(2100, 1, 1, tzinfo=ts.tzinfo)
+    if not earliest <= ts < latest:
         raise ValueError(f'{ts} is outside the valid range for FAT timestamps')
     return (
         ((ts.year - 1980) << 9) | (ts.month << 5) | ts.day,
