@@ -6,34 +6,35 @@ the authorship and copyright years information from the git history of the
 project; hence, this script must be run within a git clone of the project's
 repository. Options are available to specify the license text file, the files
 to edit, and files to exclude. Default options can be specified in the
-containing project's setup.cfg under [{SETUP_SECTION}]
+containing project's pyproject.toml under [tool.copyrights.settings]
 """
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import sys
-assert sys.version_info >= (3, 6), 'Script requires Python 3.6+'
+assert sys.version_info >= (3, 10), 'Script requires Python 3.10+'
 import tempfile
 import typing as t
+import tomllib
 from argparse import ArgumentParser, Namespace
-from configparser import ConfigParser
 from operator import attrgetter
 from itertools import groupby
 from datetime import datetime
 from subprocess import Popen, PIPE, DEVNULL
 from pathlib import Path
 from fnmatch import fnmatch
+from types import TracebackType
 
 
 PROJECT_ROOT: Path    = (Path(__file__).parent / '..').resolve()
-SETUP_SECTION: str    = str(Path(__file__).name) + ':settings'
 SPDX_PREFIX: str      = 'SPDX-License-Identifier:'
 COPYRIGHT_PREFIX: str = 'Copyright (c)'
 
 
-def main(args: t.Optional[t.List[str]]=None):
+def main(args: list[str] | None=None) -> int:
     if args is None:
         args = sys.argv[1:]
     config = get_config(args)
@@ -51,33 +52,41 @@ def main(args: t.Optional[t.List[str]]=None):
         ):
             for chunk in writer.transform(source, copyrights):
                 target.write(chunk)
+    return 0
 
 
-def get_config(args: t.List[str]) -> Namespace:
-    config = ConfigParser(
-        defaults={
-            'additional': '',
-            'include': '**/*',
-            'exclude': '',
-            'license': 'LICENSE.txt',
-            'preamble': '',
-            'strip_preamble': 'false',
-            'spdx_prefix': SPDX_PREFIX,
-            'copy_prefix': COPYRIGHT_PREFIX,
-        },
-        delimiters=('=',), default_section=SETUP_SECTION,
-        empty_lines_in_values=False, interpolation=None,
-        converters={'list': lambda s: s.strip().splitlines()})
-    config.read(PROJECT_ROOT / 'setup.cfg')
-    sect = config[SETUP_SECTION]
-    # Resolve license default relative to setup.cfg
-    if sect['license']:
-        sect['license'] = str(PROJECT_ROOT / sect['license'])
+def get_config(args: list[str]) -> Namespace:
+    ConfigDict = t.TypedDict('ConfigDict', {
+        'additional': list[str],
+        'include': list[str],
+        'exclude': list[str],
+        'license': str,
+        'preamble': list[str],
+        'strip-preamble': bool,
+        'spdx-prefix': str,
+        'copy-prefix': str,
+    })
+    config: ConfigDict = {
+        'additional': [],
+        'include': ['**/*'],
+        'exclude': [],
+        'license': 'LICENSE.txt',
+        'preamble': [],
+        'strip-preamble': False,
+        'spdx-prefix': SPDX_PREFIX,
+        'copy-prefix': COPYRIGHT_PREFIX,
+    }
+    with (PROJECT_ROOT / 'pyproject.toml').open('rb') as f:
+        config |= tomllib.load(f).get(
+            'tool', {}).get('copyrights', {}).get('settings', {})
+    # Resolve license default relative to pyproject.toml
+    if config['license']:
+        config['license'] = str(PROJECT_ROOT / config['license'])
 
     parser = ArgumentParser(description=__doc__.format(**globals()))
     parser.add_argument(
         '-a', '--additional', action='append', metavar='STR',
-        default=sect.getlist('additional'),
+        default=config['additional'],
         help="An additional copyright owner to add to all files. This is "
         "typically used to specify a corporate owner which never appears "
         "directly in commits, but which ultimately owns a project. If an "
@@ -85,19 +94,19 @@ def get_config(args: t.List[str]) -> Namespace:
         '"name <email>"')
     parser.add_argument(
         '-i', '--include', action='append', metavar='GLOB',
-        default=sect.getlist('include'),
+        default=config['include'],
         help="The set of patterns that a file must match to be included in "
         "the set of files to re-write. Can be specified multiple times to "
         "add several patterns. Default: %(default)r")
     parser.add_argument(
         '-e', '--exclude', action='append', metavar='GLOB',
-        default=sect.getlist('exclude'),
+        default=config['exclude'],
         help="The set of patterns that a file must *not* match to be included "
         "in the set of files to re-write. Can be specified multiple times to "
         "add several patterns. Default: %(default)r")
     parser.add_argument(
         '-l', '--license', action='store', type=Path, metavar='PATH',
-        default=sect['license'],
+        default=config['license'],
         help="The file containing the project's license text. If this file "
         "contains a SPDX-License-Identifier line (in addition to the license "
         "text itself), then matching license text found in source files will "
@@ -105,27 +114,27 @@ def get_config(args: t.List[str]) -> Namespace:
         "commented). Default: %(default)s")
     parser.add_argument(
         '-p', '--preamble', action='append', metavar='STR',
-        default=sect.getlist('preamble'),
+        default=config['preamble'],
         help="The line(s) of text to insert before the copyright attributions "
         "in source files. This is typically a brief description of the "
         "project. Can be specified multiple times to add several lines. "
         "Default: %(default)r")
     parser.add_argument(
         '-S', '--spdx-prefix', action='store', metavar='STR',
-        default=sect['spdx_prefix'],
+        default=config['spdx-prefix'],
         help="The prefix on the line in the license file, and within comments "
         "of source files that identifies the appropriate license from the "
         "SPDX list. Default: %(default)r")
     parser.add_argument(
         '-C', '--copy-prefix', action='store', metavar='STR',
-        default=sect['copy_prefix'],
+        default=config['copy-prefix'],
         help="The prefix before copyright attributions in source files. "
         "Default: %(default)r")
     parser.add_argument(
         '--no-strip-preamble', action='store_false', dest='strip_preamble')
     parser.add_argument(
         '--strip-preamble', action='store_true',
-        default=sect.getboolean('strip-preamble'),
+        default=config['strip-preamble'],
         help="If enabled, any existing preamble matching that specified "
         "by --preamble will be removed. This can be used to change the "
         "preamble text in files by first specifying the old preamble with "
@@ -138,7 +147,7 @@ def get_config(args: t.List[str]) -> Namespace:
     return ns
 
 
-def name_and_email(s: str) -> t.Tuple[str, str]:
+def name_and_email(s: str) -> tuple[str, str]:
     """
     Parse the :class:`str` *s* into a :class:`tuple` of ``(name, email)`` when
     *s* is formatted as "name <email>", or ``(name, '')`` otherwise.
@@ -153,9 +162,9 @@ def name_and_email(s: str) -> t.Tuple[str, str]:
 class Copyright(t.NamedTuple):
     author: str
     email:  str
-    years:  t.Set[int]
+    years:  set[int]
 
-    def __str__(self):
+    def __str__(self) -> str:
         if len(self.years) > 1:
             years = f'{min(self.years)}-{max(self.years)}'
         else:
@@ -166,9 +175,9 @@ class Copyright(t.NamedTuple):
             return f'{years} {self.author}'
 
 
-def get_copyrights(include: t.Set[str], exclude: t.Set[str],
-                   additional: t.Set[t.Tuple[str, str]]
-                  ) -> t.Iterator[t.Tuple[Path, t.Iterable[Copyright]]]:
+def get_copyrights(include: set[str], exclude: set[str],
+                   additional: set[tuple[str, str]]
+                  ) -> t.Iterator[tuple[Path, t.Iterable[Copyright]]]:
     sorted_blame = sorted(
         get_contributions(include, exclude),
         key=lambda c: (c.path, c.author, c.email)
@@ -200,8 +209,7 @@ class Contribution(t.NamedTuple):
     path:   Path
 
 
-def get_contributions(include: t.Set[str], exclude: t.Set[str])\
-        -> t.Iterator[Contribution]:
+def get_contributions(include: set[str], exclude: set[str]) -> t.Iterator[Contribution]:
     for path in get_source_paths(include, exclude):
         blame = Popen(
             ['git', 'blame', '--line-porcelain', 'HEAD', '--', str(path)],
@@ -232,8 +240,7 @@ def get_contributions(include: t.Set[str], exclude: t.Set[str])\
         assert blame.returncode == 0
 
 
-def get_source_paths(include: t.Set[str], exclude: t.Set[str])\
-        -> t.Iterator[Path]:
+def get_source_paths(include: set[str], exclude: set[str]) -> t.Iterator[Path]:
     ls_tree = Popen(
         ['git', 'ls-tree', '-r', '--name-only', 'HEAD'],
         stdout=PIPE, stderr=DEVNULL, universal_newlines=True)
@@ -251,8 +258,8 @@ def get_source_paths(include: t.Set[str], exclude: t.Set[str])\
 
 
 class License(t.NamedTuple):
-    ident: t.Optional[str]
-    text:  t.List[str]
+    ident: str | None
+    text:  list[str]
 
 
 def get_license(path: Path, *, spdx_prefix: str = SPDX_PREFIX) -> License:
@@ -301,7 +308,7 @@ class CopyWriter:
     }
 
     def __init__(self, license: Path=Path('LICENSE.txt'),
-                 preamble: t.Optional[t.List[str]]=None,
+                 preamble: list[str] | None=None,
                  spdx_prefix: str=SPDX_PREFIX,
                  copy_prefix: str=COPYRIGHT_PREFIX):
         if preamble is None:
@@ -318,8 +325,8 @@ class CopyWriter:
             config.spdx_prefix, config.copy_prefix)
 
     def transform(self, source: t.TextIO,
-                  copyrights: t.List[Copyright], *,
-                  comment_prefix: t.Optional[str]=None) -> t.Iterator[str]:
+                  copyrights: list[Copyright], *,
+                  comment_prefix: str | None=None) -> t.Iterator[str]:
         if comment_prefix is None:
             comment_prefix = self.COMMENTS[Path(source.name).suffix]
         license_start = self.license.text[0]
@@ -410,27 +417,28 @@ class AtomicReplaceFile:
         If ``None`` (the default), the temporary file will be opened in binary
         mode. Otherwise, this specifies the encoding to use with text mode.
     """
-    def __init__(self, path: t.Union[str, Path], encoding: t.Optional[str]=None):
+    def __init__(self, path: str | Path, encoding: str | None=None):
         if isinstance(path, str):
             path = Path(path)
         self._path = path
         self._tempfile = tempfile.NamedTemporaryFile(
             mode='wb' if encoding is None else 'w',
             dir=str(self._path.parent), encoding=encoding, delete=False)
-        self._withfile = None
 
-    def __enter__(self):
+    def __enter__(self) -> t.IO[t.AnyStr]:
         self._withfile = self._tempfile.__enter__()
         return self._withfile
 
-    def __exit__(self, exc_type, exc_value, exc_tb):
+    def __exit__(self,
+                 exc_type: type[BaseException] | None,
+                 exc_value: BaseException | None,
+                 exc_tb: TracebackType) -> None:
         os.fchmod(self._withfile.file.fileno(), self._path.stat().st_mode)
-        result = self._tempfile.__exit__(exc_type, exc_value, exc_tb)
+        self._tempfile.__exit__(exc_type, exc_value, exc_tb)
         if exc_type is None:
             os.rename(self._withfile.name, str(self._path))
         else:
             os.unlink(self._withfile.name)
-        return result
 
 
 if __name__ == '__main__':
