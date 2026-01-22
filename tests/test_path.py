@@ -286,7 +286,7 @@ def test_path_stat(fat12_disk):
             p = fs.root / 'lots-of-zeros'
             s = p.stat()
             assert s.st_size > 0
-            assert s.st_mode == 0o444
+            assert s.st_mode == 0o100444
             assert s.st_ino != 0
             assert s.st_dev != 0
             assert s.st_nlink == 1
@@ -300,7 +300,7 @@ def test_path_stat(fat12_disk):
             assert s.st_size == 0
             assert s.st_mode == 0o40555
             assert s.st_ino != 0
-            assert s.st_nlink == 0
+            assert s.st_nlink == 2
             assert s.st_uid == 0
             assert s.st_gid == 0
             assert s.st_ctime == 0
