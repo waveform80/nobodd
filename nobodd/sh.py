@@ -343,11 +343,25 @@ def do_ls(config):
 
 
 def do_rm(config):
-    # TODO: Implement -r
+    def _remove_dir(path):
+        for p in path.iterdir():
+            if p.is_dir():
+                _remove_dir(p)
+                p.rmdir()
+            else:
+                p.unlink()
+
     with get_paths([], config.filenames) as paths:
         for filename in config.filenames:
             path = paths[filename]
-            path.rmdir()
+            if config.recursive and path.is_dir():
+                _remove_dir(path)
+            else:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    if not config.force:
+                        raise
 
 
 def do_rmdir(config):
@@ -380,8 +394,6 @@ def do_touch(config):
 
 
 def do_cp(config):
-    # TODO: Make this more efficient at re-writing files; when target exists,
-    # open in r+b mode, truncate to source size, then seek(0) and copy
     # TODO: Implement -r
     def _copy(source, dest):
         if source.is_dir():
