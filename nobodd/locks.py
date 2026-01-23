@@ -162,13 +162,43 @@ class RWLock:
 
     The implementation is based on [1]_, secs. 4.2.2, 4.2.6 with modifications
     for a more "Pythonic" style, and re-entrancy. The class provides two
-    objects, ``read`` and ``write`` which each support the context manager
-    protocol along with the typical ``acquire`` and ``release`` methods. Unlike
-    the implementation in the book, both ``read`` and ``write`` are re-entrant
-    (in the book version, ``read`` is re-entrant by virtue of it being shared,
-    but ``write`` is not).
+    objects, :attr:`read` and :attr:`write` which each support the context
+    manager protocol along with the typical ``acquire`` and ``release``
+    methods.
+
+    Unlike the implementation in the book, both ``read`` and ``write`` are
+    re-entrant (in the book version, ``read`` is re-entrant by virtue of it
+    being shared, but ``write`` is not). Furthermore, upgrade is permitted from
+    read lock to write lock, provided all locks are subsequently released in
+    the order they were obtained. In other words, a thread may obtain a read
+    lock, then implicitly "upgrade" to a write lock, provided it subsequently
+    releases the write lock, then the original read lock.
 
     .. [1] A.B. Downey: "The little book of semaphores", Version 2.2.1, 2016
+
+    .. attribute:: read
+
+        The sub-object providing access to read locks. This object supports the
+        context manager protocol, and the typical ``acquire`` and ``release``
+        methods (see :meth:`Lock.acquire` and :meth:`Lock.release`).
+
+        The lock obtained via this object is re-entrant and shared (many
+        threads may simultaneously share the read lock).
+
+    .. attribute:: write
+
+        The sub-object providing access to write locks. This object supports
+        the context manager protocol, and the typical ``acquire`` and
+        ``release`` methods (see :meth:`Lock.acquire` and
+        :meth:`Lock.release`).
+
+        The lock obtained via this object is re-entrant but exclusive (no other
+        thread may hold a read or write lock while this is held). A thread may
+        upgrade from a read lock to a write lock, but the lock is *not* held
+        continuously during upgrade: the read lock is released before the
+        upgraded write lock is obtained. Bear in mind another write lock *may*
+        be obtained by another thread before this thread obtains the upgraded
+        write lock.
     """
 
     def __init__(self):
