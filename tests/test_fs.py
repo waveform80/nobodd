@@ -18,6 +18,7 @@ from nobodd.fat import (
     lfn_valid,
     lfn_checksum,
 )
+from nobodd.locks import RWLock
 from nobodd.disk import DiskImage
 from nobodd.path import get_cluster
 from nobodd.fs import *
@@ -417,7 +418,7 @@ def test_fattable_free_too_large():
     # sector; this ensures we do not yield clusters out of range
     fat_table = bytearray(6144)
     fat_table[:6114] = b'\xFF' * 6114
-    with Fat12Table(memoryview(fat_table), len(fat_table)) as tbl:
+    with Fat12Table(RWLock(), memoryview(fat_table), len(fat_table)) as tbl:
         with pytest.raises(OSError) as err:
             for cluster in tbl.free():
                 assert tbl.min_valid <= cluster <= tbl.max_valid

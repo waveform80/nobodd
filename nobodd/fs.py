@@ -37,6 +37,7 @@ from .tools import (
     any_match,
     exclude,
 )
+from .locks import RWLock
 
 
 class FatWarning(Warning):
@@ -131,7 +132,7 @@ class FatFileSystem:
         self._fat = None
         self._data = None
         self._root = None
-        self._lock = threading.RLock()
+        self._lock = RWLock()
         mem = memoryview(mem)
         try:
             self._fat_type, bpb, ebpb, ebpb_fat32 = fat_type(mem)
@@ -175,10 +176,12 @@ class FatFileSystem:
                 'fat16': Fat16Table,
                 'fat32': Fat32Table,
             }[self._fat_type](
+                self._lock,
                 mem[fat_offset:root_offset], fat_size,
                 mem[info_offset:info_offset + bpb.bytes_per_sector]
                 if info_offset is not None else None)
             self._data = FatClusters(
+                self._lock,
                 mem[data_offset:end_offset],
                 bpb.bytes_per_sector * bpb.sectors_per_cluster)
             if self._fat_type == 'fat32':
@@ -229,16 +232,29 @@ class FatFileSystem:
         Releases the memory references derived from the buffer the instance was
         constructed with. This method is idempotent.
         """
-        if self._fat is not None:
-            self._fat.close()
-            self._fat = None
-        if self._data is not None:
-            self._data.close()
-            self._data = None
-        if self._root is not None:
-            if self._fat_type != 'fat32':
-                self._root.release()
-            self._root = None
+        with self.lock.write:
+            if self._fat is not None:
+                self._fat.close()
+                self._fat = None
+            if self._data is not None:
+                self._data.close()
+                self._data = None
+            if self._root is not None:
+                if self._fat_type != 'fat32':
+                    self._root.release()
+                self._root = None
+
+    @property
+    def lock(self):
+        """
+        Returns the :class:`~nobodd.locks.RWLock` used to guard access to the
+        file-system.
+
+        This can be used by any thread to mediate read and write access to the
+        file-system, and is also used by the :meth:`mark_dirty` context
+        manager.
+        """
+        return self._lock
 
     @property
     def readonly(self):
@@ -257,10 +273,11 @@ class FatFileSystem:
         underlying buffer is writable, this attribute can be written to clear
         or set the dirty state.
         """
-        return not (
-            (self._fat_type == 'fat12') or
-            (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
-            (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
+        with self.lock.read:
+            return not (
+                (self._fat_type == 'fat12') or
+                (self._fat_type == 'fat16' and (self._fat[1] & 0x8000)) or
+                (self._fat_type == 'fat32' and (self._fat[1] & 0x8000000)))
 
     @dirty.setter
     def dirty(self, value):
@@ -270,10 +287,11 @@ class FatFileSystem:
             bits = 0x8000000
         else:
             return
-        if value:
-            self._fat[1] = self._fat[1] & ~bits
-        else:
-            self._fat[1] = self._fat[1] | bits
+        with self.lock.write:
+            if value:
+                self._fat[1] = self._fat[1] & ~bits
+            else:
+                self._fat[1] = self._fat[1] | bits
 
     @property
     def damaged(self):
@@ -285,10 +303,11 @@ class FatFileSystem:
         underlying buffer is writable, this attribute can be written to clear
         or set the damaged state.
         """
-        return not (
-            (self._fat_type == 'fat12') or
-            (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
-            (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
+        with self.lock.read:
+            return not (
+                (self._fat_type == 'fat12') or
+                (self._fat_type == 'fat16' and (self._fat[1] & 0x4000)) or
+                (self._fat_type == 'fat32' and (self._fat[1] & 0x4000000)))
 
     @damaged.setter
     def damaged(self, value):
@@ -298,22 +317,23 @@ class FatFileSystem:
             bits = 0x4000000
         else:
             return
-        if value:
-            self._fat[1] = self._fat[1] & ~bits
-        else:
-            self._fat[1] = self._fat[1] | bits
+        with self.lock.write:
+            if value:
+                self._fat[1] = self._fat[1] & ~bits
+            else:
+                self._fat[1] = self._fat[1] | bits
 
     @contextmanager
     def mark_dirty(self):
         """
-        Context manager that acquires a mutex, remembers the current dirty
-        flag, sets it to True for the duration of the context, then restores it
-        to its prior value on exit.
+        Context manager that acquires a write-lock, remembers the current dirty
+        flag, sets it to :data:`True` for the duration of the context, then
+        restores it to its prior value on exit.
 
-        This context manager (and its associated mutex) is re-entrant; it can
+        This context manager (and its associated lock) is re-entrant; it can
         be entered multiple times within the same thread without side-effect.
-        Threads other than those holding the mutex will have to wait until
-        the initial thread has relinquished the mutex.
+        Threads other than those holding the lock will have to wait until
+        the initial thread has relinquished the lock.
 
         .. warning::
 
@@ -322,7 +342,7 @@ class FatFileSystem:
             which writes to the file-system will implicitly use this to
             wrap its write operations.
         """
-        with self._lock:
+        with self.lock.write:
             save_dirty = self.dirty
             try:
                 if not save_dirty:
@@ -655,10 +675,11 @@ class FatTable(abc.MutableSequence):
         Generator method which yields all the clusters in the chain starting at
         *start*.
         """
-        cluster = start
-        while self.min_valid <= cluster <= self.max_valid:
-            yield cluster
-            cluster = self[cluster]
+        with self._lock.read:
+            cluster = start
+            while self.min_valid <= cluster <= self.max_valid:
+                yield cluster
+                cluster = self[cluster]
 
     def free(self):
         """
@@ -666,11 +687,12 @@ class FatTable(abc.MutableSequence):
         found. Iterating to the end of this generator raises :exc:`OSError`
         with the code ENOSPC (out of space).
         """
-        for cluster, value in enumerate(self):
-            if value == 0 and self.min_valid < cluster:
-                yield cluster
-            if cluster >= self.max_valid:
-                break
+        with self._lock.read:
+            for cluster, value in enumerate(self):
+                if value == 0 and self.min_valid < cluster:
+                    yield cluster
+                if cluster >= self.max_valid:
+                    break
         # If we reach this point without the caller having broken out of their
         # loop, we've run out of space so raise the appropriate exception
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
@@ -690,9 +712,10 @@ class Fat12Table(FatTable):
     max_valid = 0xFEF
     end_mark = 0xFFF
 
-    def __init__(self, mem, fat_size, info_mem=None):
+    def __init__(self, lock, mem, fat_size, info_mem=None):
         super().__init__()
         assert info_mem is None
+        self._lock = lock
         self._tables = tuple(
             mem[offset:offset + fat_size]
             for offset in range(0, len(mem), fat_size)
@@ -704,16 +727,17 @@ class Fat12Table(FatTable):
     def get_all(self, cluster):
         try:
             offset = cluster + (cluster >> 1)
-            if cluster % 2:
-                return tuple(
-                    struct.unpack_from('<H', t, offset)[0] >> 4
-                    for t in self._tables
-                )
-            else:
-                return tuple(
-                    struct.unpack_from('<H', t, offset)[0] & 0x0FFF
-                    for t in self._tables
-                )
+            with self._lock.read:
+                if cluster % 2:
+                    return tuple(
+                        struct.unpack_from('<H', t, offset)[0] >> 4
+                        for t in self._tables
+                    )
+                else:
+                    return tuple(
+                        struct.unpack_from('<H', t, offset)[0] & 0x0FFF
+                        for t in self._tables
+                    )
         except struct.error:
             raise IndexError(lang._(
                 '{offset} out of bounds'.format(offset=offset)))
@@ -721,12 +745,13 @@ class Fat12Table(FatTable):
     def __getitem__(self, cluster):
         try:
             offset = cluster + (cluster >> 1)
-            if cluster % 2:
-                return struct.unpack_from(
-                    '<H', self._tables[0], offset)[0] >> 4
-            else:
-                return struct.unpack_from(
-                    '<H', self._tables[0], offset)[0] & 0x0FFF
+            with self._lock.read:
+                if cluster % 2:
+                    return struct.unpack_from(
+                        '<H', self._tables[0], offset)[0] >> 4
+                else:
+                    return struct.unpack_from(
+                        '<H', self._tables[0], offset)[0] & 0x0FFF
         except struct.error:
             raise IndexError(lang._(
                 '{offset} out of bounds'.format(offset=offset)))
@@ -737,15 +762,16 @@ class Fat12Table(FatTable):
                 '{value} is outside range 0x000..0xFFF'.format(value=value)))
         try:
             offset = cluster + (cluster >> 1)
-            if cluster % 2:
-                value <<= 4
-                value |= struct.unpack_from(
-                    '<H', self._tables[0], offset)[0] & 0x000F
-            else:
-                value |= struct.unpack_from(
-                    '<H', self._tables[0], offset)[0] & 0xF000
-            for table in self._tables:
-                struct.pack_into('<H', table, offset, value)
+            with self._lock.write:
+                if cluster % 2:
+                    value <<= 4
+                    value |= struct.unpack_from(
+                        '<H', self._tables[0], offset)[0] & 0x000F
+                else:
+                    value |= struct.unpack_from(
+                        '<H', self._tables[0], offset)[0] & 0xF000
+                for table in self._tables:
+                    struct.pack_into('<H', table, offset, value)
         except struct.error:
             raise IndexError(lang._(
                 '{offset} out of bounds'.format(offset=offset)))
@@ -765,9 +791,10 @@ class Fat16Table(FatTable):
     max_valid = 0xFFEF
     end_mark = 0xFFFF
 
-    def __init__(self, mem, fat_size, info_mem=None):
+    def __init__(self, lock, mem, fat_size, info_mem=None):
         super().__init__()
         assert info_mem is None
+        self._lock = lock
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('H')
             for offset in range(0, len(mem), fat_size)
@@ -777,14 +804,16 @@ class Fat16Table(FatTable):
         return tuple(t[cluster] for t in self._tables)
 
     def __getitem__(self, cluster):
-        return self._tables[0][cluster]
+        with self._lock.read:
+            return self._tables[0][cluster]
 
     def __setitem__(self, cluster, value):
         if not 0x0000 <= value <= 0xFFFF:
             raise ValueError(lang._(
                 '{value} is outside range 0x0000..0xFFFF'.format(value=value)))
-        for table in self._tables:
-            table[cluster] = value
+        with self._lock.write:
+            for table in self._tables:
+                table[cluster] = value
 
 
 class Fat32Table(FatTable):
@@ -801,8 +830,9 @@ class Fat32Table(FatTable):
     max_valid = 0x0FFFFFEF
     end_mark = 0x0FFFFFFF
 
-    def __init__(self, mem, fat_size, info_mem=None):
+    def __init__(self, lock, mem, fat_size, info_mem=None):
         super().__init__()
+        self._lock = lock
         self._tables = tuple(
             mem[offset:offset + fat_size].cast('I')
             for offset in range(0, len(mem), fat_size)
@@ -841,36 +871,40 @@ class Fat32Table(FatTable):
             self._info.to_buffer(self._info_mem)
 
     def free(self):
-        if self._info is not None:
-            last_alloc = self._info.last_alloc
-            if self.min_valid <= last_alloc < len(self):
-                # If we have a valid info-sector, start scanning from the last
-                # allocated cluster plus one
-                for cluster in range(last_alloc + 1, len(self)):
-                    if self[cluster] == 0 and self.min_valid < cluster:
-                        yield cluster
-                    if cluster >= self.max_valid:
-                        break
-        yield from super().free()
+        with self._lock.read:
+            if self._info is not None:
+                last_alloc = self._info.last_alloc
+                if self.min_valid <= last_alloc < len(self):
+                    # If we have a valid info-sector, start scanning from the
+                    # last allocated cluster plus one
+                    for cluster in range(last_alloc + 1, len(self)):
+                        if self[cluster] == 0 and self.min_valid < cluster:
+                            yield cluster
+                        if cluster >= self.max_valid:
+                            break
+            yield from super().free()
 
     def get_all(self, cluster):
-        return tuple(t[cluster] & 0x0FFFFFFF for t in self._tables)
+        with self._lock.read:
+            return tuple(t[cluster] & 0x0FFFFFFF for t in self._tables)
 
     def __getitem__(self, cluster):
-        return self._tables[0][cluster] & 0x0FFFFFFF
+        with self._lock.read:
+            return self._tables[0][cluster] & 0x0FFFFFFF
 
     def __setitem__(self, cluster, value):
         if not 0x00000000 <= value <= 0x0FFFFFFF:
             raise ValueError(lang._(
                 '{value} is outside range 0x00000000..0x0FFFFFFF'
                 .format(value=value)))
-        old_value = self._tables[0][cluster]
-        if not old_value and value:
-            self._alloc(cluster)
-        elif old_value and not value:
-            self._dealloc(cluster)
-        for table in self._tables:
-            table[cluster] = (old_value & 0xF0000000) | (value & 0x0FFFFFFF)
+        with self._lock.write:
+            old_value = self._tables[0][cluster]
+            if not old_value and value:
+                self._alloc(cluster)
+            elif old_value and not value:
+                self._dealloc(cluster)
+            for table in self._tables:
+                table[cluster] = (old_value & 0xF0000000) | (value & 0x0FFFFFFF)
 
 
 class FatClusters(abc.MutableSequence):
@@ -881,7 +915,8 @@ class FatClusters(abc.MutableSequence):
     While the sequence is mutable, clusters cannot be deleted or inserted, only
     read and (if the underlying buffer is writable) re-written.
     """
-    def __init__(self, mem, cluster_size):
+    def __init__(self, lock, mem, cluster_size):
+        self._lock = lock
         self._mem = mem
         self._cs = cluster_size
 
@@ -920,14 +955,16 @@ class FatClusters(abc.MutableSequence):
         if not 2 <= cluster < len(self) + 2:
             raise IndexError(cluster)
         offset = (cluster - 2) * self._cs
-        return self._mem[offset:offset + self._cs]
+        with self._lock.read:
+            return self._mem[offset:offset + self._cs]
 
     def __setitem__(self, cluster, value):
         # See above
         if not 2 <= cluster < len(self) + 2:
             raise IndexError(cluster)
         offset = (cluster - 2) * self._cs
-        self._mem[offset:offset + self._cs] = value
+        with self._lock.write:
+            self._mem[offset:offset + self._cs] = value
 
     def __delitem__(self, cluster):
         raise TypeError(lang._('FS length is immutable'))
