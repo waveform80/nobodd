@@ -366,9 +366,9 @@ class FatFileSystem:
             if self._fat_type == 'fat32':
                 return Fat32Root(self, self._root, self._encoding)
             elif self._fat_type == 'fat16':
-                return Fat16Root(self._root, self._encoding)
+                return Fat16Root(self._lock, self._root, self._encoding)
             else:
-                return Fat12Root(self._root, self._encoding)
+                return Fat12Root(self._lock, self._root, self._encoding)
         else:
             return FatSubDirectory(self, cluster, self._encoding)
 
@@ -1355,19 +1355,20 @@ class FatDirectory(abc.MutableMapping):
         long filename entries at offsets 128, 96, and 64.
         """
         entries = []
-        for offset, entry in self._iter_entries():
-            if isinstance(entry, LongFilenameEntry):
-                if entry.sequence == 0xE5: # deleted entry
-                    continue
-            entries.append(entry)
-            if isinstance(entry, DirectoryEntry):
-                if entry.filename[0] == 0: # end of valid entries
-                    break
-                elif entry.attr & 0x8: # volume label
-                    pass
-                elif entry.filename[0] != 0xE5: # deleted entry
-                    yield offset, entries
-                entries = []
+        with self._lock.read:
+            for offset, entry in self._iter_entries():
+                if isinstance(entry, LongFilenameEntry):
+                    if entry.sequence == 0xE5: # deleted entry
+                        continue
+                entries.append(entry)
+                if isinstance(entry, DirectoryEntry):
+                    if entry.filename[0] == 0: # end of valid entries
+                        break
+                    elif entry.attr & 0x8: # volume label
+                        pass
+                    elif entry.filename[0] != 0xE5: # deleted entry
+                        yield offset, entries
+                    entries = []
 
     def _clean_entries(self):
         """
@@ -1380,28 +1381,29 @@ class FatDirectory(abc.MutableMapping):
         entry.
         """
         write_offset = 0
-        for read_offset, entry in self._iter_entries():
-            if isinstance(entry, DirectoryEntry):
-                if entry.filename[0] == 0: # end of valid entries
-                    break
-                elif entry.filename[0] == 0xE5: # deleted entry
-                    continue
-            if isinstance(entry, LongFilenameEntry):
-                if entry.sequence == 0xE5: # deleted entry
-                    continue
-            if read_offset > write_offset:
-                self._update_entry(write_offset, entry)
-            write_offset += DirectoryEntry._FORMAT.size
-        else:
-            # If we exit the loop without a break, the source has no EOF marker
-            # which is strictly invalid; advance the read_offset to force one
-            read_offset += DirectoryEntry._FORMAT.size
-        eof = write_offset
-        empty = DirectoryEntry.eof()
-        while write_offset < read_offset:
-            self._update_entry(write_offset, empty)
-            write_offset += DirectoryEntry._FORMAT.size
-        return eof
+        with self._lock.write:
+            for read_offset, entry in self._iter_entries():
+                if isinstance(entry, DirectoryEntry):
+                    if entry.filename[0] == 0: # end of valid entries
+                        break
+                    elif entry.filename[0] == 0xE5: # deleted entry
+                        continue
+                if isinstance(entry, LongFilenameEntry):
+                    if entry.sequence == 0xE5: # deleted entry
+                        continue
+                if read_offset > write_offset:
+                    self._update_entry(write_offset, entry)
+                write_offset += DirectoryEntry._FORMAT.size
+            else:
+                # If we exit the loop without a break, the source has no EOF marker
+                # which is strictly invalid; advance the read_offset to force one
+                read_offset += DirectoryEntry._FORMAT.size
+            eof = write_offset
+            empty = DirectoryEntry.eof()
+            while write_offset < read_offset:
+                self._update_entry(write_offset, empty)
+                write_offset += DirectoryEntry._FORMAT.size
+            return eof
 
     def __len__(self):
         return sum(1 for lfn in self)
@@ -1446,62 +1448,65 @@ class FatDirectory(abc.MutableMapping):
         # re-used
         uname = name.upper()
         offset = -DirectoryEntry._FORMAT.size
-        for offset, entries in self._group_entries():
-            lfn, sfn, old_entry = self._split_entries(entries)
-            if lfn.upper() == uname or sfn == uname:
-                self._update_entry(offset, entry._replace(
-                    filename=old_entry.filename, ext=old_entry.ext))
-                return
-        # This isn't *necessarily* the actual EOF. There could be orphaned or
-        # deleted entries that _group_entries isn't yielding, but that doesn't
-        # matter for our purposes. All that matters is that we can safely
-        # overwrite these entries
-        eof_offset = offset + DirectoryEntry._FORMAT.size
-        entries = self._prefix_entries(name, entry)
-        entries.append(DirectoryEntry.eof())
-        for cleaned in (False, True):
-            # We write the entries in reverse order to make it more likely that
-            # anything scanning the directory simultaneously sees the append as
-            # "atomic" (because the last item written overwrites the old
-            # terminal marker entry)
-            offsets = range(
-                eof_offset,
-                eof_offset + len(entries) * DirectoryEntry._FORMAT.size,
-                DirectoryEntry._FORMAT.size)
-            try:
-                for offset, entry in reversed(list(zip(offsets, entries))):
-                    self._update_entry(offset, entry)
-            except OSError as e:
-                # If the directory structure runs out of space (which is more
-                # likely under FAT-12 and FAT-16 where the root directory is
-                # fixed in size), then all deleted entries will be expunged,
-                # and the method will attempt to append the new entries once
-                # more
-                if e.errno == errno.ENOSPC and not cleaned:
-                    eof_offset = self._clean_entries()
+        with self._lock.write:
+            for offset, entries in self._group_entries():
+                lfn, sfn, old_entry = self._split_entries(entries)
+                if lfn.upper() == uname or sfn == uname:
+                    self._update_entry(offset, entry._replace(
+                        filename=old_entry.filename, ext=old_entry.ext))
+                    return
+            # This isn't *necessarily* the actual EOF. There could be orphaned
+            # or deleted entries that _group_entries isn't yielding, but that
+            # doesn't matter for our purposes. All that matters is that we can
+            # safely overwrite these entries
+            eof_offset = offset + DirectoryEntry._FORMAT.size
+            entries = self._prefix_entries(name, entry)
+            entries.append(DirectoryEntry.eof())
+            for cleaned in (False, True):
+                # We write the entries in reverse order to make it more likely
+                # that anything scanning the directory simultaneously sees the
+                # append as "atomic" (because the last item written overwrites
+                # the old terminal marker entry)
+                offsets = range(
+                    eof_offset,
+                    eof_offset + len(entries) * DirectoryEntry._FORMAT.size,
+                    DirectoryEntry._FORMAT.size)
+                try:
+                    for offset, entry in reversed(list(zip(offsets, entries))):
+                        self._update_entry(offset, entry)
+                except OSError as e:
+                    # If the directory structure runs out of space (which is
+                    # more likely under FAT-12 and FAT-16 where the root
+                    # directory is fixed in size), then all deleted entries
+                    # will be expunged, and the method will attempt to append
+                    # the new entries once more
+                    if e.errno == errno.ENOSPC and not cleaned:
+                        eof_offset = self._clean_entries()
+                    else:
+                        raise
                 else:
-                    raise
-            else:
-                return
+                    return
 
     def __delitem__(self, name):
         uname = name.upper()
-        for offset, entries in self._group_entries():
-            lfn, sfn, entry = self._split_entries(entries)
-            if lfn.upper() == uname or sfn == uname:
-                # NOTE: We update the DirectoryEntry first then work backwards,
-                # marking the long filename entries. This ensures anything
-                # simultaneously scanning the directory shouldn't find a "live"
-                # directory entry preceded by "dead" long filenames
-                for entry in reversed(entries):
-                    if isinstance(entry, DirectoryEntry):
-                        self._update_entry(offset, entry._replace(
-                            filename=b'\xE5' + entry.filename[1:]))
-                    else: # LongFilenameEntry
-                        self._update_entry(offset, entry._replace(
-                            sequence=0xE5))
-                    offset -= DirectoryEntry._FORMAT.size
-                return
+        with self._lock.write:
+            for offset, entries in self._group_entries():
+                lfn, sfn, entry = self._split_entries(entries)
+                if lfn.upper() == uname or sfn == uname:
+                    # NOTE: We update the DirectoryEntry first then work
+                    # backwards, marking the long filename entries. This
+                    # ensures anything simultaneously scanning the directory
+                    # shouldn't find a "live" directory entry preceded by
+                    # "dead" long filenames
+                    for entry in reversed(entries):
+                        if isinstance(entry, DirectoryEntry):
+                            self._update_entry(offset, entry._replace(
+                                filename=b'\xE5' + entry.filename[1:]))
+                        else: # LongFilenameEntry
+                            self._update_entry(offset, entry._replace(
+                                sequence=0xE5))
+                        offset -= DirectoryEntry._FORMAT.size
+                    return
         raise KeyError(name)
 
     cluster = property(lambda self: self._get_cluster())
@@ -1511,26 +1516,32 @@ class FatRoot(FatDirectory):
     """
     An abstract derivative of :class:`FatDirectory` representing the
     (fixed-size) root directory of a FAT-12 or FAT-16 file-system. Must be
-    constructed with *mem*, which is a buffer object covering the root
-    directory clusters, and *encoding*, which is taken from
+    constructed with *lock*, which is the :class:`~nobodd.locks.RWLock`
+    covering the owning :class:`FatFileSystem`, *mem* which is a buffer object
+    covering the root directory clusters, and *encoding*, which is taken from
     :attr:`FatFileSystem.sfn_encoding`. The :class:`Fat12Root` and
     :class:`Fat16Root` classes are (trivial) concrete derivatives of this.
     """
-    __slots__ = ('_mem',)
+    __slots__ = ('_lock', '_mem',)
 
-    def __init__(self, mem, encoding):
-        self._encoding = encoding
+    def __init__(self, lock, mem, encoding):
+        self._lock = lock
         self._mem = mem
+        self._encoding = encoding
 
     def _get_cluster(self):
         return 0
 
     def _update_entry(self, offset, entry):
+        # NOTE: We don't use _lock here as the super-class handles all locking
+        # at a coarser level then these low-level routines; we just provide the
+        # _lock it uses
         if offset >= len(self._mem):
             raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
         entry.to_buffer(self._mem, offset)
 
     def _iter_entries(self):
+        # NOTE: See _update_entry above for note about locking
         for offset in range(0, len(self._mem), DirectoryEntry._FORMAT.size):
             entry = DirectoryEntry.from_buffer(self._mem, offset)
             if entry.attr == 0x0F:
@@ -1546,9 +1557,10 @@ class FatSubDirectory(FatDirectory):
     sub-directory), and *encoding*, which is taken from
     :attr:`FatFileSystem.sfn_encoding`.
     """
-    __slots__ = ('_cs', '_file', 'fat_type')
+    __slots__ = ('_lock', '_cs', '_file', 'fat_type')
 
     def __init__(self, fs, start, encoding):
+        self._lock = fs.lock
         self._encoding = encoding
         self._cs = fs.clusters.size
         # NOTE: We always open sub-directories with a writable mode when

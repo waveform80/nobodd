@@ -1018,7 +1018,7 @@ def test_fatdirectory_group_no_eof(fat12_disk):
             # Lop off the terminal EOF record and check we still enumerate the
             # same results
             tbl = bytearray(root._mem[:dir_eof(root)])
-            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+            fakeroot = Fat12Root(fs.lock, tbl, fs.sfn_encoding)
             assert list(root._group_entries()) == list(fakeroot._group_entries())
 
 
@@ -1054,7 +1054,7 @@ def test_fatdirectory_clean_no_eof(fat12_disk):
             # Create a directory that has no EOF record (technically invalid)
             # and ensure clean still works
             tbl = bytearray(root._mem[:dir_eof(root)])
-            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+            fakeroot = Fat12Root(fs.lock, tbl, fs.sfn_encoding)
 
             # Mark empty as deleted
             del_offset, entries = find_empty_file(fakeroot)
@@ -1080,7 +1080,7 @@ def test_fatdirectory_clean_when_out_of_space(fat12_disk):
             # to set a new entry, and make sure clean runs and the subsequent
             # write succeeds
             tbl = bytearray(root._mem[:dir_eof(root)])
-            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+            fakeroot = Fat12Root(fs.lock, tbl, fs.sfn_encoding)
 
             # Mark lots-of-zeros as deleted (need two entries to delete so we
             # can replace them with one and the EOF; if we can't write the EOF
@@ -1110,7 +1110,7 @@ def test_fatdirectory_really_out_of_space(fat12_disk):
             # to set a new entry, and make sure clean runs and the subsequent
             # write succeeds
             tbl = bytearray(root._mem[:dir_eof(root)])
-            fakeroot = Fat12Root(tbl, fs.sfn_encoding)
+            fakeroot = Fat12Root(fs.lock, tbl, fs.sfn_encoding)
 
             # Mark empty as deleted
             del_offset, entries = find_empty_file(fakeroot)
