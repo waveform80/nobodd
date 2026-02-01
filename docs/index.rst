@@ -17,11 +17,10 @@ Contents
     tutorial
     howtos
     explanations
-    cli
-    api
-    development
+    reference
     changelog
     license
+
 
 Indices and tables
 ==================

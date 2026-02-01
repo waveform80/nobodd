@@ -5,9 +5,9 @@
 ..
 .. SPDX-License-Identifier: GPL-3.0
 
-===========
-Development
-===========
+=====================
+How to hack on nobodd
+=====================
 
 .. currentmodule:: nobodd
 

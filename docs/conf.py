@@ -15,7 +15,7 @@ import datetime as dt
 from pathlib import Path
 
 on_rtd = os.environ.get('READTHEDOCS', '').lower() == 'true'
-with (Path(__file__).parent / '..' / 'pyproject.toml').open('r') as f:
+with (Path(__file__).parent / '..' / 'pyproject.toml').open('rb') as f:
     info = tomllib.load(f)['project']
 
 # -- Project information -----------------------------------------------------
@@ -102,16 +102,23 @@ epub_show_urls = 'no'
 
 man_pages = [
     (
-        'cli_server',
+        'cli-server',
         'nobodd-tftpd',
         'nobodd-tftpd - serve boot partition files over TFTP',
         [author['name'] for author in info['authors']],
         1,
     ),
     (
-        'cli_prep',
+        'cli-prep',
         'nobodd-prep',
         'nobodd-prep - prepare an OS image for NBD netboot',
+        [author['name'] for author in info['authors']],
+        1,
+    ),
+    (
+        'cli-sh',
+        'nobodd-sh',
+        'nobodd-sh - run shell-like commands against files within images',
         [author['name'] for author in info['authors']],
         1,
     ),

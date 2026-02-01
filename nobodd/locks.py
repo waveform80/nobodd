@@ -174,8 +174,6 @@ class RWLock:
     lock, then implicitly "upgrade" to a write lock, provided it subsequently
     releases the write lock, then the original read lock.
 
-    .. [1] A.B. Downey: "The little book of semaphores", Version 2.2.1, 2016
-
     .. attribute:: read
 
         The sub-object providing access to read locks. This object supports the

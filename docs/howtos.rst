@@ -6,7 +6,7 @@
 .. SPDX-License-Identifier: GPL-3.0
 
 ==============
-How To Guides
+How-to guides
 ==============
 
 The following guides cover specific, but commonly encountered, circumstances in
@@ -17,3 +17,4 @@ operating a Raspberry Pi netboot server using NBD.
 
     howto-jammy
     howto-firewall
+    howto-development

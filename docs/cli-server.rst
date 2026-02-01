@@ -32,26 +32,26 @@ Options
 
 .. option:: -h, --help
 
-    show the help message and exit
+    Show the help message and exit
 
 .. option:: --version
 
-    show program's version number and exit
+    Show program's version number and exit
 
 .. option:: --board SERIAL,FILENAME[,PART[,IP]]
 
-    can be specified multiple times to define boards which are to be served
+    Can be specified multiple times to define boards which are to be served
     boot images over TFTP; if PART is omitted the default is 1; if IP is
     omitted the IP address will not be checked
 
 .. option:: --listen ADDR
 
-    the address on which to listen for connections (default: "::" for all
+    The address on which to listen for connections (default: "::" for all
     addresses)
 
 .. option:: --port PORT
 
-    the port on which to listen for connections (default: "tftp" which is port
+    The port on which to listen for connections (default: "tftp" which is port
     69)
 
 

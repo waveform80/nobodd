@@ -741,13 +741,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--bind', '-b', metavar='ADDR',
-        help="Specify alternate bind address (default: all interfaces)")
+        help="specify alternate bind address (default: all interfaces)")
     parser.add_argument(
         '--directory', '-d', default=os.getcwd(),
-        help="Specify alternate directory (default: current directory)")
+        help="specify alternate directory (default: current directory)")
     parser.add_argument(
         'port', action='store', default=6969, type=port, nargs='?',
-        help="Specify alternate port (default: %(default)s)")
+        help="specify alternate port (default: %(default)s)")
     conf = parser.parse_args()
 
     SimpleTFTPServer.address_family, address = get_best_family(

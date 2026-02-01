@@ -60,19 +60,29 @@ partitions 1, 5, and 6:
     <DiskPartition size=1070596096 label='Partition 6' type=131>
 
 `GPT`_ partition tables may also have non-contiguous numbering, although this
-is less common in practice. The :attr:`DiskPartition.data` attribute can be
-used to access the content of the partition as a buffer object (see
-:class:`memoryview`).
+is less common in practice.
+
+It is also worth noting that partitions need not be contiguous on disk (it is
+valid for gaps to be present, and this is commonly the case where partitions
+are aligned on various boundaries). Furthermore, partitions may not be
+physically laid out on disk in the same order as their numbering suggests. That
+is, partition 2 may have a lower starting sector than partition 1, and so on.
+
+The :attr:`DiskPartition.data` attribute can be used to access the content of
+the partition as a buffer object (see :class:`memoryview`).
+
 
 DiskImage
 =========
 
 .. autoclass:: DiskImage
 
+
 DiskPartition
 =============
 
 .. autoclass:: DiskPartition
+
 
 Internal Classes
 ================

@@ -39,11 +39,11 @@ Options
 
 .. option:: -h, --help
 
-    show the help message and exit
+    Show the help message and exit
 
 .. option:: --version
 
-    show program's version number and exit
+    Show program's version number and exit
 
 .. option:: -s SIZE, --size SIZE
 

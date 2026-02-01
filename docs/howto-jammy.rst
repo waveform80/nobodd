@@ -59,7 +59,7 @@ Adjust the ``ubuntu@server`` reference below to fit your user on your server.
     $ sudo poweroff
 
 
-On the Server
+On the server
 =============
 
 Download the same OS image to your server, verify its content, unpack it, and
@@ -106,7 +106,7 @@ See the `cloud-init documentation`_, a `this series of blog posts
 :file:`user-data` file.
 
 
-Preparing the Image
+Preparing the image
 ===================
 
 When preparing our image with :program:`nobodd-prep` we must remember to copy

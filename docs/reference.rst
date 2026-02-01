@@ -1,12 +1,32 @@
 .. nobodd: a boot configuration tool for the Raspberry Pi
 ..
-.. Copyright (c) 2023-2024 Dave Jones <dave.jones@canonical.com>
-.. Copyright (c) 2023-2024 Canonical Ltd.
+.. Copyright (c) 2024 Dave Jones <dave.jones@canonical.com>
+.. Copyright (c) 2024 Canonical Ltd.
 ..
 .. SPDX-License-Identifier: GPL-3.0
 
-=============
-API Reference
+=========
+Reference
+=========
+
+The following sections provide reference material to the command line utilities
+provided in nobodd, and the Python-based API.
+
+
+Command line
+============
+
+The following chapters document the command line utilities included in nobodd:
+
+.. toctree::
+    :maxdepth: 1
+
+    cli-prep
+    cli-server
+    cli-sh
+
+
+API reference
 =============
 
 In additional to being a service, nobodd can also be used as an API from Python
@@ -17,8 +37,9 @@ TFTP service.
 
 The following sections list the modules by their topic.
 
-Disk Images
-===========
+
+Disk images
+-----------
 
 The :class:`nobodd.disk.DiskImage` class is the primary entry-point for dealing
 with disk images.
@@ -26,13 +47,13 @@ with disk images.
 .. toctree::
     :maxdepth: 1
 
-    api_disk
-    api_gpt
-    api_mbr
+    api-disk
+    api-gpt
+    api-mbr
 
 
-FAT Filesystem
-==============
+FAT filesystem
+--------------
 
 The :class:`nobodd.fs.FatFileSystem` class is the primary entry-point for
 handling FAT file-systems.
@@ -40,13 +61,13 @@ handling FAT file-systems.
 .. toctree::
     :maxdepth: 1
 
-    api_fs
-    api_fat
-    api_path
+    api-fs
+    api-fat
+    api-path
 
 
-TFTP Service
-============
+TFTP service
+------------
 
 The :class:`nobodd.tftpd.TFTPBaseServer` and
 :class:`nobodd.tftpd.TFTPBaseHandler` are two classes which may be customized
@@ -58,13 +79,13 @@ specified path.
 .. toctree::
     :maxdepth: 1
 
-    api_tftpd
-    api_tftp
-    api_netascii
+    api-tftpd
+    api-tftp
+    api-netascii
 
 
 Command line applications
-=========================
+-------------------------
 
 The :mod:`nobodd.server` module contains the primary classes,
 :class:`~nobodd.server.BootServer` and :class:`~nobodd.server.BootHandler`
@@ -79,13 +100,13 @@ these applications.
 .. toctree::
     :maxdepth: 1
 
-    api_server
-    api_prep
-    api_sh
+    api-server
+    api-prep
+    api-sh
 
 
-Miscellaneous
-=============
+Support modules
+---------------
 
 The :mod:`nobodd.tools` module contains a variety of utility functions that
 either cross boundaries in the system or are entirely generic. Meanwhile,
@@ -95,8 +116,8 @@ implementation with re-entrancy.
 .. toctree::
     :maxdepth: 1
 
-    api_tools
-    api_locks
-    api_config
-    api_systemd
-    api_transfer
+    api-tools
+    api-locks
+    api-config
+    api-systemd
+    api-transfer

@@ -93,7 +93,7 @@ over TFTP, placed in RAM, and finally the bootloader hands over control to the
 kernel.
 
 
-TFTP Extensions
+TFTP extensions
 ---------------
 
 A brief aside on the subject of :abbr:`TFTP (Trivial File Transfer Protocol)`

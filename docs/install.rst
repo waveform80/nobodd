@@ -13,26 +13,26 @@ nobodd is distributed in several formats. The following sections detail
 installation on a variety of platforms.
 
 
-Ubuntu PPA
-==========
+Ubuntu
+======
 
-For Ubuntu, it may be simplest to install from the `author's PPA`_ as follows:
+For Ubuntu, simply install from the package repository:
 
 .. code-block:: console
 
-    $ sudo add-apt-repository ppa:waveform/nobodd
-    $ sudo apt install nobodd
+    $ sudo apt install nobodd-tftpd nobodd-tools
 
 If you wish to remove nobodd:
 
 .. code-block:: console
 
-    $ sudo apt remove nobodd
+    $ sudo apt remove nobodd-tftpd nobodd-tools
 
-The deb-packaging includes a full man-page, and systemd service definitions.
+The deb-packaging includes a full man-page, and systemd service definitions in
+the tftpd package.
 
 
-Other Platforms
+Other platforms
 ===============
 
 If your platform is *not* covered by one of the sections above, nobodd is

@@ -150,124 +150,124 @@ def get_parser():
     parser.add_argument(
         '-v', '--verbose', dest='log_level',
         action='store_const', const=logging.INFO,
-        help=lang._("Print more output"))
+        help=lang._("print more output"))
     parser.add_argument(
         '-q', '--quiet', dest='log_level',
         action='store_const', const=logging.CRITICAL,
-        help=lang._("Print no output"))
+        help=lang._("print no output"))
     commands = parser.add_subparsers(title=lang._("commands"))
 
     help_cmd = commands.add_parser(
         'help', description=lang._(do_help.__doc__),
-        help=lang._("Displays help for the specified command"))
+        help=lang._("displays help for the specified command"))
     help_cmd.add_argument(
         'cmd', metavar='command', nargs='?',
-        help=lang._("The command to display help for"))
+        help=lang._("the command to display help for"))
     help_cmd.set_defaults(func=do_help)
 
     cat_cmd = commands.add_parser(
         'cat', description=lang._(do_cat.__doc__),
-        help=lang._("Concatenate content into a single output"))
+        help=lang._("concatenate content into a single output"))
     cat_cmd.add_argument(
         'filenames', nargs='*',
-        help=lang._("The input files"))
+        help=lang._("the input files"))
     cat_cmd.add_argument(
         '-o', '--output', metavar='filename', default='-',
-        help=lang._("The output file (default: stdout)"))
+        help=lang._("the output file (default: stdout)"))
     cat_cmd.set_defaults(func=do_cat)
+
+    cp_cmd = commands.add_parser(
+        'cp', description=lang._(do_cp.__doc__),
+        help=lang._("copy files and directories"))
+    cp_cmd.add_argument(
+        'filenames', nargs='+',
+        help=lang._("the files or directories to copy"))
+    cp_cmd.add_argument(
+        'dest',
+        help=lang._("the directory to copy into or the file to replace"))
+    cp_cmd.set_defaults(func=do_cp)
+
+    ls_cmd = commands.add_parser(
+        'ls', description=lang._(do_ls.__doc__),
+        help=lang._("list directory contents"))
+    ls_cmd.add_argument(
+        'filenames', nargs='+',
+        help=lang._("the files or directories to list"))
+    ls_cmd.add_argument(
+        '-a', '--all', action='store_true',
+        help=lang._("do not ignore entries beginning with ."))
+    ls_cmd.add_argument(
+        '-l', dest='long', action='store_true',
+        help=lang._("show details beside listed entries"))
+    ls_cmd.add_argument(
+        '--sort', default='name',
+        help=lang._("sort on name (the default) / size / time / none"))
+    ls_cmd.add_argument(
+        '-U', dest='sort', action='store_const', const='none',
+        help=lang._("disable sorting"))
+    ls_cmd.add_argument(
+        '-S', dest='sort', action='store_const', const='size',
+        help=lang._("sort by file size"))
+    ls_cmd.add_argument(
+        '-t', dest='sort', action='store_const', const='time',
+        help=lang._("sort by modification time"))
+    ls_cmd.add_argument(
+        '-X', dest='sort', action='store_const', const='extension',
+        help=lang._("sort by entry extension"))
+    ls_cmd.set_defaults(func=do_ls)
+
+    mkdir_cmd = commands.add_parser(
+        'mkdir', description=lang._(do_mkdir.__doc__),
+        help=lang._("make directories"))
+    mkdir_cmd.add_argument(
+        'filenames', nargs='+',
+        help=lang._("the directories to create"))
+    mkdir_cmd.add_argument(
+        '-p', '--parents', action='store_true',
+        help=lang._("create parent directories as required"))
+    mkdir_cmd.set_defaults(func=do_mkdir)
+
+    mv_cmd = commands.add_parser(
+        'mv', description=lang._(do_mv.__doc__),
+        help=lang._("move files and directories"))
+    mv_cmd.add_argument(
+        'filenames', nargs='+',
+        help=lang._("the files or directories to copy"))
+    mv_cmd.add_argument(
+        'dest',
+        help=lang._("the directory to move into or the file to replace"))
+    mv_cmd.set_defaults(func=do_mv)
 
     rm_cmd = commands.add_parser(
         'rm', description=lang._(do_rm.__doc__),
-        help=lang._("Removes files or directories"))
+        help=lang._("removes files or directories"))
     rm_cmd.add_argument(
         'filenames', nargs='+',
-        help=lang._("The files or directories to remove"))
+        help=lang._("the files or directories to remove"))
     rm_cmd.add_argument(
         '-r', '-R', '--recursive', action='store_true',
-        help=lang._("Remove directories and their contents recursively"))
+        help=lang._("remove directories and their contents recursively"))
     rm_cmd.add_argument(
         '-f', '--force', action='store_true',
-        help=lang._("Do not error on non-existent arguments and never "
+        help=lang._("do not error on non-existent arguments and never "
                     "prompt"))
     rm_cmd.set_defaults(func=do_rm)
 
     rmdir_cmd = commands.add_parser(
         'rmdir', description=lang._(do_rmdir.__doc__),
-        help=lang._("Remove empty directories"))
+        help=lang._("remove empty directories"))
     rmdir_cmd.add_argument(
         'filenames', nargs='+',
-        help=lang._("The directories to remove"))
+        help=lang._("the directories to remove"))
     rmdir_cmd.set_defaults(func=do_rmdir)
-
-    mkdir_cmd = commands.add_parser(
-        'mkdir', description=lang._(do_mkdir.__doc__),
-        help=lang._("Make directories"))
-    mkdir_cmd.add_argument(
-        'filenames', nargs='+',
-        help=lang._("The directories to create"))
-    mkdir_cmd.add_argument(
-        '-p', '--parents', action='store_true',
-        help=lang._("Create parent directories as required"))
-    mkdir_cmd.set_defaults(func=do_mkdir)
 
     touch_cmd = commands.add_parser(
         'touch', description=lang._(do_touch.__doc__),
-        help=lang._("Update file timestamps"))
+        help=lang._("update file timestamps"))
     touch_cmd.add_argument(
         'filenames', nargs='+',
-        help=lang._("The files to create or modify the timestamps of"))
+        help=lang._("the files to create or modify the timestamps of"))
     touch_cmd.set_defaults(func=do_touch)
-
-    ls_cmd = commands.add_parser(
-        'ls', description=lang._(do_ls.__doc__),
-        help=lang._("List directory contents"))
-    ls_cmd.add_argument(
-        'filenames', nargs='+',
-        help=lang._("The files or directories to list"))
-    ls_cmd.add_argument(
-        '-a', '--all', action='store_true',
-        help=lang._("Do not ignore entries beginning with ."))
-    ls_cmd.add_argument(
-        '-l', dest='long', action='store_true',
-        help=lang._("Show details beside listed entries"))
-    ls_cmd.add_argument(
-        '--sort', default='name',
-        help=lang._("Sort on name (the default) / size / time / none"))
-    ls_cmd.add_argument(
-        '-U', dest='sort', action='store_const', const='none',
-        help=lang._("Disable sorting"))
-    ls_cmd.add_argument(
-        '-S', dest='sort', action='store_const', const='size',
-        help=lang._("Sort by file size"))
-    ls_cmd.add_argument(
-        '-t', dest='sort', action='store_const', const='time',
-        help=lang._("Sort by modification time"))
-    ls_cmd.add_argument(
-        '-X', dest='sort', action='store_const', const='extension',
-        help=lang._("Sort by entry extension"))
-    ls_cmd.set_defaults(func=do_ls)
-
-    cp_cmd = commands.add_parser(
-        'cp', description=lang._(do_cp.__doc__),
-        help=lang._("Copy files and directories"))
-    cp_cmd.add_argument(
-        'filenames', nargs='+',
-        help=lang._("The files or directories to copy"))
-    cp_cmd.add_argument(
-        'dest',
-        help=lang._("The directory to copy into or the file to replace"))
-    cp_cmd.set_defaults(func=do_cp)
-
-    mv_cmd = commands.add_parser(
-        'mv', description=lang._(do_mv.__doc__),
-        help=lang._("Move files and directories"))
-    mv_cmd.add_argument(
-        'filenames', nargs='+',
-        help=lang._("The files or directories to copy"))
-    mv_cmd.add_argument(
-        'dest',
-        help=lang._("The directory to move into or the file to replace"))
-    mv_cmd.set_defaults(func=do_mv)
 
     return parser
 
@@ -309,7 +309,7 @@ def do_ls(config):
     key = {
         'none': lambda p: 0,
         'name': lambda p: p.parts,
-        'size': lambda p: p.stat().st_size,
+        'size': lambda p: -p.stat().st_size,
         'extension': lambda p: list(reversed(p.suffixes)),
         'time': lambda p: -p.stat().st_mtime,
     }[config.sort]

@@ -50,74 +50,74 @@ def get_parser():
     parser.add_argument(
         '-v', '--verbose', dest='log_level',
         action='store_const', const=logging.INFO,
-        help=lang._("Print more output"))
+        help=lang._("print more output"))
     parser.add_argument(
         '-q', '--quiet', dest='log_level',
         action='store_const', const=logging.CRITICAL,
-        help=lang._("Print no output"))
+        help=lang._("print no output"))
 
     parser.add_argument(
         'image', type=Path,
-        help=lang._("The target image to customize"))
+        help=lang._("the target image to customize"))
     parser.add_argument(
         '-s', '--size', type=size, default='16GB',
-        help=lang._("The size to expand the image to; default: %(default)s"))
+        help=lang._("the size to expand the image to; default: %(default)s"))
     parser.add_argument(
         '--nbd-host', type=str, metavar='HOST', default=socket.getfqdn(),
         help=lang._(
-            "The hostname of the nbd server to connect to for the root "
+            "the hostname of the nbd server to connect to for the root "
             "device; defaults to the local machine's FQDN"))
     parser.add_argument(
         '--nbd-name', type=str, metavar='NAME', default=None,
         help=lang._(
-            "The name of the nbd share to use as the root device; defaults "
+            "the name of the nbd share to use as the root device; defaults "
             "to the stem of the *image* name"))
     parser.add_argument(
         '--cmdline', type=str, metavar='NAME', default='cmdline.txt',
         help=lang._(
-            "The name of the file containing the kernel command line on the "
+            "the name of the file containing the kernel command line on the "
             "boot partition; default: %(default)s"))
     parser.add_argument(
         '--boot-partition', type=int, metavar='NUM', default=None,
         help=lang._(
-            "Which partition is the boot partition within the image; "
+            "which partition is the boot partition within the image; "
             "default is the first FAT partition (identified by partition "
             "type) found in the image"))
     parser.add_argument(
         '--root-partition', type=int, metavar='NUM', default=None,
         help=lang._(
-            "Which partition is the root partition within the image "
+            "which partition is the root partition within the image "
             "default is the first non-FAT partition (identified by partition "
             "type) found in the image"))
     parser.add_argument(
         '-C', '--copy', type=Path, metavar='PATH', action='append', default=[],
         help=lang._(
-            "Copy the specified file or directory into the boot partition. "
+            "copy the specified file or directory into the boot partition. "
             "This may be given multiple times to specify multiple items to "
             "copy"))
     parser.add_argument(
         '-R', '--remove', type=Path, metavar='PATH', action='append', default=[],
         help=lang._(
-            "Remove the specified file or directory from the boot "
+            "remove the specified file or directory from the boot "
             "partition. This may be given multiple times to specify multiple "
             "items to delete"))
     parser.add_argument(
         '--serial', type=serial, metavar='HEX', default=None,
         help=lang._(
-            "Defines the serial number of the Raspberry Pi that will be "
+            "defines the serial number of the Raspberry Pi that will be "
             "served this image. When this option is given, a board "
             "configuration compatible with nobodd-tftpd may be output with "
             "--tftpd-conf"))
     parser.add_argument(
         '--tftpd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
         help=lang._(
-            "If specified, write a board configuration compatible with "
+            "if specified, write a board configuration compatible with "
             "nobodd-tftpd to the specified file; requires --serial to be "
             "given"))
     parser.add_argument(
         '--nbd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
         help=lang._(
-            "If specified, write a share configuration compatible with "
+            "if specified, write a share configuration compatible with "
             "nbd-server to the specified file"))
 
     defaults = parser.read_configs(CONFIG_LOCATIONS)
