@@ -1534,7 +1534,7 @@ class FatRoot(FatDirectory):
 
     def _update_entry(self, offset, entry):
         # NOTE: We don't use _lock here as the super-class handles all locking
-        # at a coarser level then these low-level routines; we just provide the
+        # at a coarser level than these low-level routines; we just provide the
         # _lock it uses
         if offset >= len(self._mem):
             raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
@@ -1715,6 +1715,7 @@ class FatFile(io.RawIOBase):
         """
         self._map = []
         check = set()
+        # fat.chain does all the locking we need
         for cluster in fs.fat.chain(start):
             if cluster in check:
                 raise ValueError(lang._(
@@ -1784,6 +1785,7 @@ class FatFile(io.RawIOBase):
                 size=new_size,
                 first_cluster_hi=first_cluster >> 16,
                 first_cluster_lo=first_cluster & 0xFFFF)
+            # self._index.__setitem__ does all the locking we need
             self._index[self._get_key()] = entry
             self._entry = entry
 
@@ -1803,6 +1805,7 @@ class FatFile(io.RawIOBase):
             # of reasons (including no more space in the dir). Hence, don't
             # re-write self._entry until it's actually written to disk.
             entry = self._entry._replace(adate=adate)
+            # self._index.__setitem__ does all the locking we need
             self._index[self._get_key()] = entry
             self._entry = entry
 
@@ -1817,7 +1820,7 @@ class FatFile(io.RawIOBase):
                 fs = self._get_fs()
                 ts = dt.datetime.now(tz=fs.tz)
             mdate, mtime, _ = encode_timestamp(ts)
-            # See note above
+            # See notes above
             entry = self._entry._replace(mdate=mdate, mtime=mtime)
             self._index[self._get_key()] = entry
             self._entry = entry
@@ -1832,9 +1835,10 @@ class FatFile(io.RawIOBase):
                 # See note in _set_size
                 assert len(self._map) == 1
                 fs = self._get_fs()
-                fs.fat.mark_free(self._map[0])
-                self._map = []
-                self._set_size(0)
+                with fs.lock.write:
+                    fs.fat.mark_free(self._map[0])
+                    self._map = []
+                    self._set_size(0)
             super().close()
 
     def readable(self):
@@ -1854,8 +1858,10 @@ class FatFile(io.RawIOBase):
         buf = bytearray(max(0, size - self._pos))
         mem = memoryview(buf)
         pos = 0
-        while self._pos < size:
-            pos += self.readinto(mem[pos:])
+        fs = self._get_fs()
+        with fs.lock.read:
+            while self._pos < size:
+                pos += self.readinto(mem[pos:])
         return bytes(buf)
 
     def readinto(self, buf):
@@ -1892,28 +1898,30 @@ class FatFile(io.RawIOBase):
             # count towards written
             self.truncate()
         written = 0
-        try:
-            while mem:
-                # Alternate between filling a cluster with _write1, and
-                # allocating a new cluster. This is far from the most efficient
-                # method (we're not taking account of whether any clusters are
-                # actually contiguous), but it is simple!
-                w = self._write1(mem, fs)
-                if w:
-                    written += w
-                    mem = mem[w:]
-                else:
-                    # TODO In event of ENOSPC, raise or return written so far?
-                    for cluster in fs.fat.free():
-                        fs.fat.mark_end(cluster)
-                        if self._map:
-                            fs.fat[self._map[-1]] = cluster
-                        self._map.append(cluster)
-                        break
-        finally:
-            if self._pos > size:
-                self._set_size(self._pos)
-            self._set_mtime()
+        with fs.lock.write:
+            try:
+                while mem:
+                    # Alternate between filling a cluster with _write1, and
+                    # allocating a new cluster. This is far from the most
+                    # efficient method (we're not taking account of whether any
+                    # clusters are actually contiguous), but it is simple!
+                    w = self._write1(mem, fs)
+                    if w:
+                        written += w
+                        mem = mem[w:]
+                    else:
+                        # TODO In event of ENOSPC, raise or return written so
+                        # far?
+                        for cluster in fs.fat.free():
+                            fs.fat.mark_end(cluster)
+                            if self._map:
+                                fs.fat[self._map[-1]] = cluster
+                            self._map.append(cluster)
+                            break
+            finally:
+                if self._pos > size:
+                    self._set_size(self._pos)
+                self._set_mtime()
         return written
 
     def _write1(self, buf, fs=None):
@@ -1923,6 +1931,7 @@ class FatFile(io.RawIOBase):
         advancing the position of the file-pointer. If the current position is
         beyond the end of the file, this method writes nothing and return 0.
         """
+        # Locking handled by callers; this is internal
         self._check_closed()
         if fs is None:
             fs = self._get_fs()
@@ -1968,39 +1977,40 @@ class FatFile(io.RawIOBase):
         if size == old_size:
             return size
         clusters = max(1, (size + cs - 1) // cs)
-        if size > old_size:
-            # If we're expanding the size of the file, zero the tail of the
-            # current final cluster; this is necessary whether or not we're
-            # expanding the actual number of clusters in the file. Note we
-            # don't bother calculating exactly how many bytes to zero; we just
-            # zero everything from the current size up to the end of the
-            # cluster because that's fine in either case
-            tail = len(self._map) * cs - old_size
-            if tail:
-                fs.clusters[self._map[-1]][-tail:] = b'\0' * tail
-        if clusters > len(self._map):
-            # Pre-calculate the clusters we're going to append. We don't want
-            # to add any if we can't add them all. We then mark the clusters
-            # in the FAT in reverse order, zeroing new blocks as we go so that
-            # the final extension of the file is effectively atomic (from a
-            # concurrent reader's perspective)
-            to_append = list(islice(fs.fat.free(), clusters - len(self._map)))
-            fs.fat.mark_end(to_append[-1])
-            zeros = b'\0' * cs
-            for next_c, this_c in pairwise(reversed([self._map[-1]] + to_append)):
-                fs.clusters[next_c] = zeros
-                fs.fat[this_c] = next_c
-            self._map.extend(to_append)
-        elif clusters < len(self._map):
-            # We start by marking the new end cluster, which atomically
-            # shortens the FAT chain for the file, then proceed to mark all the
-            # removed clusters as free
-            to_remove = self._map[len(self._map) - clusters:]
-            fs.fat.mark_end(self._map[clusters - 1])
-            del self._map[clusters:]
-            for cluster in to_remove:
-                fs.fat.mark_free(cluster)
-        # Finally, correct the directory entry to reflect the new size
-        self._set_size(size)
-        self._set_mtime()
+        with fs.lock.write:
+            if size > old_size:
+                # If we're expanding the size of the file, zero the tail of the
+                # current final cluster; this is necessary whether or not we're
+                # expanding the actual number of clusters in the file. Note we
+                # don't bother calculating exactly how many bytes to zero; we
+                # just zero everything from the current size up to the end of
+                # the cluster because that's fine in either case
+                tail = len(self._map) * cs - old_size
+                if tail:
+                    fs.clusters[self._map[-1]][-tail:] = b'\0' * tail
+            if clusters > len(self._map):
+                # Pre-calculate the clusters we're going to append. We don't
+                # want to add any if we can't add them all. We then mark the
+                # clusters in the FAT in reverse order, zeroing new blocks as
+                # we go so that the final extension of the file is effectively
+                # atomic (from a concurrent reader's perspective)
+                to_append = list(islice(fs.fat.free(), clusters - len(self._map)))
+                fs.fat.mark_end(to_append[-1])
+                zeros = b'\0' * cs
+                for next_c, this_c in pairwise(reversed([self._map[-1]] + to_append)):
+                    fs.clusters[next_c] = zeros
+                    fs.fat[this_c] = next_c
+                self._map.extend(to_append)
+            elif clusters < len(self._map):
+                # We start by marking the new end cluster, which atomically
+                # shortens the FAT chain for the file, then proceed to mark all
+                # the removed clusters as free
+                to_remove = self._map[len(self._map) - clusters:]
+                fs.fat.mark_end(self._map[clusters - 1])
+                del self._map[clusters:]
+                for cluster in to_remove:
+                    fs.fat.mark_free(cluster)
+            # Finally, correct the directory entry to reflect the new size
+            self._set_size(size)
+            self._set_mtime()
         return size
