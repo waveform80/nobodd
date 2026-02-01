@@ -186,7 +186,6 @@ class FatPath:
         Internal method which is called to check that a constructed path
         actually exists in the file-system. Calls :meth:`_resolve` implicitly.
         """
-        self._resolve()
         if not self.exists():
             raise FileNotFoundError(lang._(
                 'No such file or directory: {self}'.format(self=self)))
@@ -196,7 +195,6 @@ class FatPath:
         Internal method which is called to check that a constructed path
         does not exist in the file-system. Calls :meth:`_resolve` implicitly.
         """
-        self._resolve()
         if self.exists():
             raise FileExistsError(lang._(
                 'File exists: {self}'.format(self=self)))
@@ -206,7 +204,6 @@ class FatPath:
         Internal method which is called to check that a constructed path is a
         directory. Calls :meth:`_resolve` implicitly.
         """
-        self._resolve()
         if not self.is_dir():
             raise NotADirectoryError(lang._(
                 'Not a directory: {self}'.format(self=self)))
@@ -216,7 +213,6 @@ class FatPath:
         Internal method which is called to check that a constructed path is not
         a directory. Calls :meth:`_resolve` implicitly.
         """
-        self._resolve()
         if self.is_dir():
             raise IsADirectoryError(lang._(
                 'Is a directory: {self}'.format(self=self)))
