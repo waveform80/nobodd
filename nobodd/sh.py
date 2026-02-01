@@ -8,7 +8,13 @@
 """
 Run shell-like commands against the file-system and/or FAT partitions within
 file-system image. This is intended for use in scripting the preparation of
-images for use with the :program:`nobodd-tftpd` server.
+images for use with the nobodd-tftpd server. Filenames will be parsed as
+regular filenames unless they contain ":/" or ":N/" where N is a partition
+number. If so, the portion before ":" is treated as an image file, the N
+(if specified) the partition within that image (the first auto-detected FAT
+partition is used if N is not specified), and the portion from "/" onwards as
+an absolute path within that partition. As such the application may be used to
+copy (or move) files to / from / within FAT file-systems within images.
 """
 
 import os
@@ -38,6 +44,11 @@ from .config import ConfigArgumentParser
 
 
 class StdPath:
+    """
+    A rudimentary path-like object representing stdin / stdout. Only supports
+    the :attr:`name` property, and the :meth:`open` and :meth:`unlink`
+    methods.
+    """
     def __init__(self, for_write):
         self._for_write = for_write
 
@@ -46,9 +57,15 @@ class StdPath:
 
     @property
     def name(self):
+        """
+        Returns the name of the standard stream this path represents.
+        """
         return 'stdout' if self._for_write else 'stdin'
 
     def open(self, mode):
+        """
+        Returns the standard stream represented by the path.
+        """
         if self._for_write and set(mode) == {'w', 'b'}:
             return sys.stdout.buffer
         elif not self._for_write and set(mode) == {'r', 'b'}:
@@ -58,6 +75,9 @@ class StdPath:
                 f'Cannot open {self.name} with mode {mode!r}')
 
     def unlink(self):
+        """
+        Raises an error 
+        """
         raise FileNotFoundError(f'Cannot unlink {self.name}')
 
 
@@ -137,11 +157,7 @@ def get_parser():
     commands = parser.add_subparsers(title=lang._("commands"))
 
     help_cmd = commands.add_parser(
-        'help',
-        description=lang._(
-            "With no arguments, displays a list of %(prog)s commands. If a "
-            "command name is given, displays the description and options "
-            "for the named command"),
+        'help', description=lang._(do_help.__doc__),
         help=lang._("Displays help for the specified command"))
     help_cmd.add_argument(
         'cmd', metavar='command', nargs='?',
@@ -149,13 +165,7 @@ def get_parser():
     help_cmd.set_defaults(func=do_help)
 
     cat_cmd = commands.add_parser(
-        'cat',
-        description=lang._(
-            "Concatenate content from the given files, writing it to "
-            "stdout by default. If - is given as a filename, or if no "
-            "filenames are specified, stdin is read. In order to permit "
-            "output to a file within an image, -o is provided to specify "
-            "an output other than stdout"),
+        'cat', description=lang._(do_cat.__doc__),
         help=lang._("Concatenate content into a single output"))
     cat_cmd.add_argument(
         'filenames', nargs='*',
@@ -166,9 +176,7 @@ def get_parser():
     cat_cmd.set_defaults(func=do_cat)
 
     rm_cmd = commands.add_parser(
-        'rm',
-        description=lang._(
-            "Removes the files or directories specified"),
+        'rm', description=lang._(do_rm.__doc__),
         help=lang._("Removes files or directories"))
     rm_cmd.add_argument(
         'filenames', nargs='+',
@@ -183,9 +191,7 @@ def get_parser():
     rm_cmd.set_defaults(func=do_rm)
 
     rmdir_cmd = commands.add_parser(
-        'rmdir',
-        description=lang._(
-            "Removes the directories specified, which must be empty"),
+        'rmdir', description=lang._(do_rmdir.__doc__),
         help=lang._("Remove empty directories"))
     rmdir_cmd.add_argument(
         'filenames', nargs='+',
@@ -193,10 +199,7 @@ def get_parser():
     rmdir_cmd.set_defaults(func=do_rmdir)
 
     mkdir_cmd = commands.add_parser(
-        'mkdir',
-        description=lang._(
-            "Creates the directories specified, which must not exist either "
-            "as directories or regular files"),
+        'mkdir', description=lang._(do_mkdir.__doc__),
         help=lang._("Make directories"))
     mkdir_cmd.add_argument(
         'filenames', nargs='+',
@@ -207,10 +210,7 @@ def get_parser():
     mkdir_cmd.set_defaults(func=do_mkdir)
 
     touch_cmd = commands.add_parser(
-        'touch',
-        description=lang._(
-            "Update last modified timestamps, creating any files that do not "
-            "already exist"),
+        'touch', description=lang._(do_touch.__doc__),
         help=lang._("Update file timestamps"))
     touch_cmd.add_argument(
         'filenames', nargs='+',
@@ -218,10 +218,7 @@ def get_parser():
     touch_cmd.set_defaults(func=do_touch)
 
     ls_cmd = commands.add_parser(
-        'ls',
-        description=lang._(
-            "List information about the files, or the contents of the "
-            "directories given. Entries will be sorted alphabetically"),
+        'ls', description=lang._(do_ls.__doc__),
         help=lang._("List directory contents"))
     ls_cmd.add_argument(
         'filenames', nargs='+',
@@ -250,11 +247,7 @@ def get_parser():
     ls_cmd.set_defaults(func=do_ls)
 
     cp_cmd = commands.add_parser(
-        'cp',
-        description=lang._(
-            "Copy the specified file over the target file, if only one source "
-            "is given, or copy the specified files and directories into the "
-            "target directory, if the target is a directory"),
+        'cp', description=lang._(do_cp.__doc__),
         help=lang._("Copy files and directories"))
     cp_cmd.add_argument(
         'filenames', nargs='+',
@@ -265,11 +258,7 @@ def get_parser():
     cp_cmd.set_defaults(func=do_cp)
 
     mv_cmd = commands.add_parser(
-        'mv',
-        description=lang._(
-            "Move the specified file over the target file, if only one source "
-            "is given, or move the specified files and directories into the "
-            "target directory, if the target is a directory"),
+        'mv', description=lang._(do_mv.__doc__),
         help=lang._("Move files and directories"))
     mv_cmd.add_argument(
         'filenames', nargs='+',
@@ -283,6 +272,10 @@ def get_parser():
 
 
 def do_help(config):
+    """
+    With no arguments, displays a list of %(prog)s commands. If a command name
+    is given, displays the description and options for the named command.
+    """
     if config.cmd is not None:
         get_parser().parse_args([config.cmd, '-h'])
     else:
@@ -290,6 +283,12 @@ def do_help(config):
 
 
 def do_cat(config):
+    """
+    Concatenate content from the given files, writing it to stdout by default.
+    If - is given as a filename, or if no filenames are specified, stdin is
+    read. In order to permit output to a file within an image, -o is provided
+    to specify an output other than stdout.
+    """
     with get_paths(config.filenames, [config.output], allow_std=True) as paths:
         with paths[config.output].open('wb') as out_f:
             for filename in config.filenames:
@@ -299,6 +298,12 @@ def do_cat(config):
 
 
 def do_ls(config):
+    """
+    List information about the files, or the contents of the directories given.
+    Entries will be sorted alphabetically, unless another ordering is
+    explicitly specified. By default, hidden files (beginning with ".") are
+    excluded from the output, unless -a is provided.
+    """
     key = {
         'none': lambda p: 0,
         'name': lambda p: p.name,
@@ -343,6 +348,10 @@ def do_ls(config):
 
 
 def do_rm(config):
+    """
+    Removes the files specified. If -r is given, will recursively remove
+    directories and their contents as well.
+    """
     def _remove_dir(path):
         for p in path.iterdir():
             if p.is_dir():
@@ -365,6 +374,9 @@ def do_rm(config):
 
 
 def do_rmdir(config):
+    """
+    Removes the directories specified, which must be empty.
+    """
     with get_paths([], config.filenames) as paths:
         for filename in config.filenames:
             path = paths[filename]
@@ -372,6 +384,10 @@ def do_rmdir(config):
 
 
 def do_mkdir(config):
+    """
+    Creates the directories specified, which must not exist either as
+    directories or regular files.
+    """
     with get_paths([], config.filenames) as paths:
         for filename in config.filenames:
             path = paths[filename]
@@ -387,6 +403,10 @@ def do_mkdir(config):
 
 
 def do_touch(config):
+    """
+    Update last modified timestamps, creating any files that do not already
+    exist.
+    """
     with get_paths([], config.filenames) as paths:
         for filename in config.filenames:
             path = paths[filename]
@@ -394,6 +414,11 @@ def do_touch(config):
 
 
 def do_cp(config):
+    """
+    Copy the specified file over the target file, if only one source is given,
+    or copy the specified files and directories into the target directory, if
+    the target is a directory.
+    """
     # TODO: Implement -r
     def _copy(source, dest):
         if source.is_dir():
@@ -420,6 +445,11 @@ def do_cp(config):
 
 
 def do_mv(config):
+    """
+    Move the specified file over the target file, if only one source is given,
+    or move the specified files and directories into the target directory, if
+    the target is a directory.
+    """
     def _move(source, dest):
         if source.is_dir():
             if any(source.iterdir()):
@@ -448,6 +478,16 @@ def do_mv(config):
 
 
 def same_fs(path1, path2):
+    """
+    Test whether *path1* and *path2* (both either :class:`~pathlib.Path` or
+    :class:`~nobodd.path.FatPath` instances) are part of the same file-system.
+
+    Note that this does *not* mean part of the same mount in the Linux
+    file-system. This returns :data:`True` if both paths are
+    :class:`~pathlib.Path` instances, or if both paths are
+    :class:`~nobodd.path.FatPath` instances and both belong to the same
+    :class:`~nobodd.fs.FatFileSystem` instance.
+    """
     return (
         (
             # Both paths are in the Linux file-system
