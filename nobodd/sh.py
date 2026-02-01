@@ -304,18 +304,19 @@ def do_ls(config):
     explicitly specified. By default, hidden files (beginning with ".") are
     excluded from the output, unless -a is provided.
     """
+    now = dt.datetime.now(tz=dt.timezone.utc)
     key = {
         'none': lambda p: 0,
-        'name': lambda p: p.name,
+        'name': lambda p: p.parts,
         'size': lambda p: p.stat().st_size,
         'extension': lambda p: list(reversed(p.suffixes)),
-        'time': lambda p: p.stat().st_mtime,
+        'time': lambda p: -p.stat().st_mtime,
     }[config.sort]
+    key2 = lambda p: key(p[1])
 
-    def print_entry(path):
+    def print_entry(filename, path):
         if config.long:
             st = path.stat()
-            now = dt.datetime.now(tz=dt.timezone.utc)
             mtime = dt.datetime.fromtimestamp(st.st_mtime, tz=dt.timezone.utc)
             fmt = (
                 '%b %-2d %H:%M' if now - mtime < dt.timedelta(days=183) else
@@ -327,24 +328,27 @@ def do_ls(config):
                 f'{grp.getgrgid(st.st_gid).gr_name} '
                 f'{st.st_size:8d} '
                 f'{mtime:{fmt}} '
-                f'{path.name}'
+                f'{filename}'
             )
         else:
-            print(path.name)
+            print(filename)
 
     with get_paths(config.filenames, []) as paths:
-        for index, filename in enumerate(config.filenames):
-            if len(config.filenames) > 1:
-                if index > 0:
-                    print()
-                print(f'{filename}:')
-            path = paths[filename]
+        first_line = True
+        for filename, path in sorted(paths.items(), key=key2):
+            if path.is_file():
+                print_entry(filename, path)
+                first_line = False
+        for filename, path in sorted(paths.items(), key=key2):
             if path.is_dir():
+                if not first_line:
+                    print()
+                first_line = False
+                if len(paths) > 1:
+                    print(f'{filename}:')
                 for entry in sorted(path.iterdir(), key=key):
                     if config.all or not entry.name.startswith('.'):
-                        print_entry(entry)
-            else:
-                print_entry(path)
+                        print_entry(entry.name, entry)
 
 
 def do_rm(config):
