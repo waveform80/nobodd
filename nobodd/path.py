@@ -137,17 +137,18 @@ class FatPath:
                 raise ValueError(lang._('relative FatPath cannot be resolved'))
             fs = self._get_fs()
             path = fs.root
-            while parts:
-                path._must_exist()
-                path._must_be_dir()
-                head, *parts = parts
-                try:
-                    path = FatPath._from_entry(
-                        fs, path._index, path._index[head],
-                        str(path / head))
-                except KeyError:
-                    # Path doesn't exist
-                    return
+            with fs.lock.read:
+                while parts:
+                    path._must_exist()
+                    path._must_be_dir()
+                    head, *parts = parts
+                    try:
+                        path = FatPath._from_entry(
+                            fs, path._index, path._index[head],
+                            str(path / head))
+                    except KeyError:
+                        # Path doesn't exist
+                        return
             self._index = path._index
             self._entry = path._entry
         finally:
@@ -238,47 +239,7 @@ class FatPath:
                 'creation mode'))
         if fs.readonly and set(mode) & set('wax+'):
             raise PermissionError(lang._('fs is read-only'))
-        if 'r' in mode:
-            self._must_exist()
-        elif 'x' in mode:
-            self._must_not_exist()
-            mode = mode.replace('x', 'w')
-        self._must_not_be_dir()
-
-        # If self._entry is None at this point, we must be creating a file
-        # so get the containing index and make an appropriate DirectoryEntry
-        if self._entry is None:
-            date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
-            parent = self.parent
-            parent._must_exist()
-            parent._must_be_dir()
-            entry = DirectoryEntry(
-                # filename and ext of the entry will be ignored; generated
-                # SFN will be used instead
-                filename=b'\0' * 8, ext=b'\0' * 3,
-                # Set DOS "Archive" bit and nothing else
-                attr=0x20, attr2=0,
-                cdate=date, ctime=time, ctime_cs=cs,
-                mdate=date, mtime=time,
-                adate=date,
-                first_cluster_lo=0, first_cluster_hi=0, size=0)
-            parent._index[self.name] = entry
-            self._index = parent._index
-            # Look up entry to get generated SFN; this is required so the entry
-            # we pass to FatFile below has a valid key for later lookups
-            self._entry = parent._index[self.name]
-        else:
-            self._refresh()
-
-        # Sanity check the buffering parameter and create the underlying
-        # FatFile instance with an appropriate mode
         if 'b' in mode:
-            if buffering == 1:
-                warnings.warn(
-                    RuntimeWarning(
-                        "line buffering (buffering=1) isn't supported in "
-                        "binary mode, the default buffer size will be used"))
-                buffering = -1
             if encoding is not None:
                 raise ValueError(lang._(
                     "binary mode doesn't take an encoding argument"))
@@ -288,16 +249,63 @@ class FatPath:
             if newline is not None:
                 raise ValueError(lang._(
                     "binary mode doesn't take a newline argument"))
-            f = fs.open_entry(self._index, self._entry, mode)
-        else:
-            if buffering == 0:
-                raise ValueError(lang._("can't have unbuffered text I/O"))
+        elif buffering == 0:
+            raise ValueError(lang._("can't have unbuffered text I/O"))
+
+        lock = (
+            fs.lock.read if set(mode) & set('r+') == {'r'} else
+            fs.lock.write)
+        with lock:
+            if 'r' in mode:
+                self._must_exist()
+            elif 'x' in mode:
+                self._must_not_exist()
+                mode = mode.replace('x', 'w')
+            self._must_not_be_dir()
+
+            # If self._entry is None at this point, we're creating a file so
+            # get the containing index and make an appropriate DirectoryEntry
+            if self._entry is None:
+                date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
+                parent = self.parent
+                parent._must_exist()
+                parent._must_be_dir()
+                entry = DirectoryEntry(
+                    # filename and ext of the entry will be ignored; generated
+                    # SFN will be used instead
+                    filename=b'\0' * 8, ext=b'\0' * 3,
+                    # Set DOS "Archive" bit and nothing else
+                    attr=0x20, attr2=0,
+                    cdate=date, ctime=time, ctime_cs=cs,
+                    mdate=date, mtime=time,
+                    adate=date,
+                    first_cluster_lo=0, first_cluster_hi=0, size=0)
+                parent._index[self.name] = entry
+                self._index = parent._index
+                # Re-get the entry to obtain the generated SFN; required so
+                # the entry we pass to FatFile (below) has a valid key
+                self._entry = parent._index[self.name]
+            else:
+                self._refresh()
+
+            # Sanity check the buffering parameter and create the underlying
+            # FatFile instance with an appropriate mode
+            if 'b' in mode:
+                if buffering == 1:
+                    warnings.warn(
+                        RuntimeWarning(
+                            "line buffering (buffering=1) isn't supported in "
+                            "binary mode, the default buffer size will be "
+                            "used"))
+                    buffering = -1
+                f = fs.open_entry(self._index, self._entry, mode)
             else:
                 line_buffering = buffering == 1
-            f = fs.open_entry(self._index, self._entry, mode + 'b')
+                f = fs.open_entry(self._index, self._entry, mode + 'b')
 
         # Wrap the underlying FatFile instance in whatever's necessary to make
-        # it text-mode / buffered
+        # it text-mode / buffered; this is done outside the locked section as
+        # it doesn't actually involve any I/O
         if buffering:
             if buffering in (-1, 1):
                 buffering = fs.clusters.size
@@ -323,19 +331,20 @@ class FatPath:
         be ignored (same behaviour as the POSIX ``rm -f`` command).
         """
         fs = self._get_fs()
-        try:
-            self._must_exist()
-        except FileNotFoundError:
-            if missing_ok:
-                return
-            else:
-                raise
-        self._must_not_be_dir()
+        with fs.lock.write:
+            try:
+                self._must_exist()
+            except FileNotFoundError:
+                if missing_ok:
+                    return
+                else:
+                    raise
+            self._must_not_be_dir()
 
-        self._refresh()
-        del self._index[self.name]
-        for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
-            fs.fat.mark_free(cluster)
+            self._refresh()
+            del self._index[self.name]
+            for cluster in fs.fat.chain(get_cluster(self._entry, fs.fat_type)):
+                fs.fat.mark_free(cluster)
         self._index = None
         self._entry = None
 
@@ -372,25 +381,26 @@ class FatPath:
             raise ValueError(lang._(
                 'Cannot rename between FatFileSystem instances'))
 
-        if target.exists():
-            target._must_not_be_dir()
-            target._refresh()
-            target_cluster = get_cluster(target._entry, fs.fat_type)
-        else:
-            target.touch()
-            target_cluster = 0
-        self._refresh()
-        target._index[target.name] = self._entry
-        del self._index[self.name]
-        if target_cluster:
-            for cluster in fs.fat.chain(target_cluster):
-                fs.fat.mark_free(cluster)
-        self._index = None
-        self._entry = None
-        # The entry is mutated by the FatDirectory when setting (specifically
-        # the SFN is re-written); in case the *target* is not ephemeral, update
-        # its internal _entry to match to mutated one
-        target._entry = target._index[target.name]
+        with fs.lock.write:
+            if target.exists():
+                target._must_not_be_dir()
+                target._refresh()
+                target_cluster = get_cluster(target._entry, fs.fat_type)
+            else:
+                target.touch()
+                target_cluster = 0
+            self._refresh()
+            target._index[target.name] = self._entry
+            del self._index[self.name]
+            if target_cluster:
+                for cluster in fs.fat.chain(target_cluster):
+                    fs.fat.mark_free(cluster)
+            self._index = None
+            self._entry = None
+            # The entry is mutated by the FatDirectory when setting
+            # (specifically the SFN is re-written); in case the *target* is not
+            # ephemeral, update its internal _entry to match to mutated one
+            target._entry = target._index[target.name]
         return target
 
     def mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -413,76 +423,81 @@ class FatPath:
         the last path component is not an existing non-directory file.
         """
         fs = self._get_fs()
-        try:
-            self._must_not_exist()
-        except FileExistsError:
-            if exist_ok and self.is_dir():
-                return
+        with fs.lock.write:
+            try:
+                self._must_not_exist()
+            except FileExistsError:
+                if exist_ok and self.is_dir():
+                    return
+                else:
+                    raise
+            parent = self.parent
+            try:
+                parent._must_exist()
+            except FileNotFoundError:
+                if parents:
+                    parent.mkdir(mode, parents, exist_ok)
+                else:
+                    raise
+            parent._must_be_dir()
+
+            date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
+            cluster = next(fs.fat.free())
+            fs.fat.mark_end(cluster)
+
+            entry = DirectoryEntry(
+                # filename and ext of the entry will be ignored and overwritten
+                # with SFN generated from the associated name
+                filename=b'\0' * 8, ext=b'\0' * 3,
+                # Set DOS "Directory" bit and nothing else
+                attr=0x10, attr2=0,
+                cdate=date, ctime=time, ctime_cs=cs,
+                mdate=date, mtime=time,
+                adate=date,
+                first_cluster_lo=cluster & 0xFFFF,
+                first_cluster_hi=
+                    cluster >> 16 if fs.fat_type == 'fat32' else 0,
+                size=0)
+            parent._index[self.name] = entry
+            self._index = fs.open_dir(cluster)
+            self._entry = entry
+
+            # Write the minimum entries that all sub-dirs must have: the "."
+            # and ".." entries, and a terminal EOF entry
+            # TODO: Where are we setting the initial EOF? What happens if the
+            # cluster isn't zeroed?
+            self._index['.'] = self._entry
+            if parent._entry is None:
+                # Parent is the root
+                self._index['..'] = self._entry._replace(
+                    first_cluster_hi=0, first_cluster_lo=0)
             else:
-                raise
-        parent = self.parent
-        try:
-            parent._must_exist()
-        except FileNotFoundError:
-            if parents:
-                parent.mkdir(mode, parents, exist_ok)
-            else:
-                raise
-        parent._must_be_dir()
-
-        date, time, cs = encode_timestamp(dt.datetime.now(tz=fs.tz))
-        cluster = next(fs.fat.free())
-        fs.fat.mark_end(cluster)
-
-        entry = DirectoryEntry(
-            # filename and ext of the entry will be ignored and overwritten
-            # with SFN generated from the associated name
-            filename=b'\0' * 8, ext=b'\0' * 3,
-            # Set DOS "Directory" bit and nothing else
-            attr=0x10, attr2=0,
-            cdate=date, ctime=time, ctime_cs=cs,
-            mdate=date, mtime=time,
-            adate=date,
-            first_cluster_lo=cluster & 0xFFFF,
-            first_cluster_hi=cluster >> 16 if fs.fat_type == 'fat32' else 0,
-            size=0)
-        parent._index[self.name] = entry
-        self._index = fs.open_dir(cluster)
-        self._entry = entry
-
-        # Write the minimum entries that all sub-dirs must have: the "." and
-        # ".." entries, and a terminal EOF entry
-        self._index['.'] = self._entry
-        if parent._entry is None:
-            # Parent is the root
-            self._index['..'] = self._entry._replace(
-                first_cluster_hi=0, first_cluster_lo=0)
-        else:
-            self._index['..'] = parent._entry
+                self._index['..'] = parent._entry
 
     def rmdir(self):
         """
         Remove this directory. The directory must be empty.
         """
         fs = self._get_fs()
-        self._must_exist()
-        self._must_be_dir()
-        if self._entry is not None:
-            cluster = get_cluster(self._entry, fs.fat_type)
-        else:
-            cluster = 0
-        if cluster == 0:
-            raise OSError(errno.EACCES, lang._(
-                'Cannot remove the root directory'))
-        for item in self.iterdir():
-            raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
+        with fs.lock.write:
+            self._must_exist()
+            self._must_be_dir()
+            if self._entry is not None:
+                cluster = get_cluster(self._entry, fs.fat_type)
+            else:
+                cluster = 0
+            if cluster == 0:
+                raise OSError(errno.EACCES, lang._(
+                    'Cannot remove the root directory'))
+            for item in self.iterdir():
+                raise OSError(errno.ENOTEMPTY, os.strerror(errno.ENOTEMPTY))
 
-        parent = self.resolve(strict=False).parent
-        # NOTE: We already know parent must exist and be a dir
-        parent._resolve()
-        del parent._index[self.name]
-        for cluster in fs.fat.chain(cluster):
-            fs.fat.mark_free(cluster)
+            parent = self.resolve(strict=False).parent
+            # NOTE: We already know parent must exist and be a dir
+            parent._resolve()
+            del parent._index[self.name]
+            for cluster in fs.fat.chain(cluster):
+                fs.fat.mark_free(cluster)
         self._index = None
         self._entry = None
 
@@ -538,12 +553,13 @@ class FatPath:
         not included.
         """
         fs = self._get_fs()
-        self._must_exist()
-        self._must_be_dir()
-        for name, entry in self._index.items():
-            if name not in ('.', '..'):
-                yield FatPath._from_entry(
-                    fs, self._index, entry, str(self / name))
+        with fs.lock.read:
+            self._must_exist()
+            self._must_be_dir()
+            for name, entry in self._index.items():
+                if name not in ('.', '..'):
+                    yield FatPath._from_entry(
+                        fs, self._index, entry, str(self / name))
 
     def match(self, pattern):
         """
@@ -650,26 +666,30 @@ class FatPath:
             Using the "``**``" pattern in large directory trees may consume an
             inordinate amount of time.
         """
-        self._must_exist()
         if not pattern:
             raise ValueError(lang._('Unacceptable pattern'))
         pat_parts = get_parts(pattern)
         if pat_parts[:1] == ('',):
             raise ValueError(lang._('Non-relative patterns are not supported'))
-        yield from self._search(self, pat_parts)
+        fs = self._get_fs()
+        with fs.lock.read:
+            self._must_exist()
+            yield from self._search(self, pat_parts)
 
     def rglob(self, pattern):
         """
         This is like calling :meth:`glob` with a prefix of "``**/``" to the
         specified *pattern*.
         """
-        self._must_exist()
         if not pattern:
             raise ValueError(lang._('Unacceptable pattern'))
         pat_parts = get_parts(pattern)
         if pat_parts[:1] == ('',):
             raise ValueError(lang._('Non-relative patterns are not supported'))
-        yield from self._search(self, ('**',) + pat_parts)
+        fs = self._get_fs()
+        with fs.lock.read:
+            self._must_exist()
+            yield from self._search(self, ('**',) + pat_parts)
 
     def stat(self, *, follow_symlinks=True):
         """
@@ -884,8 +904,10 @@ class FatPath:
             >>> (fs.root / 'foo').read_text()
             'foo\\n'
         """
-        with self.open(encoding=encoding, errors=errors) as f:
-            return f.read()
+        fs = self._get_fs()
+        with fs.lock.read:
+            with self.open(encoding=encoding, errors=errors) as f:
+                return f.read()
 
     def write_text(self, data, encoding=None, errors=None, newline=None):
         """
@@ -901,9 +923,11 @@ class FatPath:
         An existing file of the same name is overwritten. The optional
         parameters have the same meaning as in :meth:`open`.
         """
-        with self.open(mode='w', encoding=encoding, errors=errors,
-                       newline=newline) as f:
-            return f.write(data)
+        fs = self._get_fs()
+        with fs.lock.write:
+            with self.open(mode='w', encoding=encoding, errors=errors,
+                           newline=newline) as f:
+                return f.write(data)
 
     def read_bytes(self):
         """
@@ -914,8 +938,10 @@ class FatPath:
             >>> (fs.root / 'foo').read_text()
             b'foo\\n'
         """
-        with self.open(mode='rb') as f:
-            return f.read()
+        fs = self._get_fs()
+        with fs.lock.read:
+            with self.open(mode='rb') as f:
+                return f.read()
 
     def write_bytes(self, data):
         """
@@ -930,8 +956,10 @@ class FatPath:
 
         An existing file of the same name is overwritten.
         """
-        with self.open(mode='wb') as f:
-            return f.write(data)
+        fs = self._get_fs()
+        with fs.lock.write:
+            with self.open(mode='wb') as f:
+                return f.write(data)
 
     def touch(self, mode=0o666, exist_ok=True):
         """
@@ -941,12 +969,14 @@ class FatPath:
         :data:`True` (and its modification time is updated to the current
         time), otherwise :exc:`FileExistsError` is raised.
         """
-        if exist_ok:
-            with self.open('ab', buffering=0) as f:
-                f._set_mtime()
-        else:
-            with self.open('xb', buffering=0) as f:
-                pass
+        fs = self._get_fs()
+        with fs.lock.write:
+            if exist_ok:
+                with self.open('ab', buffering=0) as f:
+                    f._set_mtime()
+            else:
+                with self.open('xb', buffering=0) as f:
+                    pass
 
     def exists(self):
         """
