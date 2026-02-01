@@ -81,8 +81,7 @@ these applications.
 
     api_server
     api_prep
-    api_config
-    api_systemd
+    api_sh
 
 
 Miscellaneous
@@ -98,3 +97,5 @@ implementation with re-entrancy.
 
     api_tools
     api_locks
+    api_config
+    api_systemd
