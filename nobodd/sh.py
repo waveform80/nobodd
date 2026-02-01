@@ -91,6 +91,7 @@ def get_paths(inputs, outputs, *, allow_std=False):
     :class:`dict` mapping each filename to a :class:`~pathlib.Path` or
     :class:`~nobodd.path.FatPath` instance.
     """
+    # TODO: Calculate automatic partition number (don't just default to 1)
     paths = [
         (path, None, None, path, for_write)
         if (match := _image_re.match(path)) is None else
