@@ -15,7 +15,7 @@ Defines the data structures used by `GUID Partition Tables`_. You should never
 need these directly; use the :class:`nobodd.disk.DiskImage` class instead.
 
 
-Data Structures
+Data structures
 ===============
 
 .. autoclass:: GPTHeader

@@ -15,7 +15,7 @@ This module contains the implementation (and entry point) of the
 :program:`nobodd-prep` application.
 
 
-Application Functions
+Application functions
 =====================
 
 .. autofunction:: main

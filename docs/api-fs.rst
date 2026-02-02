@@ -56,7 +56,7 @@ FatFile
 .. autoclass:: FatFile
 
 
-Exceptions and Warnings
+Exceptions and warnings
 =======================
 
 .. autoexception:: FatWarning
@@ -70,7 +70,7 @@ Exceptions and Warnings
 .. autoexception:: BadLongFilename
 
 
-Internal Classes and Functions
+Support classes and functions
 ==============================
 
 You should never need to interact with these classes directly; use

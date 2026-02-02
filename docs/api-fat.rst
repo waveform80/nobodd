@@ -17,7 +17,7 @@ need these directly; use the :class:`nobodd.fs.FatFileSystem` class instead.
 .. _FAT: https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 
 
-Data Structures
+Data structures
 ===============
 
 .. autoclass:: BIOSParameterBlock
@@ -33,8 +33,8 @@ Data Structures
 .. autoclass:: LongFilenameEntry
 
 
-Functions
-=========
+Support functions
+=================
 
 These utility functions help decode certain fields within the aforementioned
 structure, or check that tentative contents are valid.

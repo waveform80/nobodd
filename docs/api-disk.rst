@@ -84,7 +84,7 @@ DiskPartition
 .. autoclass:: DiskPartition
 
 
-Internal Classes
+Support classes
 ================
 
 You should not need to use these classes directly; they will be instantiated

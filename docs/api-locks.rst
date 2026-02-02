@@ -21,7 +21,7 @@ Classes
 .. autoclass:: LightSwitch
 
 
-Internal Functions
+Support functions
 ==================
 
 .. autofunction:: remaining

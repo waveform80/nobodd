@@ -29,7 +29,7 @@ directory on (unprivileged) port 1069:
     >>> server.serve_forever()
 
 
-Handler Classes
+Handler classes
 ===============
 
 .. autoclass:: TFTPBaseHandler
@@ -37,7 +37,7 @@ Handler Classes
 .. autoclass:: SimpleTFTPHandler
 
 
-Server Classes
+Server classes
 ==============
 
 .. autoclass:: TFTPBaseServer
@@ -45,7 +45,7 @@ Server Classes
 .. autoclass:: SimpleTFTPServer
 
 
-Command Line Use
+Command-line use
 ================
 
 Just as :mod:`http.server` can be invoked from the command line as a standalone
@@ -77,7 +77,7 @@ instead. For example::
     python -m nobodd.tftpd --directory /tmp/
 
 
-Internal Classes and Exceptions
+Support classes and exceptions
 ===============================
 
 The following classes and exceptions are entirely for internal use and should

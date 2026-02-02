@@ -40,7 +40,7 @@ use the 'netascii' encoding as you would any other Python byte-encoding:
 .. _RFC 764: https://datatracker.ietf.org/doc/html/rfc764
 
 
-Internal Functions
+Support functions
 ==================
 
 .. autofunction:: encode

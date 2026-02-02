@@ -28,7 +28,7 @@ Board
 .. autoclass:: Board
 
 
-Conversion Functions
+Conversion functions
 ====================
 
 .. autofunction:: port
@@ -36,5 +36,7 @@ Conversion Functions
 .. autofunction:: boolean
 
 .. autofunction:: size
+
+.. autofunction:: serial
 
 .. autofunction:: duration

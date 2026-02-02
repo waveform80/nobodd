@@ -16,19 +16,19 @@ This module contains the server and handler classes which make up the main
 application itself.
 
 
-Handler Classes
+Handler classes
 ===============
 
 .. autoclass:: BootHandler
 
 
-Server Classes
+Server classes
 ==============
 
 .. autoclass:: BootServer
 
 
-Application Functions
+Application functions
 =====================
 
 .. autofunction:: main

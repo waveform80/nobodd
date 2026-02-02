@@ -21,7 +21,8 @@ It also includes methods to ping the systemd watchdog, and to retrieve
 file-descriptors stored on behalf of the service (or provided as part of
 socket-activation).
 
-Systemd Class
+
+Systemd class
 =============
 
 .. autoclass:: Systemd

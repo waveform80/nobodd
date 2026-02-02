@@ -40,7 +40,7 @@ FatPath
 .. autoclass:: FatPath
 
 
-Internal Functions
+Support functions
 ==================
 
 .. autofunction:: get_cluster

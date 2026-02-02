@@ -29,11 +29,11 @@ The following chapters document the command line utilities included in nobodd:
 API reference
 =============
 
-In additional to being a service, nobodd can also be used as an API from Python
-to access disk images, determining their partitioning style, enumerating the
-available partitions, and manipulating FAT file-systems (either from within a
-disk image, or just standalone). It can also be used as the basis of a generic
-TFTP service.
+In addition to being a service and command-line tool, nobodd can also be used
+as an API from Python to access disk images, determining their partitioning
+style, enumerating the available partitions, and manipulating FAT file-systems
+(either from within a disk image, or just standalone). It can also be used as
+the basis of a generic TFTP service.
 
 The following sections list the modules by their topic.
 

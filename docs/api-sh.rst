@@ -8,7 +8,7 @@ This module contains the implementation (and entry point) of the
 :program:`nobodd-sh` application.
 
 
-Application Functions
+Application functions
 =====================
 
 .. autofunction:: main
@@ -20,7 +20,7 @@ Application Functions
 .. autofunction:: same_fs
 
 
-Command Implementations
+Command implementations
 =======================
 
 .. autofunction:: do_cat

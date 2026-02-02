@@ -16,7 +16,7 @@ partitioning style. You should never need these directly; use the
 :class:`nobodd.disk.DiskImage` class instead.
 
 
-Data Structures
+Data structures
 ===============
 
 .. autoclass:: MBRHeader
