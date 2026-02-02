@@ -1,3 +1,5 @@
+.. include:: subst.rst
+
 =============
 nobodd-sh
 =============
@@ -46,24 +48,6 @@ These are all named after the standard POSIX shell utilities they emulate, and
 all implement a similar (but much more limited) set of options. Notably,
 filenames passed to these utilities will be treated rather differently to their
 common shell counterparts:
-
-Filenames will be parsed as regular filenames unless they contain ":/" or
-":*N*/" where *N* is a partition number. If so, the portion before ":" is
-treated as an image file, the *N* (if specified) as the partition within that
-image (the first auto-detected FAT partition is used if *N* is not
-specified), and the portion from "/" onwards as an absolute path within that
-partition. As such the application may be used to copy (or move) files to /
-from / within FAT file-systems within images.
-
-For example:
-
-* ``foo.txt`` will be interpreted as an ordinary file in the file-system
-
-* ``foo.img:/foo.txt`` will be interpreted as the file ``foo.txt`` in the root
-  of the first FAT partition found within the disk image ``foo.img``
-
-* ``foo.img:10/foo.txt`` will be interpreted as the file ``foo.txt`` in the
-  root of the 10th partition found in the disk image ``foo.img``
 
 
 help
@@ -316,3 +300,114 @@ Update last modified timestamps, creating any files that do not already exist.
 .. option:: -h, --help
 
     Show this help message and exit
+
+
+Usage
+=====
+
+Filenames will be parsed as regular filenames unless they contain ":/" or
+":*N*/" where *N* is a partition number. If so, the portion before ":" is
+treated as an image file, the *N* (if specified) as the partition within that
+image (the first auto-detected FAT partition is used if *N* is not
+specified), and the portion from "/" onwards as an absolute path within that
+partition. As such the application may be used to copy (or move) files to /
+from / within FAT file-systems within images.
+
+For example:
+
+* ``foo.txt`` will be interpreted as an ordinary file in the file-system
+
+* ``foo.img:/foo.txt`` will be interpreted as the file ``foo.txt`` in the root
+  of the first FAT partition found within the disk image ``foo.img``
+
+* ``foo.img:10/foo.txt`` will be interpreted as the file ``foo.txt`` in the
+  root of the 10th partition found in the disk image ``foo.img``
+
+Please be aware that nobodd-sh does *not* perform file-locking [#broken]_.
+Therefore it is *possible*, but definitely not advisable, to open the same
+partition in the same image in two parallel nobodd-sh processes. This is
+extremely likely to lead to corruption of the FAT file-system if both processes
+are writing to the partition. Even if one process is read-only and the other
+read-write, this is still not safe, as the reading process may read the wrong
+data, depending on what the writing process does.
+
+
+Examples
+========
+
+Query the current kernel command line in an image.
+
+.. code-block:: console
+
+    $ nobodd-sh cat ~/images/ubuntu-26.04.img:1/current/cmdline.txt
+    console=serial0,115200 multipath=off dwc_otg.lpm_enable=0 console=tty1 root=LABEL=writable rootfstype=ext4 panic=10 rootwait fixrtc
+
+Copy the kernel command line to the local file-system, editing it with sed, and
+moving it back into the image:
+
+.. code-block:: console
+
+    $ nobodd-sh cp ~/images/ubuntu-26.04.img:1/current/cmdline.txt ./
+    $ sed -i -e 's/panic=10/panic=5/' cmdline.txt
+    $ nobodd-sh mv cmdline.txt ~/images/ubuntu-26.04.img:1/current/
+
+Doing the same with the ``cat -o`` option with a pipe from sed:
+
+.. code-block:: console
+
+    $ nobodd-sh cp ~/images/ubuntu-26.04.img:1/current/cmdline.txt ./
+    $ sed -i -e 's/panic=10/panic=5/' cmdline.txt | \
+      nobodd-sh cat -o ~/images/ubuntu-26.04.img:1/current/cmdline.txt
+
+Checking the content of the current bootloader assets in the image:
+
+.. code-block:: console
+
+    $ nobodd-sh ls -l ~/images/ubuntu-26.04.img:/current/
+    -r--r--r--  1 root root    32503 Oct 23 13:41 bcm2710-rpi-2-b.dtb
+    -r--r--r--  1 root root    35330 Oct 23 13:41 bcm2710-rpi-3-b-plus.dtb
+    -r--r--r--  1 root root    34695 Oct 23 13:41 bcm2710-rpi-3-b.dtb
+    -r--r--r--  1 root root    33684 Oct 23 13:41 bcm2710-rpi-cm0.dtb
+    -r--r--r--  1 root root    32266 Oct 23 13:41 bcm2710-rpi-cm3.dtb
+    -r--r--r--  1 root root    33672 Oct 23 13:41 bcm2710-rpi-zero-2-w.dtb
+    -r--r--r--  1 root root    33672 Oct 23 13:41 bcm2710-rpi-zero-2.dtb
+    -r--r--r--  1 root root    56289 Oct 23 13:41 bcm2711-rpi-4-b.dtb
+    -r--r--r--  1 root root    56293 Oct 23 13:41 bcm2711-rpi-400.dtb
+    -r--r--r--  1 root root    39913 Oct 23 13:41 bcm2711-rpi-cm4-io.dtb
+    -r--r--r--  1 root root    56810 Oct 23 13:41 bcm2711-rpi-cm4.dtb
+    -r--r--r--  1 root root    53510 Oct 23 13:41 bcm2711-rpi-cm4s.dtb
+    -r--r--r--  1 root root    78638 Oct 23 13:41 bcm2712-d-rpi-5-b.dtb
+    -r--r--r--  1 root root    78642 Oct 23 13:41 bcm2712-rpi-5-b.dtb
+    -r--r--r--  1 root root    78598 Oct 23 13:41 bcm2712-rpi-500.dtb
+    -r--r--r--  1 root root    79591 Oct 23 13:41 bcm2712-rpi-cm5-cm4io.dtb
+    -r--r--r--  1 root root    79657 Oct 23 13:41 bcm2712-rpi-cm5-cm5io.dtb
+    -r--r--r--  1 root root    79632 Oct 23 13:41 bcm2712-rpi-cm5l-cm4io.dtb
+    -r--r--r--  1 root root    79698 Oct 23 13:41 bcm2712-rpi-cm5l-cm5io.dtb
+    -r--r--r--  1 root root    78646 Oct 23 13:41 bcm2712d0-rpi-5-b.dtb
+    -r--r--r--  1 root root      132 Oct 23 13:41 cmdline.txt
+    -r--r--r--  1 root root 78601311 Oct 23 13:41 initrd.img
+    dr-xr-xr-x  2 root root        0 Jan  1  1970 overlays
+    -r--r--r--  1 root root        5 Oct 23 13:41 state
+    -r--r--r--  1 root root 13783000 Oct 23 13:41 vmlinuz
+
+
+See Also
+========
+
+.. only:: not man
+
+    :doc:`cli-prep`, :doc:`cli-server`, :manpage:`nbd-server(1)`
+
+.. only:: man
+
+    :manpage:`nobodd-prep(1)`, :manpage:`nobodd-tftpd(1)`, :manpage:`nbd-server(1)`
+
+Bugs
+====
+
+|bug-link|
+
+
+.. [#broken] For all the reasons that one should generally avoid file-locking
+   on Linux; see `On the Brokenness of File Locking
+   <https://0pointer.de/blog/projects/locking.html>`_ for more

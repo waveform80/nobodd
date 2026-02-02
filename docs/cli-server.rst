@@ -178,11 +178,11 @@ See Also
 
 .. only:: not man
 
-    :doc:`cli_prep`, :manpage:`nbd-server(1)`
+    :doc:`cli-sh`, :doc:`cli-prep`, :manpage:`nbd-server(1)`
 
 .. only:: man
 
-    :manpage:`nobodd-prep(1)`, :manpage:`nbd-server(1)`
+    :manpage:`nobodd-sh(1)`, :manpage:`nobodd-prep(1)`, :manpage:`nbd-server(1)`
 
 
 Bugs

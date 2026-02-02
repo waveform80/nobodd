@@ -263,11 +263,11 @@ See Also
 
 .. only:: not man
 
-    :doc:`cli_server`, :manpage:`nbd-server(1)`
+    :doc:`cli-sh`, :doc:`cli-server`, :manpage:`nbd-server(1)`
 
 .. only:: man
 
-    :manpage:`nobodd-tftpd(1)`, :manpage:`nbd-server(1)`
+    :manpage:`nobodd-sh(1)`, :manpage:`nobodd-tftpd(1)`, :manpage:`nbd-server(1)`
 
 
 Bugs
