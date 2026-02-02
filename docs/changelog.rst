@@ -12,6 +12,27 @@ Changelog
 .. currentmodule:: nobodd
 
 
+Release 0.5 (2026-02-??)
+========================
+
+* Added :attr:`~nobodd.fs.FatFileSystem.damaged` and
+  :attr:`~nobodd.fs.FatFileSystem.dirty` properties to the
+  :class:`~nobodd.fs.FatFileSystem` class (`#2`_)
+* Added ``tz`` (timezone) parameter to the constructor of the
+  :class:`~nobodd.fs.FatFileSystem` class (`#5`_)
+* Added shared-read, exclusive-write lock covering all operations (low and
+  high level) in the :class:`~nobodd.fs.FatFileSystem`,
+  :class:`~nobodd.path.FatPath`, and associated classes (operation should now
+  be thread-safe)
+* Added :program:`nobodd-sh` command line application for manipulation of FAT
+  partitions within images (`#9`_)
+* Changed packging definitions from :file:`setup.cfg` to :file:`pyproject.toml`
+
+.. _#2: https://github.com/waveform80/nobodd/issues/2
+.. _#5: https://github.com/waveform80/nobodd/issues/5
+.. _#9: https://github.com/waveform80/nobodd/issues/9
+
+
 Release 0.4 (2024-03-07)
 ========================
 

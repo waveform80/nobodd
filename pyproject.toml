@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nobodd"
-version = "0.4"
+version = "0.5"
 description = "A simple TFTP boot server for the Raspberry Pi"
 readme = {file="README.rst", content-type="text/x-rst"}
 license = "GPL-3.0-or-later"
@@ -17,8 +17,7 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
-doc = ["sphinx", "sphinx-rtd-theme"]
-dev = ["sphinx-autobuild"]
+doc = ["sphinx", "sphinx-rtd-theme", "sphinx-autobuild"]
 
 [project.urls]
 Documentation = "https://nobodd.readthedocs.io/"

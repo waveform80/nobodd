@@ -1,121 +1,90 @@
 # vim: set noet sw=4 ts=4 fileencoding=utf-8:
 
-# External utilities
-PYTHON=python3
-PIP=pip
-PYTEST=pytest
-TWINE=twine
-PYFLAGS=
-MSGINIT=msginit
-MSGMERGE=msgmerge
-MSGFMT=msgfmt
-XGETTEXT=xgettext
-DEST_DIR=/
+PROJECT          = nobodd
 
-# Calculate the base names of the distribution, the location of all source,
-# documentation, packaging, icon, and executable script files
-NAME:=$(shell $(PYTHON) $(PYFLAGS) setup.py --name)
-WHEEL_NAME:=$(subst -,_,$(NAME))
-VER:=$(shell $(PYTHON) $(PYFLAGS) setup.py --version)
-PY_SOURCES:=$(shell \
-	$(PYTHON) $(PYFLAGS) setup.py egg_info >/dev/null 2>&1 && \
-	cat $(WHEEL_NAME).egg-info/SOURCES.txt | grep -v "\.egg-info"  | grep -v "\.mo$$")
-DOC_SOURCES:=docs/conf.py \
-	$(wildcard docs/*.png) \
-	$(wildcard docs/*.svg) \
-	$(wildcard docs/*.dot) \
-	$(wildcard docs/*.mscgen) \
-	$(wildcard docs/*.gpi) \
-	$(wildcard docs/*.rst) \
-	$(wildcard docs/*.pdf)
-SUBDIRS:=
+PYTHON           = python3
+PYFLAGS          =
+PIP              = pip3
+PYLINT           = pylint
+PYTEST           = pytest
+MSGINIT          = msginit
+MSGMERGE         = msgmerge
+MSGFMT           = msgfmt
+XGETTEXT         = xgettext
+SPHINX_BUILD     = sphinx-build
+SPHINX_AUTOBUILD = sphinx-autobuild
+SPHINXOPTS       =
+SRCDIR           = $(PROJECT)
+DOCSDIR          = docs
+TESTSDIR         = tests
+PODIR            = po
+BUILDDIR         ?= build
+SPHINX_HOST      ?= 127.0.0.1
+SPHINX_PORT      ?= 8000
 
-# Calculate the name of all outputs
-DIST_WHEEL=dist/$(WHEEL_NAME)-$(VER)-py3-none-any.whl
-DIST_TAR=dist/$(NAME)-$(VER).tar.gz
-DIST_ZIP=dist/$(NAME)-$(VER).zip
-POT_FILE=po/$(NAME).pot
-PO_FILES:=$(wildcard po/*.po)
-MO_FILES:=$(patsubst po/%.po,po/mo/%/LC_MESSAGES/$(NAME).mo,$(PO_FILES))
-MAN_PAGES=man/nobodd-tftpd.1 man/nobodd-prep.1
+ALLSPHINXOPTS = -W -d $(BUILDDIR)/doctrees $(SPHINXOPTS) $(DOCSDIR)
 
+POT_FILE    := $(PODIR)/$(PROJECT).pot
+PO_FILES    := $(wildcard $(PODIR)/*.po)
+MO_FILES    := $(patsubst $(PODIR)/%.po,po/mo/%/LC_MESSAGES/$(PROJECT).mo,$(PO_FILES))
+PY_SOURCES  := $(wildcard $(SRCDIR)/*.py)
+DOC_SOURCES := $(DOCSDIR)/conf.py \
+               $(wildcard $(DOCSDIR)/*.rst) \
+               $(wildcard $(DOCSDIR)/images/*.png) \
+               $(wildcard $(DOCSDIR)/images/*.svg) \
+               $(wildcard $(DOCSDIR)/images/*.dot) \
+               $(wildcard $(DOCSDIR)/images/*.mscgen) \
+               $(wildcard $(DOCSDIR)/images/*.gpi) \
+               $(wildcard $(DOCSDIR)/images/*.pdf)
 
 # Default target
 all:
-	@echo "make install - Install on local system"
-	@echo "make develop - Install symlinks for development"
+	@echo "make clean - Get rid of all generated files"
+	@echo "make develop - Install editable version for development"
 	@echo "make pot - Update translation template and sources"
 	@echo "make mo - Generate translation files"
-	@echo "make test - Run tests"
 	@echo "make doc - Generate HTML and PDF documentation"
-	@echo "make source - Create source package"
+	@echo "make preview - Generate live preview of HTML documentation"
+	@echo "make linkcheck - Check external links in HTML documentation"
+	@echo "make lint - Run pylint against source"
+	@echo "make test - Run tests"
+	@echo "make sdist - Create source package"
 	@echo "make wheel - Generate a PyPI wheel package"
-	@echo "make zip - Generate a source zip package"
-	@echo "make tar - Generate a source tar package"
-	@echo "make dist - Generate all packages"
-	@echo "make clean - Get rid of all generated files"
-	@echo "make release - Create and tag a new release"
-	@echo "make upload - Upload the new release to repositories"
 
-install: $(SUBDIRS)
-	$(PYTHON) $(PYFLAGS) setup.py install --root $(DEST_DIR)
+clean:
+	rm -rf $(BUILDDIR)
 
-doc: $(DOC_SOURCES)
-	$(MAKE) -C docs clean
-	$(MAKE) -C docs html
-	$(MAKE) -C docs epub
-	$(MAKE) -C docs latexpdf
-	$(MAKE) $(MAN_PAGES)
+develop:
+	$(PIP) install -e .[dev,doc,test]
+
+sdist:
+	$(PYTHON) -m build --sdist -o $(BUILDDIR)/dist .
+
+wheel:
+	$(PYTHON) -m build --wheel -o $(BUILDDIR)/dist .
+
+doc:
+	$(SPHINX_BUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINX_BUILD) -b epub $(ALLSPHINXOPTS) $(BUILDDIR)/epub
+	$(SPHINX_BUILD) -b latex $(ALLSPHINXOPTS) $(BUILDDIR)/latex
+	$(MAKE) -C $(BUILDDIR)/latex all-pdf
+	$(SPHINX_BUILD) -b man $(ALLSPHINXOPTS) $(BUILDDIR)/man
+
+test:
+	$(PYTEST) -v $(TESTSDIR)
+
+lint:
+	$(PYLINT) $(SRCDIR)
+
+linkcheck:
+	$(SPHINX_BUILD) -b linkcheck $(ALLSPHINXOPTS) $(BUILDDIR)/linkcheck
 
 preview:
-	$(MAKE) -C docs preview
-
-source: $(DIST_TAR) $(DIST_ZIP)
-
-wheel: $(DIST_WHEEL)
-
-zip: $(DIST_ZIP)
-
-tar: $(DIST_TAR)
-
-dist: $(DIST_WHEEL) $(DIST_TAR) $(DIST_ZIP)
+	$(SPHINX_AUTOBUILD) --host $(SPHINX_HOST) --port $(SPHINX_PORT) $(DOCSDIR) $(BUILDDIR)/html
 
 pot: $(POT_FILE) $(PO_FILES)
 
 mo: $(MO_FILES)
-
-develop:
-	@# These have to be done separately to avoid a cockup...
-	$(PIP) install -U setuptools
-	$(PIP) install -U pip
-	$(PIP) install -U twine
-	$(PIP) install -U tox
-	$(PIP) install -e .[doc,test]
-
-test:
-	$(PYTEST)
-
-clean:
-	rm -fr dist/ build/ man/ .pytest_cache/ .mypy_cache/ $(WHEEL_NAME).egg-info/ tags .coverage
-	for dir in $(SUBDIRS); do \
-		$(MAKE) -C $$dir clean; \
-	done
-	find $(CURDIR) -name "*.pyc" -delete
-	find $(CURDIR) -name "__pycache__" -delete
-
-tags: $(PY_SOURCES)
-	ctags -R --exclude="build/*" --exclude="docs/*" --languages="Python"
-
-lint: $(PY_SOURCES)
-	pylint $(WHEEL_NAME)
-
-$(SUBDIRS):
-	$(MAKE) -C $@
-
-$(MAN_PAGES): $(DOC_SOURCES)
-	$(MAKE) -C docs man
-	mkdir -p man/
-	cp build/man/*.[0-9] man/
 
 $(POT_FILE): $(PY_SOURCES)
 	$(XGETTEXT) -o $@ $(filter %.py,$^) $(filter %.ui,$^)
@@ -123,27 +92,6 @@ $(POT_FILE): $(PY_SOURCES)
 po/%.po: $(POT_FILE)
 	$(MSGMERGE) -U $@ $<
 
-po/mo/%/LC_MESSAGES/$(NAME).mo: po/%.po
+po/mo/%/LC_MESSAGES/$(PROJECT).mo: po/%.po
 	mkdir -p $(dir $@)
 	$(MSGFMT) $< -o $@
-
-$(DIST_TAR): $(PY_SOURCES) $(SUBDIRS)
-	$(PYTHON) $(PYFLAGS) setup.py sdist --formats gztar
-
-$(DIST_ZIP): $(PY_SOURCES) $(SUBDIRS)
-	$(PYTHON) $(PYFLAGS) setup.py sdist --formats zip
-
-$(DIST_WHEEL): $(PY_SOURCES) $(SUBDIRS)
-	$(PYTHON) $(PYFLAGS) setup.py bdist_wheel
-
-release:
-	$(MAKE) clean
-	test -z "$(shell git status --porcelain)"
-	git tag -s v$(VER) -m "Release $(VER)"
-	git push origin v$(VER)
-
-upload: $(DIST_TAR) $(DIST_WHEEL)
-	$(TWINE) check $(DIST_TAR) $(DIST_WHEEL)
-	$(TWINE) upload $(DIST_TAR) $(DIST_WHEEL)
-
-.PHONY: all install develop test doc source wheel zip tar dist clean tags release upload $(SUBDIRS)
