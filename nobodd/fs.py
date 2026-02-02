@@ -1395,8 +1395,9 @@ class FatDirectory(abc.MutableMapping):
                     self._update_entry(write_offset, entry)
                 write_offset += DirectoryEntry._FORMAT.size
             else:
-                # If we exit the loop without a break, the source has no EOF marker
-                # which is strictly invalid; advance the read_offset to force one
+                # If we exit the loop without a break, the source has no EOF
+                # marker which is strictly invalid; advance the read_offset to
+                # force one
                 read_offset += DirectoryEntry._FORMAT.size
             eof = write_offset
             empty = DirectoryEntry.eof()
@@ -1835,7 +1836,7 @@ class FatFile(io.RawIOBase):
                 # See note in _set_size
                 assert len(self._map) == 1
                 fs = self._get_fs()
-                with fs.lock.write:
+                with fs.mark_dirty():
                     fs.fat.mark_free(self._map[0])
                     self._map = []
                     self._set_size(0)
@@ -1898,7 +1899,7 @@ class FatFile(io.RawIOBase):
             # count towards written
             self.truncate()
         written = 0
-        with fs.lock.write:
+        with fs.mark_dirty():
             try:
                 while mem:
                     # Alternate between filling a cluster with _write1, and
@@ -1977,7 +1978,7 @@ class FatFile(io.RawIOBase):
         if size == old_size:
             return size
         clusters = max(1, (size + cs - 1) // cs)
-        with fs.lock.write:
+        with fs.mark_dirty():
             if size > old_size:
                 # If we're expanding the size of the file, zero the tail of the
                 # current final cluster; this is necessary whether or not we're
