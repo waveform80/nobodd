@@ -31,14 +31,6 @@ the root directory of the file-system.
 
 .. warning::
 
-    At the time of writing, the implementation is strictly *not thread-safe*.
-    Attempting to write to the file-system from multiple threads (whether in
-    separate instances or not) is likely to result in corruption. Attempting to
-    write to the file-system from one thread, while reading from another will
-    result in undefined behaviour including incorrect reads.
-
-.. warning::
-
     The implementation will *not* handle certain "obscure" extensions to FAT,
     such as sub-directory style roots on FAT-12/16. It will attempt to warn
     about these and abort if they are found.
