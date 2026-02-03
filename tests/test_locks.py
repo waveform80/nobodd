@@ -1,4 +1,4 @@
-from time import sleep
+from time import sleep, monotonic
 from threading import Thread, Event, Lock, get_ident
 
 import pytest
@@ -236,6 +236,7 @@ def test_rwlock_read_upgrade_fail():
     assert results == [False]
 
 
+@pytest.mark.xfail(reason="flaky test")
 def test_rwlock_read_upgrade_fail_on_writer():
     got_read = Event()
     get_upgrade = Event()
@@ -260,11 +261,12 @@ def test_rwlock_read_upgrade_fail_on_writer():
         with lock.write._block_writers:
             pass
 
-    # Because we're relying on random chance in the scheduler this is a
-    # flaky test; we'll try it 100 times and if we're lucky at least 1 will
-    # hit the jackpot. On a reasonably unloaded system this usually occurs
-    # within 1 or 2 loops, but on a loaded one it can take dozens of tries
-    for i in range(100):
+    # Because we're relying on random chance in the scheduler this is a flaky
+    # test and is marked to xfail. It seems very dependent on architecture,
+    # interpreter version and so forth. I can usually get this working on a Pi
+    # with an older interpreter, but a big PC with a later one is impossible.
+    start = monotonic()
+    while True:
         upgrader_t = Thread(target=upgrader, daemon=True)
         upgrader_t.start()
         got_read.wait()
@@ -284,5 +286,5 @@ def test_rwlock_read_upgrade_fail_on_writer():
         get_upgrade.clear()
         getting_write.clear()
         results.clear()
-    else:
-        assert False
+        if monotonic() - start > 2:
+            assert False

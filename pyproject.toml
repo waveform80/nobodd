@@ -7,8 +7,7 @@ name = "nobodd"
 version = "0.5"
 description = "A simple TFTP boot server for the Raspberry Pi"
 readme = {file="README.rst", content-type="text/x-rst"}
-license = "GPL-3.0-or-later"
-license-files = ["LICENSE.txt"]
+license = {text="GPL-3.0-or-later"}
 keywords = ["raspberry", "pi", "boot", "nbd", "tftp"]
 authors = [
     {name = "Dave Jones", email = "dave.jones@canonical.com"},
