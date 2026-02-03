@@ -6,6 +6,7 @@ PYTHON           = python3
 PYFLAGS          =
 PIP              = pip3
 PYLINT           = pylint
+RUFF             = ruff
 PYTEST           = pytest
 MSGINIT          = msginit
 MSGMERGE         = msgmerge
@@ -74,6 +75,7 @@ test:
 	$(PYTEST) -v $(TESTSDIR)
 
 lint:
+	$(RUFF) check $(SRCDIR)
 	$(PYLINT) $(SRCDIR)
 
 linkcheck:

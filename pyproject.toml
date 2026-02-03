@@ -18,6 +18,7 @@ requires-python = ">=3.10"
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
 doc = ["sphinx", "sphinx-rtd-theme", "sphinx-autobuild"]
+dev = ["pylint", "ruff"]
 
 [project.urls]
 Documentation = "https://nobodd.readthedocs.io/"
