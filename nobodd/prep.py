@@ -25,6 +25,7 @@ from importlib import resources
 from importlib.metadata import version
 
 from . import lang
+from .tools import open_file
 from .disk import DiskImage
 from .fs import FatFileSystem
 from .config import (
@@ -109,13 +110,13 @@ def get_parser():
             "configuration compatible with nobodd-tftpd may be output with "
             "--tftpd-conf"))
     parser.add_argument(
-        '--tftpd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
+        '--tftpd-conf', metavar='FILE', default=None,
         help=lang._(
             "if specified, write a board configuration compatible with "
             "nobodd-tftpd to the specified file; requires --serial to be "
             "given"))
     parser.add_argument(
-        '--nbd-conf', type=argparse.FileType('w'), metavar='FILE', default=None,
+        '--nbd-conf', metavar='FILE', default=None,
         help=lang._(
             "if specified, write a share configuration compatible with "
             "nbd-server to the specified file"))
@@ -330,14 +331,18 @@ def main(args=None):
         if conf.nbd_name is None:
             conf.nbd_name = conf.image.stem
 
-        prepare_image(conf)
-        if conf.tftpd_conf is not None and conf.serial is not None:
-            board = Board(conf.serial, conf.image, conf.boot_partition, None)
-            conf.tftpd_conf.write(str(board))
-            conf.tftpd_conf.write('\n')
-        if conf.nbd_conf is not None:
-            conf.nbd_conf.write(f"[{conf.nbd_name}]\n")
-            conf.nbd_conf.write(f"exportname = {conf.image}\n")
+        with (
+            open_file(conf.tftpd_conf) as tftpd_conf,
+            open_file(conf.nbd_conf) as nbd_conf,
+        ):
+            prepare_image(conf)
+            if tftpd_conf is not None and conf.serial is not None:
+                board = Board(conf.serial, conf.image, conf.boot_partition, None)
+                tftpd_conf.write(str(board))
+                tftpd_conf.write('\n')
+            if nbd_conf is not None:
+                nbd_conf.write(f"[{conf.nbd_name}]\n")
+                nbd_conf.write(f"exportname = {conf.image}\n")
     except Exception as e:
         if not debug:
             print(str(e), file=sys.stderr)

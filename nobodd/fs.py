@@ -1830,7 +1830,12 @@ class FatFile(io.RawIOBase):
 
     def close(self):
         if not self.closed:
-            if self._entry is not None and self._entry.size == 0 and self._map:
+            # In later interpreters, the super-class appears to wipe all the
+            # instance data on close, hence the getattr call here
+            if (
+                getattr(self, '_entry', None) is not None and
+                self._entry.size == 0 and self._map
+            ):
                 # See note in _set_size
                 assert len(self._map) == 1
                 fs = self._get_fs()

@@ -10,6 +10,7 @@ import codecs
 import socket
 import datetime as dt
 from collections.abc import Mapping
+from contextlib import contextmanager
 
 from . import lang
 
@@ -290,3 +291,24 @@ def any_match(s, expressions):
         if m:
             return m
     return None
+
+
+@contextmanager
+def open_file(arg, mode='w'):
+    """
+    A context manager for handling files specified on the command line. Handles
+    returning a standard stream when *arg* is "-", and closes files when the
+    context exits (if required).
+    """
+    if arg is None:
+        file = None
+    elif arg == '-':
+        file = sys.stdin if set(mode) & set('r+') == {'r'} else sys.stdout
+        file = file.buffer if 'b' in mode else file
+    else:
+        file = open(arg, mode)
+    try:
+        yield file
+    finally:
+        if arg is not None and arg != '-':
+            file.close()
