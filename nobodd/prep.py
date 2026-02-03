@@ -19,7 +19,6 @@ import socket
 import logging
 import argparse
 from pathlib import Path
-from uuid import UUID
 from shutil import copyfileobj
 from importlib import resources
 from importlib.metadata import version
@@ -28,6 +27,7 @@ from . import lang
 from .tools import open_file
 from .disk import DiskImage
 from .fs import FatFileSystem
+from .sh import fat_types
 from .config import (
     CONFIG_LOCATIONS,
     ConfigArgumentParser,
@@ -259,45 +259,24 @@ def detect_partitions(conf):
     partition.
     """
     conf.logger.info(lang._('Detecting partitions'))
-    with \
-        conf.image.open('rb') as img_file, \
-        DiskImage(img_file) as img:
-
-        fat_types = (
-            {UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'),
-             UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')}
-            if img.partitions.style == 'gpt' else
-            {0x01, 0x06, 0x0B, 0x0C, 0x0E, 0xEF}
-        )
-        for num, part in img.partitions.items():
-            with part:
-                if part.type in fat_types:
-                    if conf.boot_partition is None:
-                        try:
-                            fs = FatFileSystem(part.data)
-                        except ValueError:
-                            continue
-                        else:
-                            conf.boot_partition = num
-                            conf.logger.info(
-                                lang._('Boot partition is %d (%s)'),
-                                conf.boot_partition, fs.fat_type)
-                            fs.close()
-                else:
-                    if conf.root_partition is None:
-                        try:
-                            fs = FatFileSystem(part.data)
-                        except ValueError:
-                            conf.root_partition = num
-                            conf.logger.info(
-                                lang._('Root partition is %d'),
-                                conf.root_partition)
-                        else:
-                            fs.close()
-                            continue
-                if conf.boot_partition is not None:
-                    if conf.root_partition is not None:
-                        break
+    with (
+        conf.image.open('rb') as img_file,
+        DiskImage(img_file) as img,
+    ):
+        for num, fat_type in fat_types(img):
+            if fat_type.startswith('fat') and conf.boot_partition is None:
+                conf.boot_partition = num
+                conf.logger.info(
+                    lang._('Boot partition is %d (%s)'),
+                    conf.boot_partition, fat_type)
+            elif fat_type == 'notfat' and conf.root_partition is None:
+                conf.root_partition = num
+                conf.logger.info(
+                    lang._('Root partition is %d'),
+                    conf.root_partition)
+            if conf.boot_partition is not None:
+                if conf.root_partition is not None:
+                    break
     if conf.boot_partition is None:
         raise ValueError(lang._('Unable to detect boot partition'))
     if conf.root_partition is None:

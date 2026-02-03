@@ -26,6 +26,7 @@ import stat
 import mmap
 import logging
 import datetime as dt
+from uuid import UUID
 from pathlib import Path
 from importlib import resources
 from importlib.metadata import version
@@ -80,6 +81,35 @@ class StdPath:
         raise FileNotFoundError(f'Cannot unlink {self.name}')
 
 
+def fat_types(disk):
+    """
+    Given *disk*, a :class:`~nobodd.disk.DiskImage`, yield tuples of
+    (:class:`int`, :class:`str`) where the first item is the partition number,
+    and the second is either the FAT type detected (one of "fat12", "fat16", or
+    "fat32"), "maybefat" which indicates the partition type is valid for FAT
+    (see below) but the FAT file-system couldn't be detected, or "notfat" which
+    indicates the partition type is not valid for FAT.
+
+    In order for a partition to be detected as FAT it must have a valid
+    partition type (basic data or EFI system partition for GPT partition
+    tables, or one of the FAT partition types for MBR tables), and a
+    :class:`FatFileSystem` must be successfully constructed on its content.
+    """
+    fat_types = (
+        {UUID('ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'),
+         UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')}
+        if disk.partitions.style == 'gpt' else
+        {0x01, 0x06, 0x0B, 0x0C, 0x0E, 0xEF}
+    )
+    for num, part in disk.partitions.items():
+        with part:
+            try:
+                with FatFileSystem(part.data) as fs:
+                    yield num, fs.fat_type
+            except ValueError:
+                yield num, 'maybefat' if part.type in fat_types else 'notfat'
+
+
 _image_re = re.compile(r'^(?P<image>.*?):(?P<part>[1-9][0-9]{,2})?(?P<path>/.*)$')
 
 @contextmanager
@@ -90,11 +120,17 @@ def get_paths(inputs, outputs, *, allow_std=False):
     :class:`dict` mapping each filename to a :class:`~pathlib.Path` or
     :class:`~nobodd.path.FatPath` instance.
     """
+    def first_fat_partition(disk):
+        for number, fat_type in fat_types(disk):
+            if fat_type.startswith('fat'):
+                return number
+        raise ValueError('Unable to detect first FAT partition')
+
     # TODO: Calculate automatic partition number (don't just default to 1)
     paths = [
         (path, None, None, path, for_write)
         if (match := _image_re.match(path)) is None else
-        (path, match['image'], int(match['part'] or 1), match['path'], for_write)
+        (path, match['image'], int(match['part'] or -1), match['path'], for_write)
         for path, for_write in chain(
             zip(inputs, repeat(False)),
             zip(outputs, repeat(True)))
@@ -115,6 +151,8 @@ def get_paths(inputs, outputs, *, allow_std=False):
         fses = {
             (image, part):
                 FatFileSystem(images[image].partitions[part].data)
+                if part != -1 else
+                first_fat_partition(images[image])
             for image, part_nums in parts.items()
             for part in part_nums
         }
