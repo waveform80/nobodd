@@ -262,10 +262,10 @@ def request_loop(server_address, boards):
     """
     sd = get_systemd()
 
-    with \
-        BootServer(server_address, boards) as server, \
-        DefaultSelector() as selector:
-
+    with (
+        BootServer(server_address, boards) as server,
+        DefaultSelector() as selector,
+    ):
         selector.register(exit_read, EVENT_READ)
         selector.register(server, EVENT_READ)
         sd.ready()

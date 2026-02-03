@@ -144,10 +144,10 @@ def prepare_image(conf):
             conf.logger.info(
                 lang._('Skipping resize; %s is already %d bytes or larger'),
                 conf.image, conf.size)
-    with \
-        DiskImage(conf.image, access=mmap.ACCESS_WRITE) as img, \
-        FatFileSystem(img.partitions[conf.boot_partition].data) as fs:
-
+    with (
+        DiskImage(conf.image, access=mmap.ACCESS_WRITE) as img,
+        FatFileSystem(img.partitions[conf.boot_partition].data) as fs,
+    ):
         remove_items(fs, conf)
         copy_items(fs, conf)
         rewrite_cmdline(fs, conf)
@@ -211,16 +211,16 @@ def copy_items(fs, conf):
                 if subitem.is_dir():
                     (copy_root / str(name)).mkdir(exist_ok=True)
                 else:
-                    with \
-                        subitem.open('rb') as source, \
-                        (copy_root / str(name)).open('wb') as target:
-
+                    with (
+                        subitem.open('rb') as source,
+                        (copy_root / str(name)).open('wb') as target,
+                    ):
                         copyfileobj(source, target)
         else:
-            with \
-                item.open('rb') as source, \
-                (fs.root / item.name).open('wb') as target:
-
+            with (
+                item.open('rb') as source,
+                (fs.root / item.name).open('wb') as target,
+            ):
                 copyfileobj(source, target)
 
 

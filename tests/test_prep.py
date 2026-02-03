@@ -33,10 +33,10 @@ def test_help(capsys):
 
 
 def test_error_exit_no_debug(capsys, monkeypatch):
-    with \
-        mock.patch('nobodd.prep.get_parser') as get_parser, \
-        monkeypatch.context() as m:
-
+    with (
+        mock.patch('nobodd.prep.get_parser') as get_parser,
+        monkeypatch.context() as m,
+    ):
         m.delenv('DEBUG', raising=False)
         get_parser.side_effect = RuntimeError('trouble is bad')
 
@@ -46,10 +46,10 @@ def test_error_exit_no_debug(capsys, monkeypatch):
 
 
 def test_error_exit_with_debug(monkeypatch):
-    with \
-        mock.patch('nobodd.prep.get_parser') as get_parser, \
-        monkeypatch.context() as m:
-
+    with (
+        mock.patch('nobodd.prep.get_parser') as get_parser,
+        monkeypatch.context() as m,
+    ):
         m.setenv('DEBUG', '1')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
@@ -58,11 +58,11 @@ def test_error_exit_with_debug(monkeypatch):
 
 
 def test_error_exit_with_pdb(monkeypatch):
-    with \
-        mock.patch('nobodd.prep.get_parser') as get_parser, \
-        mock.patch('pdb.post_mortem') as post_mortem, \
-        monkeypatch.context() as m:
-
+    with (
+        mock.patch('nobodd.prep.get_parser') as get_parser,
+        mock.patch('pdb.post_mortem') as post_mortem,
+        monkeypatch.context() as m,
+    ):
         m.setenv('DEBUG', '2')
         get_parser.side_effect = RuntimeError('trouble is bad')
 
@@ -83,9 +83,10 @@ def test_regular_operation(fat_disks_w, tmp_path):
             str(fat_disk)
         ]) == 0
         assert fat_disk.stat().st_size == 50 * 1048576
-        with \
-            DiskImage(fat_disk) as img, \
-            FatFileSystem(img.partitions[1].data) as fs:
+        with (
+            DiskImage(fat_disk) as img,
+            FatFileSystem(img.partitions[1].data) as fs,
+        ):
 
             assert (fs.root / 'cmdline.txt').read_text() == (
                 'ip=dhcp nbdroot=myserver/myshare root=/dev/nbd0p5 '
@@ -103,10 +104,10 @@ exportname = {fat_disk}
 
 
 def test_cmdline_no_newline(fat16_disk_w):
-    with \
-        DiskImage(fat16_disk_w, access=mmap.ACCESS_WRITE) as img, \
-        FatFileSystem(img.partitions[1].data) as fs:
-
+    with (
+        DiskImage(fat16_disk_w, access=mmap.ACCESS_WRITE) as img,
+        FatFileSystem(img.partitions[1].data) as fs,
+    ):
         # Ensure the transformation works even when cmdline.txt has no newlines
         path = fs.root / 'cmdline.txt'
         path.write_text(path.read_text().rstrip('\n'))
@@ -120,10 +121,10 @@ def test_cmdline_no_newline(fat16_disk_w):
         str(fat16_disk_w)
     ]) == 0
 
-    with \
-        DiskImage(fat16_disk_w) as img, \
-        FatFileSystem(img.partitions[1].data) as fs:
-
+    with (
+        DiskImage(fat16_disk_w) as img,
+        FatFileSystem(img.partitions[1].data) as fs,
+    ):
         assert (fs.root / 'cmdline.txt').read_text() == (
             'ip=dhcp nbdroot=myserver/myshare root=/dev/nbd0p5 '
             'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
@@ -229,10 +230,10 @@ def test_default_host_share(fat16_disk_w):
             str(fat16_disk_w)
         ]) == 0
 
-    with \
-        DiskImage(fat16_disk_w) as img, \
-        FatFileSystem(img.partitions[1].data) as fs:
-
+    with (
+        DiskImage(fat16_disk_w) as img,
+        FatFileSystem(img.partitions[1].data) as fs,
+    ):
         assert (fs.root / 'cmdline.txt').read_text() == (
             'ip=dhcp nbdroot=louis.prima.org/fat16-mutable root=/dev/nbd0p5 '
             'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
@@ -250,10 +251,10 @@ def test_remove_files(fat16_disk_w, caplog):
             str(fat16_disk_w)
         ]) == 0
 
-    with \
-        DiskImage(fat16_disk_w) as img, \
-        FatFileSystem(img.partitions[1].data) as fs:
-
+    with (
+        DiskImage(fat16_disk_w) as img,
+        FatFileSystem(img.partitions[1].data) as fs,
+    ):
         assert not (fs.root / 'a.dir').exists()
         assert not (fs.root / 'random').exists()
         assert (
@@ -317,10 +318,10 @@ wifis:
             str(fat16_disk_w)
         ]) == 0
 
-    with \
-        DiskImage(fat16_disk_w) as img, \
-        FatFileSystem(img.partitions[1].data) as fs:
-
+    with (
+        DiskImage(fat16_disk_w) as img,
+        FatFileSystem(img.partitions[1].data) as fs,
+    ):
         assert (fs.root / 'config.txt').read_text() == config_txt
         assert (fs.root / 'seed').is_dir()
         assert (fs.root / 'seed' / 'meta-data').stat().st_size == 0
