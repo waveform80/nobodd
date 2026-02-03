@@ -15,7 +15,7 @@ from contextlib import suppress
 from fnmatch import fnmatchcase
 from collections import namedtuple
 from configparser import ConfigParser
-from argparse import ArgumentParser, SUPPRESS
+from argparse import ArgumentParser
 from ipaddress import ip_address
 from copy import deepcopy
 

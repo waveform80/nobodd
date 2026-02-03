@@ -12,11 +12,10 @@ import errno
 import struct
 import weakref
 import warnings
-import threading
 import datetime as dt
 from abc import abstractmethod
 from collections import abc
-from itertools import islice
+from itertools import islice, pairwise
 from contextlib import contextmanager
 
 from . import lang
@@ -27,12 +26,10 @@ from .fat import (
     FAT32InfoSector,
     DirectoryEntry,
     LongFilenameEntry,
-    lfn_valid,
     lfn_checksum,
 )
 from .path import FatPath, get_cluster
 from .tools import (
-    pairwise,
     encode_timestamp,
     any_match,
     exclude,
@@ -1251,7 +1248,8 @@ class FatDirectory(abc.MutableMapping):
             # the case where attr is 0.
             sfn_only = True
             lfn = filename.encode(self._encoding, 'replace')
-            make_sfn = lambda s, e: (s + b'.' + e) if e else s
+            def make_sfn(name, ext):
+                return (name + b'.' + ext) if ext else name
             if lfn == make_sfn(sfn, ext):
                 attr = 0
             elif lfn == make_sfn(sfn, ext.lower()):

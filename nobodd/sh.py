@@ -24,12 +24,9 @@ import pwd
 import grp
 import stat
 import mmap
-import errno
 import logging
-import argparse
 import datetime as dt
 from pathlib import Path
-from uuid import UUID
 from importlib import resources
 from importlib.metadata import version
 from contextlib import contextmanager
@@ -313,7 +310,9 @@ def do_ls(config):
         'extension': lambda p: list(reversed(p.suffixes)),
         'time': lambda p: -p.stat().st_mtime,
     }[config.sort]
-    key2 = lambda p: key(p[1])
+    def key_from_value(items):
+        k, v = items
+        return key(v)
 
     def print_entry(filename, path):
         if config.long:
@@ -336,11 +335,11 @@ def do_ls(config):
 
     with get_paths(config.filenames, []) as paths:
         first_line = True
-        for filename, path in sorted(paths.items(), key=key2):
+        for filename, path in sorted(paths.items(), key=key_from_value):
             if path.is_file():
                 print_entry(filename, path)
                 first_line = False
-        for filename, path in sorted(paths.items(), key=key2):
+        for filename, path in sorted(paths.items(), key=key_from_value):
             if path.is_dir():
                 if not first_line:
                     print()

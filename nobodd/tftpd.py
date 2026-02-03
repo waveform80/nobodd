@@ -8,7 +8,6 @@
 import io
 import os
 import sys
-import socket
 import logging
 from pathlib import Path
 from contextlib import suppress
@@ -16,7 +15,7 @@ from threading import Thread, Lock, Event
 from socketserver import BaseRequestHandler, UDPServer
 from time import monotonic_ns as time_ns
 
-from . import netascii, lang
+from . import lang
 from .tools import BufferedTranscoder, format_address
 from .tftp import (
     TFTP_BINARY,
@@ -33,10 +32,7 @@ from .tftp import (
     TFTP_MAX_TIMEOUT_NS,
     TFTP_OPTIONS,
     Packet,
-    RRQPacket,
-    WRQPacket,
     DATAPacket,
-    ACKPacket,
     ERRORPacket,
     OACKPacket,
     Error,
@@ -511,7 +507,7 @@ class TFTPSubHandler(TFTPHandler):
             return DATAPacket(packet.block + 1, state.get_block(packet.block + 1))
         except AlreadyAcknowledged:
             pass
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError):
             self.server.done = True
             raise
         except TransferDone:

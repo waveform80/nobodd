@@ -9,7 +9,6 @@ import io
 import codecs
 import socket
 import datetime as dt
-from itertools import tee, pairwise
 from collections.abc import Mapping
 
 from . import lang

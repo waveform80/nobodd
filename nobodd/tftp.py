@@ -10,7 +10,7 @@ import struct
 from enum import IntEnum
 
 from . import lang
-from .tools import labels, formats, FrozenDict
+from .tools import FrozenDict
 
 
 # The following references were essential in constructing this module; the
@@ -268,7 +268,7 @@ class ACKPacket(Packet):
             raise ValueError(f'invalid block (0..65535): {block}')
 
     def __bytes__(self):
-        return struct.pack(f'!HH', self.opcode, self.block)
+        return struct.pack('!HH', self.opcode, self.block)
 
     @classmethod
     def from_data(cls, data):

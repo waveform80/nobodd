@@ -287,7 +287,7 @@ def request_loop(server_address, boards):
                         server.logger.info(lang._('Reloading configuration'))
                         raise ReloadRequest()
                     else:
-                        assert False, f'internal error'
+                        assert False, 'internal error'
                 elif key.fileobj == server:
                     server.handle_request()
                 else:

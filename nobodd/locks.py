@@ -1,6 +1,5 @@
 import threading
 from time import monotonic
-from contextlib import contextmanager
 
 
 def remaining(timeout, start):

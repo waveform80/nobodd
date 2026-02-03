@@ -14,11 +14,10 @@ import fnmatch
 import weakref
 import warnings
 import datetime as dt
-from urllib.parse import quote_from_bytes as urlquote_from_bytes
 from itertools import zip_longest
 
 from . import lang
-from .fat import DirectoryEntry, LongFilenameEntry, lfn_checksum, lfn_valid
+from .fat import DirectoryEntry, lfn_valid
 from .tools import encode_timestamp, decode_timestamp
 
 

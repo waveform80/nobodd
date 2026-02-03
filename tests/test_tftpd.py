@@ -17,6 +17,7 @@ from unittest import mock
 import pytest
 
 from nobodd.tools import BufferedTranscoder
+from nobodd.tftp import *
 from nobodd.tftpd import *
 
 
