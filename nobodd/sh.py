@@ -29,7 +29,7 @@ import datetime as dt
 from pathlib import Path
 from importlib import resources
 from importlib.metadata import version
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from itertools import chain, repeat
 
 from . import lang
@@ -63,17 +63,19 @@ class StdPath:
         """
         Returns the standard stream represented by the path.
         """
+        # nullcontext used to ensure we don't attempt to close stdin / stdout
+        # when we're closing other files
         if self._for_write and set(mode) == {'w', 'b'}:
-            return sys.stdout.buffer
+            return nullcontext(sys.stdout.buffer)
         elif not self._for_write and set(mode) == {'r', 'b'}:
-            return sys.stdin.buffer
+            return nullcontext(sys.stdin.buffer)
         else:
             raise ValueError(
                 f'Cannot open {self.name} with mode {mode!r}')
 
     def unlink(self):
         """
-        Raises an error 
+        Raises an error if an attempt is made to remove a standard stream.
         """
         raise FileNotFoundError(f'Cannot unlink {self.name}')
 
