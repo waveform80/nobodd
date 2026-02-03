@@ -7,7 +7,7 @@
 
 import re
 import struct
-from enum import IntEnum, auto
+from enum import IntEnum
 
 from . import lang
 from .tools import labels, formats, FrozenDict
@@ -50,12 +50,12 @@ class OpCode(IntEnum):
 
     .. _Trivial File Transfer Protocol: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
     """
-    RRQ = 1
-    WRQ = auto()
-    DATA = auto()
-    ACK = auto()
-    ERROR = auto()
-    OACK = auto()
+    RRQ   = 1
+    WRQ   = 2
+    DATA  = 3
+    ACK   = 4
+    ERROR = 5
+    OACK  = 6
 
 
 class Error(IntEnum):
@@ -66,15 +66,15 @@ class Error(IntEnum):
 
     .. _Trivial File Transfer Protocol: https://en.wikipedia.org/wiki/Trivial_File_Transfer_Protocol
     """
-    UNDEFINED = 0
-    NOT_FOUND = auto()
-    NOT_AUTH = auto()
-    DISK_FULL = auto()
-    BAD_OP = auto()
-    UNKNOWN_ID = auto()
-    EXISTS = auto()
-    UNKNOWN_USER = auto()
-    INVALID_OPT = auto()
+    UNDEFINED    = 0
+    NOT_FOUND    = 1
+    NOT_AUTH     = 2
+    DISK_FULL    = 3
+    BAD_OP       = 4
+    UNKNOWN_ID   = 5
+    EXISTS       = 6
+    UNKNOWN_USER = 7
+    INVALID_OPT  = 8
 
 
 class Packet:
