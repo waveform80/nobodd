@@ -30,7 +30,7 @@ from uuid import UUID
 from pathlib import Path
 from importlib import resources
 from importlib.metadata import version
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager, nullcontext, suppress
 from itertools import chain, repeat
 
 from . import lang
@@ -126,8 +126,8 @@ def get_paths(inputs, outputs, *, allow_std=False):
                 return number
         raise ValueError('Unable to detect first FAT partition')
 
-    # TODO: Calculate automatic partition number (don't just default to 1)
     paths = [
+        # (path, image, partition, path_in_image, for_write)
         (path, None, None, path, for_write)
         if (match := _image_re.match(path)) is None else
         (path, match['image'], int(match['part'] or -1), match['path'], for_write)
@@ -150,9 +150,12 @@ def get_paths(inputs, outputs, *, allow_std=False):
     try:
         fses = {
             (image, part):
-                FatFileSystem(images[image].partitions[part].data)
-                if part != -1 else
-                first_fat_partition(images[image])
+                FatFileSystem(
+                    images[image].partitions[
+                        part if part != -1 else
+                        first_fat_partition(images[image])
+                    ].data
+                )
             for image, part_nums in parts.items()
             for part in part_nums
         }
@@ -386,6 +389,11 @@ def do_ls(config):
                 first_line = False
                 if len(paths) > 1:
                     print(f'{filename}:')
+                if config.all:
+                    with suppress(FileNotFoundError):
+                        print_entry('.', path / '.')
+                    with suppress(FileNotFoundError):
+                        print_entry('..', path / '..')
                 for entry in sorted(path.iterdir(), key=key):
                     if config.all or not entry.name.startswith('.'):
                         print_entry(entry.name, entry)
@@ -409,6 +417,7 @@ def do_rm(config):
             path = paths[filename]
             if config.recursive and path.is_dir():
                 _remove_dir(path)
+                path.rmdir()
             else:
                 try:
                     path.unlink()
