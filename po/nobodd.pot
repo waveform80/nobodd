@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-02 16:16+0000\n"
+"POT-Creation-Date: 2026-02-08 19:57+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -116,150 +116,150 @@ msgstr ""
 msgid "Multiple extended partitions found"
 msgstr ""
 
-#: nobodd/fs.py:156
+#: nobodd/fs.py:153
 #, python-brace-format
 msgid "{fat_type} sectors per FAT is 0"
 msgstr ""
 
-#: nobodd/fs.py:161
+#: nobodd/fs.py:158
 #, python-brace-format
 msgid ""
 "Max. root entries, {bpb.max_root_entries} creates a root directory region "
 "that is not a multiple of sector size, {bpb.bytes_per_sector}"
 msgstr ""
 
-#: nobodd/fs.py:190
+#: nobodd/fs.py:187
 msgid "File-system claims to be FAT32 but has no FAT32 EBPB"
 msgstr ""
 
-#: nobodd/fs.py:204
+#: nobodd/fs.py:201
 #, python-brace-format
 msgid "Max. root entries must be 0 for {fat_type}"
 msgstr ""
 
-#: nobodd/fs.py:208
+#: nobodd/fs.py:205
 #, python-brace-format
 msgid "Max. root entries must be non-zero for {fat_type}"
 msgstr ""
 
-#: nobodd/fs.py:214
+#: nobodd/fs.py:211
 msgid "File-system has the dirty bit set"
 msgstr ""
 
-#: nobodd/fs.py:217
+#: nobodd/fs.py:214
 msgid "File-system has the I/O errors bit set"
 msgstr ""
 
-#: nobodd/fs.py:529
+#: nobodd/fs.py:526
 #, python-brace-format
 msgid "Sector size ({bpb.bytes_per_sector}) is invalid (<32)"
 msgstr ""
 
-#: nobodd/fs.py:533
+#: nobodd/fs.py:530
 #, python-brace-format
 msgid "Sector size ({bpb.bytes_per_sector}) is invalid (not power of 2)"
 msgstr ""
 
-#: nobodd/fs.py:537
+#: nobodd/fs.py:534
 #, python-brace-format
 msgid "Cluster size ({bpb.sectors_per_cluster}) is invalid (not power of 2)"
 msgstr ""
 
-#: nobodd/fs.py:565
+#: nobodd/fs.py:562
 msgid "Could not find FAT file-system type or extended boot signature"
 msgstr ""
 
-#: nobodd/fs.py:639 nobodd/fs.py:658
+#: nobodd/fs.py:636 nobodd/fs.py:655
 msgid "FAT length is immutable"
 msgstr ""
 
-#: nobodd/fs.py:743 nobodd/fs.py:757 nobodd/fs.py:777
+#: nobodd/fs.py:740 nobodd/fs.py:754 nobodd/fs.py:774
 #, python-brace-format
 msgid "{offset} out of bounds"
 msgstr ""
 
-#: nobodd/fs.py:762
+#: nobodd/fs.py:759
 #, python-brace-format
 msgid "{value} is outside range 0x000..0xFFF"
 msgstr ""
 
-#: nobodd/fs.py:813
+#: nobodd/fs.py:810
 #, python-brace-format
 msgid "{value} is outside range 0x0000..0xFFFF"
 msgstr ""
 
-#: nobodd/fs.py:898
+#: nobodd/fs.py:895
 #, python-brace-format
 msgid "{value} is outside range 0x00000000..0x0FFFFFFF"
 msgstr ""
 
-#: nobodd/fs.py:970 nobodd/fs.py:976
+#: nobodd/fs.py:967 nobodd/fs.py:973
 msgid "FS length is immutable"
 msgstr ""
 
-#: nobodd/fs.py:1093
+#: nobodd/fs.py:1090
 msgid "empty LongFilenameEntry decoded"
 msgstr ""
 
-#: nobodd/fs.py:1133
+#: nobodd/fs.py:1130
 #, python-brace-format
 msgid "LongFilenameEntry.first_cluster is non-zero: {head.first_cluster}"
 msgstr ""
 
-#: nobodd/fs.py:1138
+#: nobodd/fs.py:1135
 #, python-brace-format
 msgid "mismatched LongFilenameEntry.checksum: {checksum} != {head.checksum}"
 msgstr ""
 
-#: nobodd/fs.py:1148
+#: nobodd/fs.py:1145
 msgid "new terminal LongFilenameEntry"
 msgstr ""
 
-#: nobodd/fs.py:1153
+#: nobodd/fs.py:1150
 msgid "LongFilenameEntry.sequence is zero"
 msgstr ""
 
-#: nobodd/fs.py:1157
+#: nobodd/fs.py:1154
 #, python-brace-format
 msgid "unexpected LongFilenameEntry.sequence: {sequence} != {head.sequence}"
 msgstr ""
 
-#: nobodd/fs.py:1164
+#: nobodd/fs.py:1161
 msgid "more LongFilenameEntry after sequence: 1"
 msgstr ""
 
-#: nobodd/fs.py:1170
+#: nobodd/fs.py:1167
 #, python-brace-format
 msgid "missing LongFilenameEntry after sequence: {sequence}"
 msgstr ""
 
-#: nobodd/fs.py:1276
+#: nobodd/fs.py:1274
 #, python-brace-format
 msgid "{filename} is too long (more than 255 UCS-2 characters)"
 msgstr ""
 
-#: nobodd/fs.py:1657
+#: nobodd/fs.py:1656
 msgid "non-binary mode {mode!r} not supported"
 msgstr ""
 
-#: nobodd/fs.py:1722
+#: nobodd/fs.py:1721
 #, python-brace-format
 msgid "bad FAT chain at {start}; encountered {cluster} twice"
 msgstr ""
 
-#: nobodd/fs.py:1736
+#: nobodd/fs.py:1735
 msgid "FatFileSystem containing {self!r} is closed"
 msgstr ""
 
-#: nobodd/fs.py:1759
+#: nobodd/fs.py:1758
 msgid "no key for entry-less FatFile"
 msgstr ""
 
-#: nobodd/fs.py:1830
+#: nobodd/fs.py:1829
 msgid "I/O operation on closed file"
 msgstr ""
 
-#: nobodd/fs.py:1962
+#: nobodd/fs.py:1966
 #, python-brace-format
 msgid "invalid whence: {whence}"
 msgstr ""
@@ -272,256 +272,256 @@ msgstr ""
 msgid "invalid errors setting for netascii"
 msgstr ""
 
-#: nobodd/path.py:65
+#: nobodd/path.py:64
 msgid "invalid name {str_self!r}"
 msgstr ""
 
-#: nobodd/path.py:87
+#: nobodd/path.py:86
 msgid "FatFileSystem containing {self!s} is closed"
 msgstr ""
 
-#: nobodd/path.py:137
+#: nobodd/path.py:136
 msgid "relative FatPath cannot be resolved"
 msgstr ""
 
-#: nobodd/path.py:180
+#: nobodd/path.py:179
 #, python-brace-format
 msgid "Directory entry for {self} disappeared"
 msgstr ""
 
-#: nobodd/path.py:192
+#: nobodd/path.py:191
 #, python-brace-format
 msgid "No such file or directory: {self}"
 msgstr ""
 
-#: nobodd/path.py:201
+#: nobodd/path.py:200
 #, python-brace-format
 msgid "File exists: {self}"
 msgstr ""
 
-#: nobodd/path.py:210
+#: nobodd/path.py:209
 #, python-brace-format
 msgid "Not a directory: {self}"
 msgstr ""
 
-#: nobodd/path.py:219
+#: nobodd/path.py:218
 #, python-brace-format
 msgid "Is a directory: {self}"
 msgstr ""
 
-#: nobodd/path.py:235
+#: nobodd/path.py:234
 msgid "invalid file mode {mode!r}"
 msgstr ""
 
-#: nobodd/path.py:238
+#: nobodd/path.py:237
 msgid "must have exactly one of read, write, append, exclusive creation mode"
 msgstr ""
 
-#: nobodd/path.py:241
+#: nobodd/path.py:240
 msgid "fs is read-only"
 msgstr ""
 
-#: nobodd/path.py:245
+#: nobodd/path.py:244
 msgid "binary mode doesn't take an encoding argument"
 msgstr ""
 
-#: nobodd/path.py:248
+#: nobodd/path.py:247
 msgid "binary mode doesn't take an errors argument"
 msgstr ""
 
-#: nobodd/path.py:251
+#: nobodd/path.py:250
 msgid "binary mode doesn't take a newline argument"
 msgstr ""
 
-#: nobodd/path.py:253
+#: nobodd/path.py:252
 msgid "can't have unbuffered text I/O"
 msgstr ""
 
-#: nobodd/path.py:382
+#: nobodd/path.py:388
 msgid "Cannot rename between FatFileSystem instances"
 msgstr ""
 
-#: nobodd/path.py:491
+#: nobodd/path.py:497
 msgid "Cannot remove the root directory"
 msgstr ""
 
-#: nobodd/path.py:522
+#: nobodd/path.py:528
 msgid "Cannot resolve relative path {self!r}"
 msgstr ""
 
-#: nobodd/path.py:588
+#: nobodd/path.py:594
 msgid "empty pattern"
 msgstr ""
 
-#: nobodd/path.py:635
+#: nobodd/path.py:641
 msgid "invalid pattern: ** can only be an entire component"
 msgstr ""
 
-#: nobodd/path.py:670 nobodd/path.py:685
+#: nobodd/path.py:676 nobodd/path.py:691
 msgid "Unacceptable pattern"
 msgstr ""
 
-#: nobodd/path.py:673 nobodd/path.py:688
+#: nobodd/path.py:679 nobodd/path.py:694
 msgid "Non-relative patterns are not supported"
 msgstr ""
 
-#: nobodd/path.py:1044
+#: nobodd/path.py:1050
 msgid "need at least one argument"
 msgstr ""
 
-#: nobodd/path.py:1050
+#: nobodd/path.py:1056
 msgid ""
 "{self!r} is not in the subpath of {to!r} OR one path is relative and the "
 "other is absolute"
 msgstr ""
 
-#: nobodd/path.py:1084
+#: nobodd/path.py:1090
 msgid "{self!r} has an empty name"
 msgstr ""
 
-#: nobodd/path.py:1087
+#: nobodd/path.py:1093
 msgid "invalid name {name!r}"
 msgstr ""
 
-#: nobodd/path.py:1105 nobodd/path.py:1108
+#: nobodd/path.py:1111 nobodd/path.py:1114
 msgid "Invalid suffix {suffix!r}"
 msgstr ""
 
-#: nobodd/path.py:1126 nobodd/path.py:1140
+#: nobodd/path.py:1132 nobodd/path.py:1146
 #, python-brace-format
 msgid ""
 "comparison is not supported between instances of {self.__class__.__name__} "
 "with different file-systems"
 msgstr ""
 
-#: nobodd/prep.py:53 nobodd/sh.py:153
+#: nobodd/prep.py:54 nobodd/sh.py:193
 msgid "print more output"
 msgstr ""
 
-#: nobodd/prep.py:57 nobodd/sh.py:157
+#: nobodd/prep.py:58 nobodd/sh.py:197
 msgid "print no output"
 msgstr ""
 
-#: nobodd/prep.py:61
+#: nobodd/prep.py:62
 msgid "the target image to customize"
 msgstr ""
 
-#: nobodd/prep.py:64
+#: nobodd/prep.py:65
 #, python-format
 msgid "the size to expand the image to; default: %(default)s"
 msgstr ""
 
-#: nobodd/prep.py:68
+#: nobodd/prep.py:69
 msgid ""
 "the hostname of the nbd server to connect to for the root device; defaults "
 "to the local machine's FQDN"
 msgstr ""
 
-#: nobodd/prep.py:73
+#: nobodd/prep.py:74
 msgid ""
 "the name of the nbd share to use as the root device; defaults to the stem of "
 "the *image* name"
 msgstr ""
 
-#: nobodd/prep.py:78
+#: nobodd/prep.py:79
 #, python-format
 msgid ""
 "the name of the file containing the kernel command line on the boot "
 "partition; default: %(default)s"
 msgstr ""
 
-#: nobodd/prep.py:83
+#: nobodd/prep.py:84
 msgid ""
 "which partition is the boot partition within the image; default is the first "
 "FAT partition (identified by partition type) found in the image"
 msgstr ""
 
-#: nobodd/prep.py:89
+#: nobodd/prep.py:90
 msgid ""
 "which partition is the root partition within the image default is the first "
 "non-FAT partition (identified by partition type) found in the image"
 msgstr ""
 
-#: nobodd/prep.py:95
+#: nobodd/prep.py:96
 msgid ""
 "copy the specified file or directory into the boot partition. This may be "
 "given multiple times to specify multiple items to copy"
 msgstr ""
 
-#: nobodd/prep.py:101
+#: nobodd/prep.py:102
 msgid ""
 "remove the specified file or directory from the boot partition. This may be "
 "given multiple times to specify multiple items to delete"
 msgstr ""
 
-#: nobodd/prep.py:107
+#: nobodd/prep.py:108
 msgid ""
 "defines the serial number of the Raspberry Pi that will be served this "
 "image. When this option is given, a board configuration compatible with "
 "nobodd-tftpd may be output with --tftpd-conf"
 msgstr ""
 
-#: nobodd/prep.py:114
+#: nobodd/prep.py:115
 msgid ""
 "if specified, write a board configuration compatible with nobodd-tftpd to "
 "the specified file; requires --serial to be given"
 msgstr ""
 
-#: nobodd/prep.py:120
+#: nobodd/prep.py:121
 msgid ""
 "if specified, write a share configuration compatible with nbd-server to the "
 "specified file"
 msgstr ""
 
-#: nobodd/prep.py:139
+#: nobodd/prep.py:140
 #, python-format
 msgid "Resizing %s to %d bytes"
 msgstr ""
 
-#: nobodd/prep.py:144
+#: nobodd/prep.py:145
 #, python-format
 msgid "Skipping resize; %s is already %d bytes or larger"
 msgstr ""
 
-#: nobodd/prep.py:168
+#: nobodd/prep.py:169
 #, python-format
 msgid "Removing %s from partition %d"
 msgstr ""
 
-#: nobodd/prep.py:184
+#: nobodd/prep.py:185
 #, python-format
 msgid "No such file/dir %s in partition %d"
 msgstr ""
 
-#: nobodd/prep.py:203
+#: nobodd/prep.py:204
 #, python-format
 msgid "Copying %s into partition %d"
 msgstr ""
 
-#: nobodd/prep.py:234
+#: nobodd/prep.py:235
 #, python-format
 msgid "Re-writing %s in partition %d"
 msgstr ""
 
-#: nobodd/prep.py:260
+#: nobodd/prep.py:261
 msgid "Detecting partitions"
 msgstr ""
 
-#: nobodd/prep.py:282
+#: nobodd/prep.py:270
 #, python-format
 msgid "Boot partition is %d (%s)"
 msgstr ""
 
-#: nobodd/prep.py:292
+#: nobodd/prep.py:275
 #, python-format
 msgid "Root partition is %d"
 msgstr ""
 
-#: nobodd/prep.py:301
+#: nobodd/prep.py:281
 msgid "Unable to detect boot partition"
 msgstr ""
 
-#: nobodd/prep.py:303
+#: nobodd/prep.py:283
 msgid "Unable to detect root partition"
 msgstr ""
 
@@ -582,128 +582,142 @@ msgstr ""
 msgid "Expected 1 fd from systemd but got {fds}"
 msgstr ""
 
-#: nobodd/sh.py:158
+#: nobodd/sh.py:198
 msgid "commands"
 msgstr ""
 
-#: nobodd/sh.py:162
+#: nobodd/sh.py:202
 msgid "displays help for the specified command"
 msgstr ""
 
-#: nobodd/sh.py:165
+#: nobodd/sh.py:205
 msgid "the command to display help for"
 msgstr ""
 
-#: nobodd/sh.py:170
+#: nobodd/sh.py:210
 msgid "concatenate content into a single output"
 msgstr ""
 
-#: nobodd/sh.py:173
+#: nobodd/sh.py:213
 msgid "the input files"
 msgstr ""
 
-#: nobodd/sh.py:176
+#: nobodd/sh.py:216
 msgid "the output file (default: stdout)"
 msgstr ""
 
-#: nobodd/sh.py:181
+#: nobodd/sh.py:221
 msgid "copy files and directories"
 msgstr ""
 
-#: nobodd/sh.py:184 nobodd/sh.py:235
+#: nobodd/sh.py:224 nobodd/sh.py:278
 msgid "the files or directories to copy"
 msgstr ""
 
-#: nobodd/sh.py:187
+#: nobodd/sh.py:227
 msgid "the directory to copy into or the file to replace"
 msgstr ""
 
-#: nobodd/sh.py:192
+#: nobodd/sh.py:230
+msgid "copy directories and their contents recursively"
+msgstr ""
+
+#: nobodd/sh.py:235
 msgid "list directory contents"
 msgstr ""
 
-#: nobodd/sh.py:195
+#: nobodd/sh.py:238
 msgid "the files or directories to list"
 msgstr ""
 
-#: nobodd/sh.py:198
+#: nobodd/sh.py:241
 msgid "do not ignore entries beginning with ."
 msgstr ""
 
-#: nobodd/sh.py:201
+#: nobodd/sh.py:244
 msgid "show details beside listed entries"
 msgstr ""
 
-#: nobodd/sh.py:204
+#: nobodd/sh.py:247
 msgid "sort on name (the default) / size / time / none"
 msgstr ""
 
-#: nobodd/sh.py:207
+#: nobodd/sh.py:250
 msgid "disable sorting"
 msgstr ""
 
-#: nobodd/sh.py:210
+#: nobodd/sh.py:253
 msgid "sort by file size"
 msgstr ""
 
-#: nobodd/sh.py:213
+#: nobodd/sh.py:256
 msgid "sort by modification time"
 msgstr ""
 
-#: nobodd/sh.py:216
+#: nobodd/sh.py:259
 msgid "sort by entry extension"
 msgstr ""
 
-#: nobodd/sh.py:221
+#: nobodd/sh.py:264
 msgid "make directories"
 msgstr ""
 
-#: nobodd/sh.py:224
+#: nobodd/sh.py:267
 msgid "the directories to create"
 msgstr ""
 
-#: nobodd/sh.py:227
+#: nobodd/sh.py:270
 msgid "create parent directories as required"
 msgstr ""
 
-#: nobodd/sh.py:232
+#: nobodd/sh.py:275
 msgid "move files and directories"
 msgstr ""
 
-#: nobodd/sh.py:238
+#: nobodd/sh.py:281
 msgid "the directory to move into or the file to replace"
 msgstr ""
 
-#: nobodd/sh.py:243
+#: nobodd/sh.py:286
 msgid "removes files or directories"
 msgstr ""
 
-#: nobodd/sh.py:246
+#: nobodd/sh.py:289
 msgid "the files or directories to remove"
 msgstr ""
 
-#: nobodd/sh.py:249
+#: nobodd/sh.py:292
 msgid "remove directories and their contents recursively"
 msgstr ""
 
-#: nobodd/sh.py:252
+#: nobodd/sh.py:295
 msgid "do not error on non-existent arguments and never prompt"
 msgstr ""
 
-#: nobodd/sh.py:258
+#: nobodd/sh.py:301
 msgid "remove empty directories"
 msgstr ""
 
-#: nobodd/sh.py:261
+#: nobodd/sh.py:304
 msgid "the directories to remove"
 msgstr ""
 
-#: nobodd/sh.py:266
+#: nobodd/sh.py:309
 msgid "update file timestamps"
 msgstr ""
 
-#: nobodd/sh.py:269
+#: nobodd/sh.py:312
 msgid "the files to create or modify the timestamps of"
+msgstr ""
+
+#: nobodd/sh.py:488
+#, python-brace-format
+msgid "-r not specified; {filename} is a non-empty directory"
+msgstr ""
+
+#: nobodd/sh.py:505 nobodd/sh.py:538
+#, python-brace-format
+msgid "{config.dest} is not a directory"
 msgstr ""
 
 #: nobodd/systemd.py:55
@@ -727,76 +741,76 @@ msgstr ""
 msgid "unsupported file mode"
 msgstr ""
 
-#: nobodd/tftpd.py:326
+#: nobodd/tftpd.py:322
 #, python-format
 msgid "%s - ERROR - unsupported operation; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:332
+#: nobodd/tftpd.py:328
 #, python-format
 msgid "%s - ERROR - invalid request; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:337
+#: nobodd/tftpd.py:333
 #, python-format
 msgid "%s - ERROR - unexpected error; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:419
+#: nobodd/tftpd.py:415
 #, python-format
 msgid "%s - ERROR - bad options; %s"
 msgstr ""
 
-#: nobodd/tftpd.py:424
+#: nobodd/tftpd.py:420
 #, python-format
 msgid "%s - ERROR - permission denied"
 msgstr ""
 
-#: nobodd/tftpd.py:429
+#: nobodd/tftpd.py:425
 #, python-format
 msgid "%s - ERROR - not found"
 msgstr ""
 
-#: nobodd/tftpd.py:434
+#: nobodd/tftpd.py:430
 #, python-format
 msgid "%s - ERROR - %s"
 msgstr ""
 
-#: nobodd/tftpd.py:484
+#: nobodd/tftpd.py:480
 #, python-format
 msgid "%s - IGNORE - bad client for %s"
 msgstr ""
 
-#: nobodd/tftpd.py:522
+#: nobodd/tftpd.py:518
 #, python-format
 msgid "%s - DONE - %.1f secs, %d bytes, ~%.1f Kb/s"
 msgstr ""
 
-#: nobodd/tftpd.py:603
+#: nobodd/tftpd.py:599
 msgid "internal error; timeout without send"
 msgstr ""
 
-#: nobodd/tftpd.py:607
+#: nobodd/tftpd.py:603
 #, python-format
 msgid "%s - timed out to %s"
 msgstr ""
 
-#: nobodd/tftpd.py:654
+#: nobodd/tftpd.py:650
 #, python-format
 msgid "%s - starting server on %s"
 msgstr ""
 
-#: nobodd/tftpd.py:670
+#: nobodd/tftpd.py:666
 #, python-format
 msgid "%s - shutting down server on %s"
 msgstr ""
 
-#: nobodd/tftpd.py:677
+#: nobodd/tftpd.py:673
 #, python-brace-format
 msgid "failed to shutdown thread for {server.server_address}"
 msgstr ""
 
-#: nobodd/tftpd.py:716
+#: nobodd/tftpd.py:712
 #, python-brace-format
 msgid "{filename} is outside {self.server.base_path}"
 msgstr ""
