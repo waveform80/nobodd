@@ -25,8 +25,6 @@ library, but are documented in case they are useful.
 
 .. autofunction:: format_address
 
-.. autofunction:: pairwise
-
 .. autofunction:: decode_timestamp
 
 .. autofunction:: encode_timestamp
@@ -34,6 +32,8 @@ library, but are documented in case they are useful.
 .. autofunction:: any_match
 
 .. autofunction:: exclude
+
+.. autofunction:: open_file
 
 .. autoclass:: BufferedTranscoder
 
