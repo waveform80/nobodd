@@ -130,6 +130,7 @@ def test_ls(fat16_disk, capsys):
         'lots-of-zeros',
         'random',
     ])
+    assert main(['ls', f'{fat16_disk}:/foo']) == 1
 
 
 def test_ls_long(fat16_disk, capsys):
@@ -178,16 +179,15 @@ def test_ls_all(fat16_disk, capsys):
 def test_ls_all_root(fat16_disk, capsys):
     assert main(['ls', '-a', f'{fat16_disk}:/']) == 0
     expected = re.compile(''.join(s + '\n' for s in [
-        r'.',
-        r'..',
-        'a.dir',
-        'cmdline.txt',
-        'empty',
-        'empty.dir',
-        'lots-of-zeros',
-        'random',
+        r'a\.dir',
+        r'cmdline\.txt',
+        r'empty',
+        r'empty\.dir',
+        r'lots-of-zeros',
+        r'random',
     ]))
     capture = capsys.readouterr()
+    print(capture.out)
     assert expected.match(capture.out)
 
 
@@ -344,3 +344,28 @@ def test_cp_r(fat16_disk_w, tmp_path, capsys):
     } | {
         f'a.dir/many-many-files/{n:03d}.txt' for n in range(100)
     }
+
+
+def test_mv(fat32_disk_w):
+    assert main(['mv', f'{fat32_disk_w}:/random', f'{fat32_disk_w}:/foo']) == 0
+    assert main(['ls', f'{fat32_disk_w}:/foo']) == 0
+    assert main(['ls', f'{fat32_disk_w}:/random']) == 1
+    assert main([
+        'mv', f'{fat32_disk_w}:/random', f'{fat32_disk_w}:/cmdline.txt',
+        f'{fat32_disk_w}:/empty']) == 1
+
+
+def test_mv_tree(fat32_disk_w, tmp_path):
+    assert main(['mv', f'{fat32_disk_w}:/a.dir', str(tmp_path)]) == 0
+    assert main(['ls', f'{fat32_disk_w}:/a.dir']) == 1
+    assert (tmp_path / 'a.dir').exists()
+    assert {
+        str(p.relative_to(tmp_path)) for p in (tmp_path / 'a.dir').rglob('*')
+    } == {
+        'a.dir/licenses',
+        'a.dir/licenses/gpl3.txt',
+        'a.dir/many-many-files',
+    } | {
+        f'a.dir/many-many-files/{n:03d}.txt' for n in range(100)
+    }
+

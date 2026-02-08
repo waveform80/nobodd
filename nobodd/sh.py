@@ -361,8 +361,10 @@ def do_ls(config):
         return key(v)
 
     def print_entry(filename, path):
+        # This stat() call may seem pointless for the second case, but ensures
+        # we error in the case of attempting to access a non-existent file
+        st = path.stat()
         if config.long:
-            st = path.stat()
             mtime = dt.datetime.fromtimestamp(st.st_mtime, tz=dt.timezone.utc)
             fmt = (
                 '%b %-2d %H:%M' if now - mtime < dt.timedelta(days=183) else
@@ -382,7 +384,7 @@ def do_ls(config):
     with get_paths(config.filenames, []) as paths:
         first_line = True
         for filename, path in sorted(paths.items(), key=key_from_value):
-            if path.is_file():
+            if not path.is_dir():
                 print_entry(filename, path)
                 first_line = False
         for filename, path in sorted(paths.items(), key=key_from_value):
@@ -518,13 +520,14 @@ def do_mv(config):
             dest.mkdir(exist_ok=True)
             for item in source.iterdir():
                 _move(item, dest / item.name)
+            source.rmdir()
         else:
             with source.open('rb') as in_f:
                 with dest.open('wb') as out_f:
                     copy_bytes(in_f, out_f)
             source.unlink()
 
-    with get_paths(config.filenames, [config.dest]) as paths:
+    with get_paths([], config.filenames + [config.dest]) as paths:
         if paths[config.dest].is_dir():
             dest_root = paths[config.dest]
             for filename in config.filenames:
