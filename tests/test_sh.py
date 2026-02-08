@@ -1,3 +1,10 @@
+# nobodd: a boot configuration tool for the Raspberry Pi
+#
+# Copyright (c) 2026 Dave Jones <dave.jones@canonical.com>
+# Copyright (c) 2026 Canonical Ltd.
+#
+# SPDX-License-Identifier: GPL-3.0
+
 import os
 import re
 from unittest import mock

@@ -1,3 +1,10 @@
+# nobodd: a boot configuration tool for the Raspberry Pi
+#
+# Copyright (c) 2025-2026 Dave Jones <dave.jones@canonical.com>
+# Copyright (c) 2025-2026 Canonical Ltd.
+#
+# SPDX-License-Identifier: GPL-3.0
+
 from time import sleep, monotonic
 from threading import Thread, Event, Lock, get_ident
 
