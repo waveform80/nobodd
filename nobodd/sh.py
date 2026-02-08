@@ -225,6 +225,9 @@ def get_parser():
     cp_cmd.add_argument(
         'dest',
         help=lang._("the directory to copy into or the file to replace"))
+    cp_cmd.add_argument(
+        '-r', '-R', '--recursive', action='store_true',
+        help=lang._("copy directories and their contents recursively"))
     cp_cmd.set_defaults(func=do_cp)
 
     ls_cmd = commands.add_parser(
@@ -433,7 +436,7 @@ def do_rmdir(config):
     with get_paths([], config.filenames) as paths:
         for filename in config.filenames:
             path = paths[filename]
-            path.unlink()
+            path.rmdir()
 
 
 def do_mkdir(config):
@@ -472,13 +475,18 @@ def do_cp(config):
     or copy the specified files and directories into the target directory, if
     the target is a directory.
     """
-    # TODO: Implement -r
     def _copy(source, dest):
         if source.is_dir():
-            if any(source.iterdir()):
-                raise IsADirectoryError(
-                    f'{filename} is a non-empty directory')
-            dest.mkdir()
+            if config.recursive:
+                dest.mkdir(exist_ok=True)
+                for item in source.iterdir():
+                    _copy(item, dest / item.name)
+            elif any(source.iterdir()):
+                raise IsADirectoryError(lang._(
+                    '-r not specified; {filename} is a non-empty directory'
+                ).format(filename=filename))
+            else:
+                dest.mkdir()
         else:
             with source.open('rb') as in_f:
                 with dest.open('wb') as out_f:
@@ -491,10 +499,10 @@ def do_cp(config):
                 source = paths[filename]
                 _copy(source, dest_root / source.name)
         elif len(config.filenames) > 1:
-            raise NotADirectoryError(f'{config.dest} is not a directory')
+            raise NotADirectoryError(lang._(
+                '{config.dest} is not a directory').format(config=config))
         else:
-            for filename in config.filenames:
-                _copy(paths[filename], paths[config.dest])
+            _copy(paths[config.filenames[0]], paths[config.dest])
 
 
 def do_mv(config):
@@ -504,13 +512,12 @@ def do_mv(config):
     the target is a directory.
     """
     def _move(source, dest):
-        if source.is_dir():
-            if any(source.iterdir()):
-                raise IsADirectoryError(
-                    f'{filename} is a non-empty directory')
-            dest.mkdir()
-        elif same_fs(source, dest):
+        if same_fs(source, dest):
             source.rename(dest)
+        elif source.is_dir():
+            dest.mkdir(exist_ok=True)
+            for item in source.iterdir():
+                _move(item, dest / item.name)
         else:
             with source.open('rb') as in_f:
                 with dest.open('wb') as out_f:
@@ -524,7 +531,8 @@ def do_mv(config):
                 source = paths[filename]
                 _move(source, dest_root / source.name)
         elif len(config.filenames) > 1:
-            raise NotADirectoryError(f'{config.dest} is not a directory')
+            raise NotADirectoryError(lang._(
+                '{config.dest} is not a directory').format(config=config))
         else:
             for filename in config.filenames:
                 _move(paths[filename], paths[config.dest])

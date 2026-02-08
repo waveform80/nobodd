@@ -196,19 +196,23 @@ def test_rm(fat16_disk_w, capsys):
     assert main(['ls', f'{fat16_disk_w}:/']) == 0
     expected = re.compile(''.join(s + '\n' for s in [
         'a.dir',
+        #'cmdline.txt',
+        #'empty',
         'empty.dir',
         'lots-of-zeros',
         'random',
     ]))
     capture = capsys.readouterr()
     assert expected.match(capture.out)
-    assert main(['rm', f'{fat16_disk_w}:/foo']) != 0
+    assert main(['rm', f'{fat16_disk_w}:/does-not-exist']) != 0
+    assert main(['rm', '-f', f'{fat16_disk_w}:/does-not-exist']) == 0
 
 
 def test_rm_rf(fat16_disk_w, capsys):
     assert main(['rm', '-rf', f'{fat16_disk_w}:/a.dir']) == 0
     assert main(['ls', f'{fat16_disk_w}:/']) == 0
     expected = re.compile(''.join(s + '\n' for s in [
+        #'a.dir',
         'cmdline.txt',
         'empty',
         'empty.dir',
@@ -217,3 +221,126 @@ def test_rm_rf(fat16_disk_w, capsys):
     ]))
     capture = capsys.readouterr()
     assert expected.match(capture.out)
+
+
+def test_rmdir(fat16_disk_w, capsys):
+    assert main(['rmdir', f'{fat16_disk_w}:/empty.dir']) == 0
+    assert main(['ls', f'{fat16_disk_w}:/']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'a.dir',
+        'cmdline.txt',
+        'empty',
+        #'empty.dir',
+        'lots-of-zeros',
+        'random',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+
+
+def test_mkdir(fat16_disk_w, capsys):
+    assert main(['mkdir', f'{fat16_disk_w}:/foo']) == 0
+    assert main(['mkdir', f'{fat16_disk_w}:/foo/bar']) == 0
+    assert main(['ls', f'{fat16_disk_w}:/']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'a.dir',
+        'cmdline.txt',
+        'empty',
+        'empty.dir',
+        'foo',
+        'lots-of-zeros',
+        'random',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+    assert main(['ls', f'{fat16_disk_w}:/foo']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'bar',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+
+
+def test_mkdir_p(fat16_disk_w, capsys):
+    assert main(['mkdir', '-p', f'{fat16_disk_w}:/foo/bar']) == 0
+    assert main(['ls', f'{fat16_disk_w}:/']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'a.dir',
+        'cmdline.txt',
+        'empty',
+        'empty.dir',
+        'foo',
+        'lots-of-zeros',
+        'random',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+    assert main(['ls', f'{fat16_disk_w}:/foo']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'bar',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+
+
+def test_touch(fat16_disk_w, capsys):
+    assert main(['touch', f'{fat16_disk_w}:/foo']) == 0
+    assert main(['touch', f'{fat16_disk_w}:/a.dir/foo']) == 0
+    assert main(['ls', f'{fat16_disk_w}:/']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'a.dir',
+        'cmdline.txt',
+        'empty',
+        'empty.dir',
+        'foo',
+        'lots-of-zeros',
+        'random',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+    assert main(['ls', f'{fat16_disk_w}:/a.dir']) == 0
+    expected = re.compile(''.join(s + '\n' for s in [
+        'foo',
+        'licenses',
+        'many-many-files',
+    ]))
+    capture = capsys.readouterr()
+    assert expected.match(capture.out)
+
+
+def test_cp(fat16_disk_w, tmp_path):
+    assert main(['cp', f'{fat16_disk_w}:/cmdline.txt', str(tmp_path)]) == 0
+    assert (tmp_path / 'cmdline.txt').read_text() == (
+        'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
+        'root=LABEL=writable rootfstype=ext4 rootwait fixrtc quiet splash\n')
+    assert main(['cp', f'{fat16_disk_w}:/empty.dir', str(tmp_path)]) == 0
+    assert (tmp_path / 'empty.dir').is_dir()
+    assert main(['cp', f'{fat16_disk_w}:/a.dir', str(tmp_path)]) == 1
+    assert not (tmp_path / 'a.dir').exists()
+    assert main([
+        'cp', f'{fat16_disk_w}:/random', f'{fat16_disk_w}:/cmdline.txt',
+        f'{fat16_disk_w}:/empty']) == 1
+
+
+def test_cp_over(fat16_disk_w, capsys):
+    assert main([
+        'cp', f'{fat16_disk_w}:/cmdline.txt', f'{fat16_disk_w}:/random']) == 0
+    assert main(['cat', f'{fat16_disk_w}:/random']) == 0
+    capture = capsys.readouterr()
+    assert capture.out == (
+        'console=serial0,115200 dwc_otg.lpm_enable=0 console=tty1 '
+        'root=LABEL=writable rootfstype=ext4 rootwait fixrtc quiet splash\n')
+
+
+def test_cp_r(fat16_disk_w, tmp_path, capsys):
+    assert main(['cp', '-r', f'{fat16_disk_w}:/a.dir', str(tmp_path)]) == 0
+    assert (tmp_path / 'a.dir').exists()
+    assert {
+        str(p.relative_to(tmp_path)) for p in (tmp_path / 'a.dir').rglob('*')
+    } == {
+        'a.dir/licenses',
+        'a.dir/licenses/gpl3.txt',
+        'a.dir/many-many-files',
+    } | {
+        f'a.dir/many-many-files/{n:03d}.txt' for n in range(100)
+    }
