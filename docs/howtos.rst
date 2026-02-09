@@ -16,5 +16,7 @@ operating a Raspberry Pi netboot server using NBD.
     :maxdepth: 1
 
     howto-jammy
+    howto-noble
+    howto-resolute
     howto-firewall
     howto-development
