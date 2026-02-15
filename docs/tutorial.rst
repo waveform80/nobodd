@@ -172,9 +172,9 @@ something like "enp2s0f0".
            valid_lft forever preferred_lft forever
     ...
 
-Add the following configuration lines to :file:`/etc/dnsmasq.conf` adjusting
-the ethernet interface name, and the network mask on the highlighted lines to
-your particular setup.
+Create the file :file:`/etc/dnsmasq.d/nbd.conf` and add the following lines to
+it, adjusting the ethernet interface name, and the network mask on the
+highlighted lines to your particular setup.
 
 .. code-block:: text
     :emphasize-lines: 2,7
@@ -188,8 +188,7 @@ your particular setup.
     dhcp-range=192.168.1.255,proxy
     pxe-service=0,"Raspberry Pi Boot"
 
-Restart dnsmasq to ensure it's listening for DHCP connections (unfortunately
-reload is not sufficient in this case).
+Restart dnsmasq to ensure it's listening for DHCP connections.
 
 .. code-block:: console
 
