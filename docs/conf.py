@@ -64,7 +64,6 @@ intersphinx_mapping = {
 
 html_theme = 'sphinx_rtd_theme'
 html_title = f'{project} {version} Documentation'
-html_static_path = ['_static']
 manpages_url = 'https://manpages.ubuntu.com/manpages/noble/en/man{section}/{page}.{section}.html'
 
 # -- Options for LaTeX output ---------------------------------------------
