@@ -12,7 +12,7 @@ Changelog
 .. currentmodule:: nobodd
 
 
-Release 0.5 (2026-02-??)
+Release 0.5 (2026-02-16)
 ========================
 
 * Added :attr:`~nobodd.fs.FatFileSystem.damaged` and
