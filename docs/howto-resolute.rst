@@ -17,7 +17,7 @@ for the purposes of preparing an image with :program:`nobodd-prep`, the
 :file:`cmdline.txt` file is now :file:`current/cmdline.txt`.
 
 Thus, when preparing an image for use (as in the :doc:`tutorial`), you also
-need to specify the :option:`--cmdline` parameter, like so:
+need to specify the :option:`nobodd-prep --cmdline` parameter, like so:
 
 .. code-block:: console
 

@@ -55,7 +55,7 @@ Open the :file:`ubuntu-server-pi-arm64.yaml` file in your favourite text
 editor, and insert the highlighted lines below at the location shown:
 
 .. code-block:: yaml
-    :highlight-lines: 36-37
+    :emphasize-lines: 36-37
 
     name: ubuntu-server-raspi-arm64
     display-name: Ubuntu Server Raspberry Pi arm64
@@ -117,6 +117,8 @@ editor, and insert the highlighted lines below at the location shown:
 
     If you wish to perform this procedure on the desktop image definition, the
     same lines need adding.
+
+.. _YAML: https://en.wikipedia.org/wiki/YAML
 
 
 Build
